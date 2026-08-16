@@ -15,6 +15,7 @@ import {
   CSS_BUNDLE_SEPARATOR,
   cssBundleRuntimeExpression,
   minifyCssText,
+  resolveCompactCssTemplates,
 } from "./css-template-compression.mjs";
 import {
   COMPACT_CLIENT_PROPERTY_MANGLE_CACHE,
@@ -35,6 +36,27 @@ import {
   writeOwnedStageFile,
   writeStagingControlFiles,
 } from "./lakebed-staging-safety.mjs";
+
+const COMPACT_CLIENT_PRESENTATION_SENTINELS = Object.freeze([
+  "data:font/ttf;base64,",
+  "AAEAAAAKAIAAAwAgT1MvMmEIfcc",
+  "data:image/png;base64,",
+  "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJS",
+  "iVBORw0KGgoAAAANSUhEUgAAAQAAAAEABAMAAACuXLVV",
+]);
+
+export function assertCompactClientPresentationAssets(source) {
+  const unresolved = source.match(/\$\{(?:MINECRAFT|LAKECRAFT_PIXEL)[A-Z0-9_]*\}/)?.[0];
+  if (unresolved) {
+    throw new Error(`Compact client retained unresolved presentation interpolation ${unresolved}.`);
+  }
+  for (const sentinel of COMPACT_CLIENT_PRESENTATION_SENTINELS) {
+    if (!source.includes(sentinel)) {
+      throw new Error(`Compact client dropped required presentation asset ${sentinel.slice(0, 44)}…`);
+    }
+  }
+  return true;
+}
 
 async function enableCompactLakebedBuild(buildPath) {
   const source = await readFile(buildPath, "utf8");
@@ -83,12 +105,16 @@ async function createCssBundlePlan() {
     stripReviewedClientDevelopmentSource(path, await readFile(path, "utf8"))
   )));
   auditCompactClientIdentifierCorpus(rawSources);
+  const compactedSources = rawSources.map(compactClientIdentifiers);
+  const resolvedCssTemplates = resolveCompactCssTemplates(compactedSources);
   for (let pathIndex = 0; pathIndex < paths.length; pathIndex += 1) {
     const path = paths[pathIndex];
-    const source = compactClientIdentifiers(rawSources[pathIndex]);
+    const source = compactedSources[pathIndex];
     for (const match of source.matchAll(/const\s+([A-Z][A-Z0-9_]*_CSS)\s*=\s*`([\s\S]*?)`;/g)) {
       const index = templates.length;
-      templates.push(minifyCssText(match[2]));
+      const resolved = resolvedCssTemplates.get(match[1]);
+      if (resolved === undefined) throw new Error(`Unable to resolve staged stylesheet ${match[1]}.`);
+      templates.push(minifyCssText(resolved));
       indexes.set(`${path}\0${match[1]}`, index);
     }
   }
@@ -96,6 +122,7 @@ async function createCssBundlePlan() {
     throw new Error("A staged stylesheet contains the reserved CSS bundle separator.");
   }
   const joined = templates.join(CSS_BUNDLE_SEPARATOR);
+  assertCompactClientPresentationAssets(joined);
   const packed = bundleCompressCss(joined);
   if (!packed || bundleDecompressCss(packed) !== joined) {
     throw new Error("Unable to round-trip the staged client CSS bundle.");

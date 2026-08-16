@@ -8,10 +8,12 @@ import {
 import { TNT_FUSE_MS, TNT_MAX_ACTIVE_FUSES } from "../../shared/tntAuthority.ts";
 import { mobFacingYaw } from "../../shared/mobMotionAuthority.ts";
 import type { PrimedTntVisualFuse } from "./types.ts";
+import { visualAssetSha256 } from "./playerSkin.ts";
 import { BOX_FACE_SHADES, BOX_VERTEX_COORDINATES } from "./generated/renderGeometry.ts";
 import {
   MOB_TEXTURE_ATLAS_HEIGHT,
   MOB_TEXTURE_ATLAS_PNG,
+  MOB_TEXTURE_ATLAS_SHA256,
   MOB_TEXTURE_ATLAS_WIDTH,
   MOB_TEXTURE_REGIONS,
 } from "./generated/mobTextureAtlas.ts";
@@ -128,8 +130,20 @@ interface PendingMobTextureLoad {
 
 const pendingMobTextureLoads = new WeakMap<WebGLTexture, PendingMobTextureLoad>();
 
-function mobTextureAtlasBlob(): Blob {
-  const binary = globalThis.atob(MOB_TEXTURE_ATLAS_PNG);
+/** Decode the development payload or fetch the compact production asset. */
+export async function loadMobTextureAtlasBlob(source = MOB_TEXTURE_ATLAS_PNG): Promise<Blob> {
+  // A colon is outside the standard base64 alphabet but required by the
+  // compact stage's absolute HTTPS asset URL.
+  if (source.includes(":")) {
+    const response = await globalThis.fetch(source);
+    if (!response.ok) throw new Error(String(response.status));
+    const buffer = await response.arrayBuffer();
+    if (await visualAssetSha256(buffer) !== MOB_TEXTURE_ATLAS_SHA256) {
+      throw new Error(source);
+    }
+    return new Blob([buffer], { type: "image/png" });
+  }
+  const binary = globalThis.atob(source);
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
   return new Blob([bytes], { type: "image/png" });
@@ -193,12 +207,14 @@ export function createMobTexture(gl: WebGLRenderingContext): WebGLTexture {
     image.src = objectUrl;
   };
   pendingMobTextureLoads.set(texture, pending);
-  const blob = mobTextureAtlasBlob();
-  if (globalThis.createImageBitmap) {
-    void globalThis.createImageBitmap(blob).then(upload, () => loadWithImage(blob));
-  } else {
-    loadWithImage(blob);
-  }
+  void loadMobTextureAtlasBlob().then((blob) => {
+    if (!pending.active) return;
+    if (globalThis.createImageBitmap) {
+      void globalThis.createImageBitmap(blob).then(upload, () => loadWithImage(blob));
+    } else {
+      loadWithImage(blob);
+    }
+  }, finish);
   return texture;
 }
 

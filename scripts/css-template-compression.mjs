@@ -202,6 +202,63 @@ export function minifyCssText(css) {
     .trim();
 }
 
+/**
+ * Reports whether a raw template body is already closed. Interpolated CSS must
+ * first pass through resolveCompactCssTemplates; packing raw `${NAME}` text
+ * produces invalid CSS and silently drops embedded assets.
+ */
+export function isCompactCssTemplateBody(css) {
+  return !css.includes("${");
+}
+
+/**
+ * Resolves the closed `CONST`-only interpolation used by embedded CSS assets
+ * before the CSS payload is packed. This intentionally is not an evaluator:
+ * expressions, property reads, calls, duplicate names, and cycles fail closed.
+ */
+export function resolveCompactCssTemplates(sources) {
+  const definitions = new Map();
+  const add = (name, definition) => {
+    const existing = definitions.get(name);
+    if (existing) existing.push(definition);
+    else definitions.set(name, [definition]);
+  };
+  for (const source of sources) {
+    for (const match of source.matchAll(/(?:export\s+)?const\s+([A-Z][A-Z0-9_]*)\s*=\s*("(?:\\.|[^"\\])*")\s*;/g)) {
+      add(match[1], { kind: "literal", value: JSON.parse(match[2]) });
+    }
+    for (const match of source.matchAll(/(?:export\s+)?const\s+([A-Z][A-Z0-9_]*)\s*=\s*`([\s\S]*?)`\s*;/g)) {
+      add(match[1], { kind: "template", value: match[2] });
+    }
+  }
+
+  const resolved = new Map();
+  const resolving = new Set();
+  const resolve = (name) => {
+    if (resolved.has(name)) return resolved.get(name);
+    const candidates = definitions.get(name);
+    if (!candidates?.length) throw new Error(`Compact CSS interpolation ${name} is not a static string constant.`);
+    if (candidates.length !== 1) throw new Error(`Compact CSS interpolation ${name} is ambiguous.`);
+    if (resolving.has(name)) throw new Error(`Compact CSS interpolation ${name} is cyclic.`);
+    resolving.add(name);
+    const definition = candidates[0];
+    let value = definition.value;
+    if (definition.kind === "template") {
+      value = value.replace(/\$\{([A-Z][A-Z0-9_]*)\}/g, (_match, dependency) => resolve(dependency));
+      if (value.includes("${")) {
+        throw new Error(`Compact CSS interpolation ${name} contains a non-static expression.`);
+      }
+    }
+    resolving.delete(name);
+    resolved.set(name, value);
+    return value;
+  };
+
+  const css = new Map();
+  for (const name of definitions.keys()) if (name.endsWith("_CSS")) css.set(name, resolve(name));
+  return css;
+}
+
 export function dictionaryCompressCss(css) {
   if (css.includes(CSS_DICTIONARY_PREFIX)) return null;
   const candidates = new Set();

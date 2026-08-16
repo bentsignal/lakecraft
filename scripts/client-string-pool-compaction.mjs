@@ -539,9 +539,18 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 609;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 180;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "3ae5ecba7416654837202a8e46ceb71d2820795d71ff51c77fa23df5d53e7c7d";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 612;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 181;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "c2c7aac3b8580f8a09f5839e52e90f64a1bd0dfdf933364317e09a3761498bdd";
+export const COMPACT_CLIENT_LOW_FREQUENCY_REMOTE_MOB_ASSET_DELTA = Object.freeze({
+  previousOccurrences: 609,
+  previousUniqueValues: 180,
+  previousSourceFingerprint: "3ae5ecba7416654837202a8e46ceb71d2820795d71ff51c77fa23df5d53e7c7d",
+  occurrenceDelta: 3,
+  uniqueValueDelta: 1,
+  source: "remote mob-atlas fetch and integrity validation",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_LOW_FREQUENCY_MINECRAFT_PARITY_DELTA = Object.freeze({
   previousOccurrences: 548,
   previousUniqueValues: 161,

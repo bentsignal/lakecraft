@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { createMobTexture, destroyMobTexture } from "../client/game/mobRenderer.ts";
+import { createMobTexture, destroyMobTexture, loadMobTextureAtlasBlob } from "../client/game/mobRenderer.ts";
 import { MOB_TEXTURE_ATLAS_PNG } from "../client/game/generated/mobTextureAtlas.ts";
 
 type Listener = EventListenerOrEventListenerObject;
@@ -59,12 +59,41 @@ class FakeGl {
 const bitmapDescriptor = Object.getOwnPropertyDescriptor(globalThis, "createImageBitmap");
 const imageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "Image");
 const urlDescriptor = Object.getOwnPropertyDescriptor(globalThis, "URL");
+const fetchDescriptor = Object.getOwnPropertyDescriptor(globalThis, "fetch");
 const setGlobal = (key: string, value: unknown) =>
   Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
-const flush = async () => { await Promise.resolve(); await Promise.resolve(); };
+const flush = async () => {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+};
 
 async function run(): Promise<void> {
   try {
+    const installedAtlasBytes = Buffer.from(MOB_TEXTURE_ATLAS_PNG, "base64");
+    const fetched: string[] = [];
+    setGlobal("fetch", async (input: string) => {
+      fetched.push(input);
+      return new Response(installedAtlasBytes, { status: 200, headers: { "content-type": "image/png" } });
+    });
+    const remoteBlob = await loadMobTextureAtlasBlob(
+      "https://lakecraft-production.up.railway.app/assets/mob-texture-atlas-204e2b83.png",
+    );
+    assert.deepEqual(Buffer.from(await remoteBlob.arrayBuffer()), installedAtlasBytes,
+      "the compact production URL resolves to the exact installed atlas bytes");
+    assert.deepEqual(fetched, [
+      "https://lakecraft-production.up.railway.app/assets/mob-texture-atlas-204e2b83.png",
+    ], "the staged remote atlas fetches the immutable hash-versioned path");
+    setGlobal("fetch", async () => new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
+    await assert.rejects(
+      loadMobTextureAtlasBlob("https://lakecraft-production.up.railway.app/assets/mob-texture-atlas-204e2b83.png"),
+      /mob-texture-atlas-204e2b83/,
+      "compact production rejects an altered remote texture instead of uploading corrupt pixels",
+    );
+    if (fetchDescriptor) Object.defineProperty(globalThis, "fetch", fetchDescriptor);
+    else Reflect.deleteProperty(globalThis, "fetch");
+
     let decodedBlob: Blob | null = null;
     const bitmap = new FakeBitmap();
     setGlobal("Image", undefined);
@@ -87,7 +116,7 @@ async function run(): Promise<void> {
     assert.equal(bitmap.closes, 1);
     assert.deepEqual(
       Buffer.from(await decodedBlob!.arrayBuffer()),
-      Buffer.from(MOB_TEXTURE_ATLAS_PNG, "base64"),
+      installedAtlasBytes,
       "Blob decoding receives the exact hash-pinned installed atlas bytes",
     );
     destroyMobTexture(gl as unknown as WebGLRenderingContext, texture);
@@ -97,6 +126,7 @@ async function run(): Promise<void> {
     setGlobal("createImageBitmap", () => new Promise<ImageBitmap>((resolve) => { resolveLate = resolve; }));
     const racedGl = new FakeGl();
     const racedTexture = createMobTexture(racedGl as unknown as WebGLRenderingContext);
+    await flush();
     destroyMobTexture(racedGl as unknown as WebGLRenderingContext, racedTexture);
     const lateBitmap = new FakeBitmap();
     resolveLate(lateBitmap as unknown as ImageBitmap);
@@ -114,6 +144,7 @@ async function run(): Promise<void> {
     FakeImage.instances.length = 0;
     const fallbackGl = new FakeGl();
     createMobTexture(fallbackGl as unknown as WebGLRenderingContext);
+    await flush();
     const fallbackImage = FakeImage.instances[0]!;
     assert.equal(fallbackImage.src, "blob:mob-atlas", "fallback decoding uses a Blob URL, never a data URL");
     fallbackImage.dispatch("load");
@@ -123,6 +154,7 @@ async function run(): Promise<void> {
   } finally {
     for (const [key, descriptor] of [
       ["createImageBitmap", bitmapDescriptor], ["Image", imageDescriptor], ["URL", urlDescriptor],
+      ["fetch", fetchDescriptor],
     ] as const) {
       if (descriptor) Object.defineProperty(globalThis, key, descriptor);
       else Reflect.deleteProperty(globalThis, key);

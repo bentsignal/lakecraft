@@ -41,6 +41,11 @@ for (const origin of [
   assert.ok(compactedBlockStage.includes(`${origin}/assets/block-texture-atlas-0f3a9517.png`));
 }
 assert.ok(compactedMobStage.includes("https://lakecraft-production.up.railway.app/assets/mob-texture-atlas-204e2b83.png"));
+const mobRendererSource = await readFile(new URL("../client/game/mobRenderer.ts", import.meta.url), "utf8");
+assert.match(mobRendererSource, /source\.includes\(":"\)/,
+  "the runtime recognizes the compact stage's URL contract instead of passing it to atob");
+assert.match(mobRendererSource, /visualAssetSha256\(buffer\)/,
+  "the remotely loaded mob atlas is hash-verified before decode");
 assert.doesNotMatch(compactedBlockStage, /https:\/\/y(?:creative-)?production\.up\.railway\.app/);
 assert.doesNotMatch(compactedMobStage, /https:\/\/yproduction\.up\.railway\.app/);
 

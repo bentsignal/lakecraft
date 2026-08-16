@@ -220,11 +220,16 @@ export function createLakecraftDefaultSkinPixels(): Uint8Array {
   return DEFAULT_PLAYER_SKIN_RGBA;
 }
 
+/** Hashes installed visual bytes without converting them through a text encoding. */
+export async function visualAssetSha256(bytes: BufferSource): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 /** Content-addresses the exact bounded pixels relayed by a realtime server. */
 export async function playerSkinWireId(pixels: Uint8Array): Promise<string> {
   if (pixels.byteLength !== PLAYER_SKIN_WIRE_BYTES) throw new Error("Player skin pixels must be exactly 64×64 RGBA.");
-  const digest = await crypto.subtle.digest("SHA-256", pixels);
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return visualAssetSha256(pixels);
 }
 
 export function encodePlayerSkinWirePixels(pixels: Uint8Array): string {

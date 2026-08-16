@@ -14,7 +14,9 @@ import {
   cssBundleRuntimeExpression,
   dictionaryCompressCss,
   dictionaryDecompressCss,
+  isCompactCssTemplateBody,
   minifyCssText,
+  resolveCompactCssTemplates,
 } from "../scripts/css-template-compression.mjs";
 import {
   CSS_LZ_ALPHABET,
@@ -29,6 +31,7 @@ import {
   stripClientDevelopmentSurfaces,
   stripVoxelDevelopmentSurfaces,
 } from "../scripts/client-development-surface-transform.mjs";
+import { assertCompactClientPresentationAssets } from "../scripts/prepare-lakebed-deploy.mjs";
 
 async function clientSourcePaths(directory = new URL("../client/", import.meta.url)) {
   const paths = [];
@@ -78,6 +81,7 @@ for (const file of files) {
   }
   const compactedSource = compactClientIdentifiers(source);
   for (const match of compactedSource.matchAll(/const\s+([A-Z][A-Z0-9_]*_CSS)\s*=\s*`([\s\S]*?)`;/g)) {
+    if (!isCompactCssTemplateBody(match[2])) continue;
     compactedTemplates.push(minifyCssText(match[2]));
   }
 }
@@ -86,6 +90,43 @@ assert.ok(totalUnpackedBytes - totalPackedBytes > 14_000, "embedded CSS should r
 assert.ok(elapsedMs < 20_000, `CSS packing took ${elapsedMs.toFixed(1)}ms`);
 assert.equal(dictionaryCompressCss(".a~.b{color:red}"), null, "CSS containing the reserved token delimiter must fail safe");
 assert.equal(lzCompressCss(".a~.b{color:red}"), null, "LZ packing must reject the reserved token delimiter");
+assert.equal(isCompactCssTemplateBody(".menu{color:#fff}"), true, "literal CSS remains eligible for compact packing");
+assert.equal(
+  isCompactCssTemplateBody('.menu{background-image:url("${EMBEDDED_TEXTURE}")}'),
+  false,
+  "asset-bearing interpolated CSS stays executable until JavaScript resolves the data URI",
+);
+const presentationAssetFixture = [
+  "data:font/ttf;base64,", "AAEAAAAKAIAAAwAgT1MvMmEIfcc",
+  "data:image/png;base64,", "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJS",
+  "iVBORw0KGgoAAAANSUhEUgAAAQAAAAEABAMAAACuXLVV",
+].join(";");
+assert.equal(
+  assertCompactClientPresentationAssets(presentationAssetFixture),
+  true,
+  "the staged-client gate accepts the embedded pixel font, dirt, and inventory assets together",
+);
+assert.throws(
+  () => assertCompactClientPresentationAssets(`${presentationAssetFixture};\${MINECRAFT_DIRT_TEXTURE_DATA_URI}`),
+  /unresolved presentation interpolation/,
+  "the staged-client gate rejects the exact raw interpolation that production previously shipped",
+);
+assert.throws(
+  () => assertCompactClientPresentationAssets(presentationAssetFixture.replace("data:font/ttf;base64,", "missing-font:")),
+  /dropped required presentation asset/,
+  "the staged-client gate rejects a missing embedded pixel font",
+);
+const resolvedFixture = resolveCompactCssTemplates([
+  'export const FONT_BYTES="AAEAAAAK";export const FONT_CSS=`@font-face{src:url("data:font/ttf;base64,${FONT_BYTES}")}`;',
+  'export const DIRT_URI="data:image/png;base64,iVBORw0";const MENU_CSS=`.menu{background-image:url("${DIRT_URI}")}`;',
+]);
+assert.equal(resolvedFixture.get("FONT_CSS"), '@font-face{src:url("data:font/ttf;base64,AAEAAAAK")}');
+assert.equal(resolvedFixture.get("MENU_CSS"), '.menu{background-image:url("data:image/png;base64,iVBORw0")}');
+assert.throws(
+  () => resolveCompactCssTemplates(['const BROKEN_CSS=`.x{width:${window.innerWidth}px}`;']),
+  /non-static expression/,
+  "compact CSS interpolation remains a closed constant-only boundary",
+);
 
 const cssBundleSource = compactedTemplates.join(CSS_BUNDLE_SEPARATOR);
 const cssBundle = bundleCompressCss(cssBundleSource);
@@ -176,6 +217,13 @@ const allClientSources = await Promise.all((await clientSourcePaths()).map(async
   }
   return source;
 }));
+const resolvedClientCss = resolveCompactCssTemplates(allClientSources.map(compactClientIdentifiers));
+assert.ok(
+  resolvedClientCss.get("LAKECRAFT_PIXEL_FONT_CSS")?.includes("data:font/ttf;base64,AAEAAAAK")
+    && resolvedClientCss.get("MINECRAFT_DIRT_BACKGROUND_CSS")?.includes("data:image/png;base64,iVBORw0KGgo")
+    && resolvedClientCss.get("HUD_CSS")?.includes("data:image/png;base64,iVBORw0KGgo"),
+  "the production CSS resolver embeds the real pixel font, dirt, and inventory assets before packing",
+);
 assert.equal(auditCompactClientIdentifierCorpus(allClientSources), true, "the reviewed private identifier corpus must stay exact");
 for (const [, compact] of COMPACT_CLIENT_PRIVATE_IDENTIFIER_PREFIXES) {
   assert.throws(
