@@ -133,7 +133,8 @@ const exactItems = Object.entries(ITEMS)
   .filter(([, item]) => item.category !== "block")
   .map(([itemId]) => itemId as ItemId);
 assert.equal(exactItems.length, 67);
-for (const itemId of exactItems) assertExactPixels(getItemIconArt(itemId), assets.itemTextures[itemId], itemId);
+for (const itemId of exactItems) assertExactPixels(getItemIconArt(itemId), assets.itemTextures[itemId], itemId,
+  itemId.startsWith("leather_") ? [0xa0, 0x65, 0x40] : undefined);
 for (const [itemId, payload] of Object.entries(assets.blockItemTextures)) {
   if (itemId === "cactus") continue; // Full blocks use the shared isometric atlas cube in inventory.
   assertExactPixels(getItemIconArt(itemId as ItemId), payload, itemId,

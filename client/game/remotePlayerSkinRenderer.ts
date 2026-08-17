@@ -5,8 +5,12 @@ import {
   PLAYER_SKIN_VERTEX_COUNT,
   PLAYER_SKIN_VERTEX_STRIDE,
 } from "./playerSkinGeometry.ts";
+import { buildPlayerArmorGeometry, type PlayerArmorAppearance } from "./playerArmorGeometry.ts";
+import { uploadPlayerArmorTexture } from "./playerSkinRenderer.ts";
 import {
   PLAYER_RIG_SKIN_DRAWS,
+  playerArmorRigDraws,
+  type PlayerRigDrawRange,
   type PlayerRigPose,
   writePlayerRigPartMatrix,
 } from "./playerRig.ts";
@@ -21,17 +25,68 @@ export const REMOTE_SKIN_ATLAS_ROWS = 4;
 export const REMOTE_SKIN_ATLAS_WIDTH = REMOTE_SKIN_ATLAS_COLUMNS * 64;
 export const REMOTE_SKIN_ATLAS_HEIGHT = REMOTE_SKIN_ATLAS_ROWS * 64;
 export const REMOTE_SKIN_ATLAS_BYTES = REMOTE_SKIN_ATLAS_WIDTH * REMOTE_SKIN_ATLAS_HEIGHT * 4;
+export const REMOTE_ARMOR_VERTICES_PER_PLAYER = 9 * 36;
 const REMOTE_PART_MATRIX = new Float32Array(16);
 const REMOTE_RIG_SCRATCH_MATRIX = new Float32Array(16);
 const REMOTE_RIG_POSE = {} as PlayerRigPose;
 const REMOTE_DEATH_LOCAL = new Float32Array(2);
 export const REMOTE_SKIN_FLOATS_PER_PLAYER = PLAYER_SKIN_VERTEX_COUNT * PLAYER_SKIN_VERTEX_STRIDE;
+export const REMOTE_ARMOR_FLOATS_PER_PLAYER = REMOTE_ARMOR_VERTICES_PER_PLAYER * PLAYER_SKIN_VERTEX_STRIDE;
+const REMOTE_ARMOR_GEOMETRY = new Map<string, readonly [Float32Array, readonly PlayerRigDrawRange[]]>();
 
 export type RemotePlayerSkinRenderer = Readonly<{
   update(states: ReadonlyMap<string, RemoteAvatarMotion>, camera: Vec3): number;
   draw(viewProjection: Float32Array, light: Vec3): void;
   destroy(): void;
 }>;
+
+function writeRemoteRigGeometry(
+  state: RemoteAvatarMotion,
+  rig: PlayerRigPose,
+  geometry: Float32Array,
+  draws: readonly PlayerRigDrawRange[],
+  output: Float32Array,
+  offset: number,
+  atlasX = 0,
+  atlasY = 0,
+  atlasColumns = 1,
+  atlasRows = 1,
+): number {
+  const angle = Math.PI - state.bodyYaw, cosine = Math.cos(angle), sine = Math.sin(angle);
+  for (const draw of draws) {
+    writePlayerRigPartMatrix(REMOTE_PART_MATRIX, draw.part, rig, state.skinModel, true, REMOTE_RIG_SCRATCH_MATRIX);
+    const end = (draw.first + draw.count) * PLAYER_SKIN_VERTEX_STRIDE;
+    for (let source = draw.first * PLAYER_SKIN_VERTEX_STRIDE; source < end; source += PLAYER_SKIN_VERTEX_STRIDE) {
+      const x = geometry[source], y = geometry[source + 1], z = geometry[source + 2];
+      const localX = REMOTE_PART_MATRIX[0] * x + REMOTE_PART_MATRIX[4] * y + REMOTE_PART_MATRIX[8] * z + REMOTE_PART_MATRIX[12];
+      const localY = REMOTE_PART_MATRIX[1] * x + REMOTE_PART_MATRIX[5] * y + REMOTE_PART_MATRIX[9] * z + REMOTE_PART_MATRIX[13];
+      const localZ = REMOTE_PART_MATRIX[2] * x + REMOTE_PART_MATRIX[6] * y + REMOTE_PART_MATRIX[10] * z + REMOTE_PART_MATRIX[14];
+      writeRemoteAvatarDeathLocal(state, localX, localY, REMOTE_DEATH_LOCAL);
+      const deathX = REMOTE_DEATH_LOCAL[0];
+      output[offset++] = state.rendered.x + cosine * deathX + sine * localZ;
+      output[offset++] = state.rendered.y + REMOTE_DEATH_LOCAL[1];
+      output[offset++] = state.rendered.z - sine * deathX + cosine * localZ;
+      output[offset++] = (geometry[source + 3] + atlasX) / atlasColumns;
+      output[offset++] = (geometry[source + 4] + atlasY) / atlasRows;
+      output[offset++] = state.hurtFlash ? -geometry[source + 5] : geometry[source + 5];
+    }
+  }
+  return offset;
+}
+
+function remoteArmor(state: RemoteAvatarMotion): readonly [Float32Array, readonly PlayerRigDrawRange[]] {
+  const key = `${state.skinModel}:${state.armorHead}:${state.armorChest}:${state.armorLegs}:${state.armorFeet}`;
+  let cached = REMOTE_ARMOR_GEOMETRY.get(key);
+  if (!cached) {
+    const appearance: PlayerArmorAppearance = {
+      head: state.armorHead, chest: state.armorChest, legs: state.armorLegs, feet: state.armorFeet,
+    };
+    cached = [buildPlayerArmorGeometry(appearance, state.skinModel), playerArmorRigDraws(appearance)];
+    if (REMOTE_ARMOR_GEOMETRY.size >= 64) REMOTE_ARMOR_GEOMETRY.clear();
+    REMOTE_ARMOR_GEOMETRY.set(key, cached);
+  }
+  return cached;
+}
 
 /** CPU-batches the exact installed 64×64 skin and canonical articulated rig. */
 export function writeRemotePlayerSkinGeometry(
@@ -52,48 +107,50 @@ export function writeRemotePlayerSkinGeometry(
     const geometry = state.skinModel === "slim" ? REMOTE_SLIM_SKIN_GEOMETRY : REMOTE_WIDE_SKIN_GEOMETRY;
     const atlasX = slot % REMOTE_SKIN_ATLAS_COLUMNS;
     const atlasY = Math.floor(slot / REMOTE_SKIN_ATLAS_COLUMNS);
-    const angle = Math.PI - state.bodyYaw;
-    const cosine = Math.cos(angle);
-    const sine = Math.sin(angle);
-    for (const draw of PLAYER_RIG_SKIN_DRAWS) {
-      writePlayerRigPartMatrix(REMOTE_PART_MATRIX, draw.part, rig, state.skinModel, true, REMOTE_RIG_SCRATCH_MATRIX);
-      const end = (draw.first + draw.count) * PLAYER_SKIN_VERTEX_STRIDE;
-      for (let source = draw.first * PLAYER_SKIN_VERTEX_STRIDE; source < end; source += PLAYER_SKIN_VERTEX_STRIDE) {
-        const x = geometry[source]; const y = geometry[source + 1]; const z = geometry[source + 2];
-        const localX = REMOTE_PART_MATRIX[0] * x + REMOTE_PART_MATRIX[4] * y + REMOTE_PART_MATRIX[8] * z + REMOTE_PART_MATRIX[12];
-        const localY = REMOTE_PART_MATRIX[1] * x + REMOTE_PART_MATRIX[5] * y + REMOTE_PART_MATRIX[9] * z + REMOTE_PART_MATRIX[13];
-        const localZ = REMOTE_PART_MATRIX[2] * x + REMOTE_PART_MATRIX[6] * y + REMOTE_PART_MATRIX[10] * z + REMOTE_PART_MATRIX[14];
-        writeRemoteAvatarDeathLocal(state, localX, localY, REMOTE_DEATH_LOCAL);
-        const deathX = REMOTE_DEATH_LOCAL[0];
-        output[offset++] = state.rendered.x + cosine * deathX + sine * localZ;
-        output[offset++] = state.rendered.y + REMOTE_DEATH_LOCAL[1];
-        output[offset++] = state.rendered.z - sine * deathX + cosine * localZ;
-        output[offset++] = (geometry[source + 3] + atlasX) / REMOTE_SKIN_ATLAS_COLUMNS;
-        output[offset++] = (geometry[source + 4] + atlasY) / REMOTE_SKIN_ATLAS_ROWS;
-        output[offset++] = state.hurtFlash ? -geometry[source + 5] : geometry[source + 5];
-      }
-    }
+    offset = writeRemoteRigGeometry(state, rig, geometry, PLAYER_RIG_SKIN_DRAWS, output, offset,
+      atlasX, atlasY, REMOTE_SKIN_ATLAS_COLUMNS, REMOTE_SKIN_ATLAS_ROWS);
     slot += 1;
+  }
+  return offset / PLAYER_SKIN_VERTEX_STRIDE;
+}
+
+export function writeRemotePlayerArmorGeometry(
+  states: ReadonlyMap<string, RemoteAvatarMotion>,
+  camera: Vec3,
+  output: Float32Array,
+): number {
+  let offset = 0, visited = 0;
+  for (const state of states.values()) {
+    if (visited++ >= MAX_REMOTE_PLAYERS) break;
+    if (state.deathHidden) continue;
+    const dx = state.rendered.x - camera[0], dz = state.rendered.z - camera[2];
+    if (dx * dx + dz * dz > REMOTE_RENDER_DISTANCE_SQUARED) continue;
+    const [geometry, draws] = remoteArmor(state);
+    offset = writeRemoteRigGeometry(state, resolveRemoteAvatarRigPose(state, REMOTE_RIG_POSE), geometry, draws, output, offset);
   }
   return offset / PLAYER_SKIN_VERTEX_STRIDE;
 }
 
 export function createRemotePlayerSkinRenderer(gl: WebGLRenderingContext): RemotePlayerSkinRenderer {
   const program = createVisualProgram(gl, SKIN_VERTEX_SHADER, SKIN_FRAGMENT_SHADER);
-  const buffer = gl.createBuffer(), texture = gl.createTexture();
+  const buffer = gl.createBuffer(), armorBuffer = gl.createBuffer(), texture = gl.createTexture(), armorTexture = gl.createTexture();
   const position = gl.getAttribLocation(program, "aPosition"), uv = gl.getAttribLocation(program, "aUv"), shade = gl.getAttribLocation(program, "aShade");
   const mvp = gl.getUniformLocation(program, "uMvp"), skin = gl.getUniformLocation(program, "uSkin"), lighting = gl.getUniformLocation(program, "uLight");
-  if (!buffer || !texture || position < 0 || uv < 0 || shade < 0 || !mvp || !skin || !lighting) {
-    gl.deleteBuffer(buffer); gl.deleteTexture(texture); gl.deleteProgram(program);
+  if (!buffer || !armorBuffer || !texture || !armorTexture || position < 0 || uv < 0 || shade < 0 || !mvp || !skin || !lighting) {
+    gl.deleteBuffer(buffer); gl.deleteBuffer(armorBuffer); gl.deleteTexture(texture); gl.deleteTexture(armorTexture); gl.deleteProgram(program);
     throw new Error("Player skin shader bindings are incomplete.");
   }
+  const destroyArmorTexture = uploadPlayerArmorTexture(gl, armorTexture);
   const data = new Float32Array(MAX_REMOTE_PLAYERS * REMOTE_SKIN_FLOATS_PER_PLAYER);
+  const armorData = new Float32Array(MAX_REMOTE_PLAYERS * REMOTE_ARMOR_FLOATS_PER_PLAYER);
   const defaultPixels = createLakecraftDefaultSkinPixels();
   const uploadedIds = Array<string>(MAX_REMOTE_PLAYERS).fill("");
   let upload = data.subarray(0, 0);
-  let vertexCount = 0;
+  let armorUpload = armorData.subarray(0, 0), vertexCount = 0, armorVertexCount = 0;
   gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
   gl.bufferData(gl.ARRAY_BUFFER, data.byteLength, gl.DYNAMIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, armorBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, armorData.byteLength, gl.DYNAMIC_DRAW);
   gl.bindTexture(gl.TEXTURE_2D, texture);
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
@@ -126,11 +183,18 @@ export function createRemotePlayerSkinRenderer(gl: WebGLRenderingContext): Remot
         slot += 1;
       }
       vertexCount = writeRemotePlayerSkinGeometry(states, camera, data);
+      armorVertexCount = writeRemotePlayerArmorGeometry(states, camera, armorData);
       const floats = vertexCount * PLAYER_SKIN_VERTEX_STRIDE;
+      const armorFloats = armorVertexCount * PLAYER_SKIN_VERTEX_STRIDE;
       if (upload.length !== floats) upload = data.subarray(0, floats);
+      if (armorUpload.length !== armorFloats) armorUpload = armorData.subarray(0, armorFloats);
       if (floats) {
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
         gl.bufferSubData(gl.ARRAY_BUFFER, 0, upload);
+      }
+      if (armorFloats) {
+        gl.bindBuffer(gl.ARRAY_BUFFER, armorBuffer);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, armorUpload);
       }
       return vertexCount;
     },
@@ -145,8 +209,16 @@ export function createRemotePlayerSkinRenderer(gl: WebGLRenderingContext): Remot
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, texture); gl.uniform1i(skin, 0);
       gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
       gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+      if (armorVertexCount) {
+        gl.bindBuffer(gl.ARRAY_BUFFER, armorBuffer);
+        gl.vertexAttribPointer(position, 3, gl.FLOAT, false, 24, 0);
+        gl.vertexAttribPointer(uv, 2, gl.FLOAT, false, 24, 12);
+        gl.vertexAttribPointer(shade, 1, gl.FLOAT, false, 24, 20);
+        gl.bindTexture(gl.TEXTURE_2D, armorTexture);
+        gl.drawArrays(gl.TRIANGLES, 0, armorVertexCount);
+      }
       gl.disable(gl.BLEND);
     },
-    destroy() { gl.deleteBuffer(buffer); gl.deleteTexture(texture); gl.deleteProgram(program); },
+    destroy() { gl.deleteBuffer(buffer); gl.deleteBuffer(armorBuffer); gl.deleteTexture(texture); destroyArmorTexture(); gl.deleteProgram(program); },
   });
 }

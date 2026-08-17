@@ -6,39 +6,34 @@ import {
   writeRemoteAvatarDeathLocal,
   type RemoteAvatarMotion,
 } from "./avatar.ts";
-import { type ArmorId, type ItemId } from "../../shared/game.ts";
-import { BOX_FACE_SHADES, BOX_VERTEX_COORDINATES, NAMEPLATE_FONT } from "./generated/renderGeometry.ts";
+import { type ItemId } from "../../shared/game.ts";
+import { NAMEPLATE_FONT } from "./generated/renderGeometry.ts";
 import { PLAYER_SKIN_BOX_COUNT, PLAYER_SKIN_VERTEX_COUNT } from "./playerSkinGeometry.ts";
 import { writePlayerRigPartMatrix, type PlayerRigPart, type PlayerRigPose } from "./playerRig.ts";
+import { REMOTE_ARMOR_VERTICES_PER_PLAYER as MAX_ARMOR_VERTICES_PER_PLAYER } from "./remotePlayerSkinRenderer.ts";
 import { buildThirdPersonHeldItemGeometry } from "./thirdPersonHeldItem.ts";
 import { BLOCK_ITEM_CUBE_MAX_VERTICES } from "./blockItemCubeGeometry.ts";
 
 type Vec3 = readonly [number, number, number];
 
 const FLOATS_PER_VERTEX = 6;
-const VERTICES_PER_BOX = 36;
 export const REMOTE_DEFAULT_PLAYER_BOX_COUNT = PLAYER_SKIN_BOX_COUNT;
 export const REMOTE_DEFAULT_PLAYER_HEIGHT = 2;
-const MAX_ARMOR_BOXES = 10;
 const MAX_GLYPH_RECTS = 21;
 const REMOTE_RENDER_DISTANCE_SQUARED = (21 * 16) ** 2;
 
 export const REMOTE_MESH_INTERVAL_MS = 1_000 / 30;
 export const BASE_AVATAR_VERTICES_PER_PLAYER = PLAYER_SKIN_VERTEX_COUNT;
-export const MAX_ARMOR_VERTICES_PER_PLAYER = MAX_ARMOR_BOXES * VERTICES_PER_BOX;
+export { MAX_ARMOR_VERTICES_PER_PLAYER };
 /** Exact shared local/remote block cube, or the largest installed extruded sprite. */
 export const MAX_HELD_ITEM_VERTICES_PER_PLAYER = Math.max(BLOCK_ITEM_CUBE_MAX_VERTICES, 2_040);
-/** Worst-case fixed avatar capacity, including a bounded canonical sprite and all armor. */
+/** Worst-case visible avatar capacity across the textured skin/armor and colored held-item batches. */
 export const AVATAR_VERTICES_PER_PLAYER = BASE_AVATAR_VERTICES_PER_PLAYER
   + MAX_ARMOR_VERTICES_PER_PLAYER
   + MAX_HELD_ITEM_VERTICES_PER_PLAYER;
 export const MAX_NAMEPLATE_VERTICES_PER_PLAYER = 6 + MAX_PLAYER_NAME_LENGTH * MAX_GLYPH_RECTS * 6;
 
 const COLORS = {
-  leatherArmor: [0.48, 0.25, 0.11] as Vec3,
-  ironArmor: [0.72, 0.74, 0.72] as Vec3,
-  goldArmor: [0.92, 0.72, 0.12] as Vec3,
-  diamondArmor: [0.20, 0.76, 0.74] as Vec3,
   nameBackground: [0.025, 0.028, 0.035] as Vec3,
   nameText: [0.94, 0.95, 0.90] as Vec3,
 };
@@ -105,7 +100,7 @@ export function remotePlayerBufferCapacity(playerCount = MAX_REMOTE_PLAYERS): {
   totalBytes: number;
 } {
   const count = Math.max(0, Math.min(MAX_REMOTE_PLAYERS, Math.floor(playerCount)));
-  const avatarFloats = count * (MAX_ARMOR_VERTICES_PER_PLAYER + MAX_HELD_ITEM_VERTICES_PER_PLAYER) * FLOATS_PER_VERTEX;
+  const avatarFloats = count * MAX_HELD_ITEM_VERTICES_PER_PLAYER * FLOATS_PER_VERTEX;
   const skinFloats = count * BASE_AVATAR_VERTICES_PER_PLAYER * FLOATS_PER_VERTEX;
   const nameplateFloats = count * MAX_NAMEPLATE_VERTICES_PER_PLAYER * FLOATS_PER_VERTEX;
   return {
@@ -158,75 +153,6 @@ function selectGearPart(part: PlayerRigPart, pose: PlayerRigPose, remapStandardS
   writePlayerRigPartMatrix(GEAR_PART_MATRIX, part, pose, "wide", remapStandardSkinSides, GEAR_RIG_SCRATCH_MATRIX);
 }
 
-function appendRigBox(
-  writer: VertexWriter,
-  state: RemoteAvatarMotion,
-  cosine: number,
-  sine: number,
-  minX: number,
-  minY: number,
-  minZ: number,
-  maxX: number,
-  maxY: number,
-  maxZ: number,
-  color: Vec3,
-): void {
-  for (let faceIndex = 0, point = 0; faceIndex < BOX_FACE_SHADES.length; faceIndex += 1) {
-    const shade = BOX_FACE_SHADES[faceIndex];
-    for (let vertexIndex = 0; vertexIndex < 6; vertexIndex += 1) {
-      const localX = minX + BOX_VERTEX_COORDINATES[point++] * (maxX - minX);
-      const localY = minY + BOX_VERTEX_COORDINATES[point++] * (maxY - minY);
-      const localZ = minZ + BOX_VERTEX_COORDINATES[point++] * (maxZ - minZ);
-      writeRigVertex(writer, state, cosine, sine, localX, localY, localZ, color, shade);
-    }
-  }
-}
-
-function armorColor(itemId: ArmorId): Vec3 {
-  if (itemId.startsWith("diamond_")) return COLORS.diamondArmor;
-  if (itemId.startsWith("golden_")) return COLORS.goldArmor;
-  return itemId.startsWith("iron_") ? COLORS.ironArmor : COLORS.leatherArmor;
-}
-
-function appendArmor(
-  writer: VertexWriter,
-  state: RemoteAvatarMotion,
-  rig: PlayerRigPose,
-  cosine: number,
-  sine: number,
-): void {
-  if (state.armorHead) {
-    const color = armorColor(state.armorHead);
-    selectGearPart("head", rig);
-    appendRigBox(writer,state,cosine,sine,-0.28,1.91,-0.28,0.28,2.05,0.28,color);
-    appendRigBox(writer,state,cosine,sine,-0.28,1.52,-0.28,-0.23,1.94,0.28,color);
-    appendRigBox(writer,state,cosine,sine,0.23,1.52,-0.28,0.28,1.94,0.28,color);
-  }
-  if (state.armorChest) {
-    const color = armorColor(state.armorChest);
-    selectGearPart("root", rig);
-    appendRigBox(writer,state,cosine,sine,-0.27,0.73,-0.15,0.27,1.52,0.15,color);
-    selectGearPart("rightArm", rig);
-    appendRigBox(writer,state,cosine,sine,-0.52,1.20,-0.15,-0.23,1.52,0.15,color);
-    selectGearPart("leftArm", rig);
-    appendRigBox(writer,state,cosine,sine,0.23,1.20,-0.15,0.52,1.52,0.15,color);
-  }
-  if (state.armorLegs) {
-    const color = armorColor(state.armorLegs);
-    selectGearPart("rightLeg", rig);
-    appendRigBox(writer,state,cosine,sine,-0.27,0.10,-0.15,0.01,0.77,-0.13,color);
-    selectGearPart("leftLeg", rig);
-    appendRigBox(writer,state,cosine,sine,-0.01,0.10,-0.15,0.27,0.77,-0.13,color);
-  }
-  if (state.armorFeet) {
-    const color = armorColor(state.armorFeet);
-    selectGearPart("rightLeg", rig);
-    appendRigBox(writer,state,cosine,sine,-0.27,-0.01,-0.15,0.01,0.27,0.18,color);
-    selectGearPart("leftLeg", rig);
-    appendRigBox(writer,state,cosine,sine,-0.01,-0.01,-0.15,0.27,0.27,0.18,color);
-  }
-}
-
 function appendHeldItem(
   writer: VertexWriter,
   state: RemoteAvatarMotion,
@@ -250,7 +176,6 @@ function appendAvatarGear(writer: VertexWriter, state: RemoteAvatarMotion): void
   const angle = Math.PI - state.bodyYaw;
   const cosine = Math.cos(angle);
   const sine = Math.sin(angle);
-  appendArmor(writer, state, rig, cosine, sine);
   appendHeldItem(writer, state, rig, cosine, sine);
 }
 

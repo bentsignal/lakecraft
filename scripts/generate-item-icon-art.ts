@@ -26,6 +26,7 @@ type Grid = string[][];
 type Palette = Record<string, string>;
 const cache = new Map<ItemId, ItemIconArt>();
 const PLAINS_GRASS_TINT = [0x91, 0xbd, 0x59] as const;
+const DEFAULT_LEATHER_TINT = [0xa0, 0x65, 0x40] as const;
 type ImportedVisualAssets = Readonly<{
   itemTextures: Readonly<Partial<Record<ItemId, string>>>;
   blockItemTextures: Readonly<Partial<Record<ItemId, string>>>;
@@ -99,13 +100,14 @@ function importedPngRuns(payload: string, label: string): ItemIconRun[] {
     throw new Error(`Imported icon ${label} must be 16x16.`);
   }
   const result: ItemIconRun[] = [];
+  const tint = label === "short_grass" ? PLAINS_GRASS_TINT
+    : label.startsWith("leather_") ? DEFAULT_LEATHER_TINT : null;
   for (let y = 0; y < ITEM_ICON_SIZE; y += 1) {
     for (let x = 0; x < ITEM_ICON_SIZE;) {
       const offset = (y * ITEM_ICON_SIZE + x) * 4;
       if (image.rgba[offset + 3] < 128) { x += 1; continue; }
-      const channelValue = (pixelOffset: number, channel: number): number => label === "short_grass"
-        ? Math.round(image.rgba[pixelOffset + channel] * PLAINS_GRASS_TINT[channel] / 255)
-        : image.rgba[pixelOffset + channel];
+      const channelValue = (pixelOffset: number, channel: number): number => tint
+        ? Math.round(image.rgba[pixelOffset + channel] * tint[channel] / 255) : image.rgba[pixelOffset + channel];
       const color = `#${[0, 1, 2].map((channel) => channelValue(offset, channel).toString(16).padStart(2, "0")).join("")}`;
       let end = x + 1;
       while (end < ITEM_ICON_SIZE) {

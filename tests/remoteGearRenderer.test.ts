@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createRemoteAvatarMotion, resolveRemoteAvatarRigPose, type RemoteAvatarMotion } from "../client/game/avatar.ts";
 import { ITEMS, type ItemId } from "../shared/game.ts";
 import type { RemotePlayer } from "../client/game/types.ts";
-import { BOX_VERTEX_COORDINATES } from "../client/game/generated/renderGeometry.ts";
+import { buildPlayerArmorGeometry } from "../client/game/playerArmorGeometry.ts";
 import { writePlayerRigPartMatrix, type PlayerRigPart } from "../client/game/playerRig.ts";
 import {
   AVATAR_VERTICES_PER_PLAYER,
@@ -17,6 +17,10 @@ import {
   writeRemotePlayerGeometry,
   type RemoteGeometryStats,
 } from "../client/game/remotePlayerRenderer.ts";
+import {
+  REMOTE_ARMOR_FLOATS_PER_PLAYER,
+  writeRemotePlayerArmorGeometry,
+} from "../client/game/remotePlayerSkinRenderer.ts";
 
 const basePlayer: RemotePlayer = {
   id: "gear-test",
@@ -35,9 +39,11 @@ function geometry(overrides: Partial<RemotePlayer> = {}, motionOverrides: Partia
   const capacity = remotePlayerBufferCapacity(1);
   const avatar = new Float32Array(capacity.avatarFloats);
   const names = new Float32Array(capacity.nameplateFloats);
+  const armor = new Float32Array(REMOTE_ARMOR_FLOATS_PER_PLAYER);
   const stats: RemoteGeometryStats = { avatarVertexCount: 0, skinVertexCount: 0, nameplateVertexCount: 0, visiblePlayerCount: 0 };
   writeRemotePlayerGeometry(states, [0, 2, -4], avatar, names, stats);
-  return { avatar, names, state, stats, capacity };
+  const armorVertexCount = writeRemotePlayerArmorGeometry(states, [0, 2, -4], armor);
+  return { avatar, armor, armorVertexCount, names, state, stats, capacity };
 }
 
 const bare = geometry();
@@ -161,24 +167,25 @@ const headOnly = geometry({ armorHead: "iron_helmet" });
 const chestOnly = geometry({ armorChest: "iron_chestplate" });
 const legsOnly = geometry({ armorLegs: "iron_leggings" });
 const feetOnly = geometry({ armorFeet: "iron_boots" });
-assert.equal(headOnly.stats.avatarVertexCount, 3 * 36);
-assert.equal(chestOnly.stats.avatarVertexCount, 3 * 36);
-assert.equal(legsOnly.stats.avatarVertexCount, 2 * 36);
-assert.equal(feetOnly.stats.avatarVertexCount, 2 * 36);
+assert.equal(headOnly.armorVertexCount, 1 * 36);
+assert.equal(chestOnly.armorVertexCount, 3 * 36);
+assert.equal(legsOnly.armorVertexCount, 3 * 36);
+assert.equal(feetOnly.armorVertexCount, 2 * 36);
+for (const sample of [headOnly, chestOnly, legsOnly, feetOnly]) assert.equal(sample.stats.avatarVertexCount, 0,
+  "legacy flat-color armor is absent from the held-item batch");
 const crouchedActionChest = geometry(
   { armorChest: "iron_chestplate" },
   { armActionProgress: 0.5, crouching: true },
 );
-const first = BOX_VERTEX_COORDINATES;
-const expectedArmArmorPoint = canonicalWorldPoint(crouchedActionChest.state, "rightArm", false, [
-  -0.52 + first[0] * 0.29,
-  1.20 + first[1] * 0.32,
-  -0.15 + first[2] * 0.30,
+const canonicalChest = buildPlayerArmorGeometry({ chest: "iron_chestplate" });
+const armOffset = 36 * 6;
+const expectedArmArmorPoint = canonicalWorldPoint(crouchedActionChest.state, "rightArm", true, [
+  canonicalChest[armOffset], canonicalChest[armOffset + 1], canonicalChest[armOffset + 2],
 ]);
-assertPointClose(crouchedActionChest.avatar.subarray(36 * 6), expectedArmArmorPoint,
-  "arm armor uses the exact canonical action+crouch right-arm matrix");
+assertPointClose(crouchedActionChest.armor.subarray(armOffset), expectedArmArmorPoint,
+  "authentic textured arm armor uses the exact canonical action+crouch right-arm matrix");
 assert.equal(
-  3 * 36 + 3 * 36 + 2 * 36 + 2 * 36,
+  1 * 36 + 3 * 36 + 3 * 36 + 2 * 36,
   MAX_ARMOR_VERTICES_PER_PLAYER,
 );
 
@@ -196,24 +203,15 @@ const fullyLeather = geometry({
   armorLegs: "leather_leggings",
   armorFeet: "leather_boots",
 });
-assert.equal(fullyIron.stats.avatarVertexCount,
-  MAX_ARMOR_VERTICES_PER_PLAYER + remoteHeldItemVertexCount("iron_sword"));
-assert.equal(fullyLeather.stats.avatarVertexCount,
-  MAX_ARMOR_VERTICES_PER_PLAYER + remoteHeldItemVertexCount("wooden_sword"));
-assert.ok(fullyIron.stats.avatarVertexCount <= AVATAR_VERTICES_PER_PLAYER - BASE_AVATAR_VERTICES_PER_PLAYER);
-assert.ok(fullyLeather.stats.avatarVertexCount <= AVATAR_VERTICES_PER_PLAYER - BASE_AVATAR_VERTICES_PER_PLAYER);
-assert.equal(fullyIron.capacity.avatarFloats, (AVATAR_VERTICES_PER_PLAYER - BASE_AVATAR_VERTICES_PER_PLAYER) * 6);
-
-function gearBrightness(sample: ReturnType<typeof geometry>): number {
-  let total = 0;
-  let count = 0;
-  for (let offset = 0; offset < sample.stats.avatarVertexCount * 6; offset += 6) {
-    total += sample.avatar[offset + 3] + sample.avatar[offset + 4] + sample.avatar[offset + 5];
-    count += 3;
-  }
-  return total / count;
-}
-assert.ok(gearBrightness(fullyIron) > gearBrightness(fullyLeather), "iron and leather overlays remain visually distinct");
+assert.equal(fullyIron.stats.avatarVertexCount, remoteHeldItemVertexCount("iron_sword"));
+assert.equal(fullyLeather.stats.avatarVertexCount, remoteHeldItemVertexCount("wooden_sword"));
+assert.equal(fullyIron.armorVertexCount, MAX_ARMOR_VERTICES_PER_PLAYER);
+assert.equal(fullyLeather.armorVertexCount, MAX_ARMOR_VERTICES_PER_PLAYER);
+assert.ok(fullyIron.stats.avatarVertexCount + fullyIron.armorVertexCount
+  <= AVATAR_VERTICES_PER_PLAYER - BASE_AVATAR_VERTICES_PER_PLAYER);
+assert.equal(fullyIron.capacity.avatarFloats, MAX_HELD_ITEM_VERTICES_PER_PLAYER * 6);
+assert.notDeepEqual(fullyIron.armor.slice(3, 5), fullyLeather.armor.slice(3, 5),
+  "iron and leather remotes sample distinct installed armor-atlas material rows");
 
 // Stable geometry size must reuse the exact same upload views; all equipment
 // remains in one preallocated avatar buffer and one bufferSubData call/update.

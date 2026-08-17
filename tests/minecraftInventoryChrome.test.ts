@@ -55,7 +55,7 @@ assert.match(styles, />\.lc-inventory-upper::after\{background:#c6c6c6;content:"
   "the unsupported offhand slot and its one-pixel texture border are cleanly masked at 3x");
 assert.match(styles, /\.lc-crafting-arrow\{visibility:hidden;width:27px\}/,
   "the DOM arrow is hidden because the canonical inventory texture already owns that arrow");
-assert.match(styles, /\.lc-item-icon__svg\{height:min\(40px,calc\(100% - 10px\)\);width:min\(40px,calc\(100% - 10px\)\)\}/,
-  "inventory item art remains comfortably contained inside each 54px slot");
+assert.match(styles, /\.lc-item-icon__svg\{height:48px;transform:translate\(-3px,-3px\);width:48px\}/,
+  "inventory item cells map the installed 16px sprite area to exact 3x pixels at the slot interior origin");
 
 console.log("Minecraft inventory chrome checks passed");

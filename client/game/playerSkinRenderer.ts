@@ -41,6 +41,28 @@ export type PlayerSkinRenderer = Readonly<{
   destroy(): void;
 }>;
 
+export function uploadPlayerArmorTexture(gl: WebGLRenderingContext, texture: WebGLTexture): () => void {
+  let destroyed = false;
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const atlas: Uint8Array | string = PLAYER_ARMOR_ATLAS_RGBA;
+  if (typeof atlas === "string") {
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+    void (async () => {
+      const response = await fetch(atlas, { cache: "force-cache", mode: "cors" });
+      if (!response.ok) return;
+      const buffer = await response.arrayBuffer();
+      if (await visualAssetSha256(buffer) !== PLAYER_ARMOR_ATLAS_PNG_SHA256) return;
+      const image = await createImageBitmap(new Blob([buffer], { type: "image/png" }));
+      if (!destroyed) { gl.bindTexture(gl.TEXTURE_2D, texture); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image); }
+      image.close();
+    })().catch(() => {});
+  } else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 64, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, atlas);
+  return () => { destroyed = true; gl.deleteTexture(texture); };
+}
+
 export function createPlayerSkinRenderer(gl: WebGLRenderingContext): PlayerSkinRenderer {
   const program = createVisualProgram(gl, SKIN_VERTEX_SHADER, SKIN_FRAGMENT_SHADER);
   const itemProgram = createVisualProgram(gl, COLOR_VERTEX_SHADER, COLOR_FRAGMENT_SHADER);
@@ -59,6 +81,7 @@ export function createPlayerSkinRenderer(gl: WebGLRenderingContext): PlayerSkinR
     gl.deleteBuffer(buffer); gl.deleteBuffer(itemBuffer); gl.deleteBuffer(armorBuffer); gl.deleteTexture(texture); gl.deleteTexture(armorTexture); gl.deleteProgram(program); gl.deleteProgram(itemProgram);
     throw new Error("Player skin shader bindings are incomplete.");
   }
+  const destroyArmorTexture = uploadPlayerArmorTexture(gl, armorTexture);
   let model: PlayerSkinModel = "wide";
   let geometry = buildPlayerSkinGeometry(model);
   let vertexCount = geometry.length / PLAYER_SKIN_VERTEX_STRIDE;
@@ -68,7 +91,6 @@ export function createPlayerSkinRenderer(gl: WebGLRenderingContext): PlayerSkinR
   let armorAppearance: PlayerArmorAppearance = Object.freeze({});
   let armorVertexCount = 0;
   let armorDraws = playerArmorRigDraws(armorAppearance);
-  let destroyed = false;
   gl.bindBuffer(gl.ARRAY_BUFFER, buffer); gl.bufferData(gl.ARRAY_BUFFER, geometry, gl.STATIC_DRAW);
   gl.bindTexture(gl.TEXTURE_2D, texture);
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
@@ -77,22 +99,6 @@ export function createPlayerSkinRenderer(gl: WebGLRenderingContext): PlayerSkinR
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 64, 64, 0, gl.RGBA, gl.UNSIGNED_BYTE, createLakecraftDefaultSkinPixels());
-  gl.bindTexture(gl.TEXTURE_2D, armorTexture);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  const armorAtlas: Uint8Array | string = PLAYER_ARMOR_ATLAS_RGBA;
-  if (typeof armorAtlas === "string") {
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
-    void (async () => {
-      const response = await fetch(armorAtlas, { cache: "force-cache", mode: "cors" });
-      if (!response.ok) return;
-      const buffer = await response.arrayBuffer();
-      if (await visualAssetSha256(buffer) !== PLAYER_ARMOR_ATLAS_PNG_SHA256) return;
-      const image = await createImageBitmap(new Blob([buffer], { type: "image/png" }));
-      if (!destroyed) { gl.bindTexture(gl.TEXTURE_2D, armorTexture); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image); }
-      image.close();
-    })().catch(() => {});
-  } else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 64, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, armorAtlas);
   const modelMatrix = new Float32Array(16); const partMatrix = new Float32Array(16);
   const rigScratchMatrix = new Float32Array(16);
   const worldPartMatrix = new Float32Array(16); const mvp = new Float32Array(16);
@@ -193,7 +199,7 @@ export function createPlayerSkinRenderer(gl: WebGLRenderingContext): PlayerSkinR
       armorVertexCount = data.length / PLAYER_ARMOR_VERTEX_STRIDE;
       gl.bindBuffer(gl.ARRAY_BUFFER, armorBuffer); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
     },
-    destroy() { destroyed = true; gl.deleteBuffer(buffer); gl.deleteBuffer(itemBuffer); gl.deleteBuffer(armorBuffer); gl.deleteTexture(texture); gl.deleteTexture(armorTexture); gl.deleteProgram(program); gl.deleteProgram(itemProgram); },
+    destroy() { gl.deleteBuffer(buffer); gl.deleteBuffer(itemBuffer); gl.deleteBuffer(armorBuffer); gl.deleteTexture(texture); destroyArmorTexture(); gl.deleteProgram(program); gl.deleteProgram(itemProgram); },
   };
   return Object.freeze(renderer);
 }

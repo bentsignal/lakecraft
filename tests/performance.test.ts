@@ -31,6 +31,7 @@ import {
   writeRemotePlayerGeometry,
   type RemoteGeometryStats,
 } from "../client/game/remotePlayerRenderer.ts";
+import { REMOTE_ARMOR_FLOATS_PER_PLAYER, writeRemotePlayerArmorGeometry } from "../client/game/remotePlayerSkinRenderer.ts";
 import { ITEMS, type ItemId } from "../shared/game.ts";
 
 assert.equal(chunkCoordinate(0), 0);
@@ -191,23 +192,27 @@ assert.equal(maximalName.length, 16);
 const gearedCapacity = remotePlayerBufferCapacity(MAX_REMOTE_PLAYERS);
 const gearedAvatarData = new Float32Array(gearedCapacity.avatarFloats);
 const gearedNameplateData = new Float32Array(gearedCapacity.nameplateFloats);
+const gearedArmorData = new Float32Array(MAX_REMOTE_PLAYERS * REMOTE_ARMOR_FLOATS_PER_PLAYER);
 const gearedStats: RemoteGeometryStats = { avatarVertexCount: 0, skinVertexCount: 0, nameplateVertexCount: 0, visiblePlayerCount: 0 };
+const fullyGearedStates = remoteStates(MAX_REMOTE_PLAYERS, true, maximalHeldItem, maximalName);
 writeRemotePlayerGeometry(
-  remoteStates(MAX_REMOTE_PLAYERS, true, maximalHeldItem, maximalName),
+  fullyGearedStates,
   [0, 9, 0],
   gearedAvatarData,
   gearedNameplateData,
   gearedStats,
 );
+const gearedArmorVertexCount = writeRemotePlayerArmorGeometry(fullyGearedStates, [0, 9, 0], gearedArmorData);
 assert.equal(gearedStats.visiblePlayerCount, MAX_REMOTE_PLAYERS);
 const gearedVerticesPerPlayer = BASE_AVATAR_VERTICES_PER_PLAYER
   + MAX_ARMOR_VERTICES_PER_PLAYER + MAX_HELD_ITEM_VERTICES_PER_PLAYER;
 assert.equal(gearedStats.skinVertexCount, MAX_REMOTE_PLAYERS * BASE_AVATAR_VERTICES_PER_PLAYER);
-assert.equal(gearedStats.avatarVertexCount, MAX_REMOTE_PLAYERS * (gearedVerticesPerPlayer - BASE_AVATAR_VERTICES_PER_PLAYER));
+assert.equal(gearedStats.avatarVertexCount, MAX_REMOTE_PLAYERS * MAX_HELD_ITEM_VERTICES_PER_PLAYER);
+assert.equal(gearedArmorVertexCount, MAX_REMOTE_PLAYERS * MAX_ARMOR_VERTICES_PER_PLAYER);
 assert.equal(gearedVerticesPerPlayer, AVATAR_VERTICES_PER_PLAYER);
 const maximalNameplateVerticesPerPlayer = 6 + MAX_PLAYER_NAME_LENGTH * maximalGlyphRects * 6;
 assert.equal(gearedStats.nameplateVertexCount, MAX_REMOTE_PLAYERS * maximalNameplateVerticesPerPlayer);
-const gearedUploadBytes = (gearedStats.skinVertexCount + gearedStats.avatarVertexCount + gearedStats.nameplateVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT;
+const gearedUploadBytes = (gearedStats.skinVertexCount + gearedStats.avatarVertexCount + gearedArmorVertexCount + gearedStats.nameplateVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT;
 const base32UploadBytes = remoteBenchmarks[remoteBenchmarks.length - 1].uploadBytes;
 const fixtureDeltaBytes = gearedUploadBytes - base32UploadBytes;
 const gearDeltaBytes = MAX_REMOTE_PLAYERS
@@ -220,8 +225,9 @@ assert.equal(
   fixtureDeltaBytes,
   gearDeltaBytes + nameDeltaBytes,
 );
-assert.ok(gearedUploadBytes <= gearedCapacity.totalBytes, "32 fully geared players fit the one preallocated avatar buffer");
-assert.equal(gearedUploadBytes, 8_944_128, "exact local/F5 block texels remain deterministic at the 32-player cap");
+assert.ok(gearedUploadBytes <= gearedCapacity.totalBytes + gearedArmorData.byteLength,
+  "32 fully geared players fit the fixed held-item and authentic textured-armor buffers");
+assert.equal(gearedUploadBytes, 8_916_480, "exact local/F5 block and armor texels remain deterministic at the 32-player cap");
 assert.ok(gearedUploadBytes < 9_100_000, `worst-case remote upload ${gearedUploadBytes} exceeded 9.1MB`);
 
 const glCalls = { bufferData: 0, bufferSubData: 0, deleteBuffer: 0 };

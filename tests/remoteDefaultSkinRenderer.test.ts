@@ -15,6 +15,7 @@ import {
   REMOTE_SKIN_ATLAS_HEIGHT,
   REMOTE_SKIN_ATLAS_ROWS,
   REMOTE_SKIN_ATLAS_WIDTH,
+  REMOTE_ARMOR_FLOATS_PER_PLAYER,
   createRemotePlayerSkinRenderer,
   writeRemotePlayerSkinGeometry,
 } from "../client/game/remotePlayerSkinRenderer.ts";
@@ -33,6 +34,12 @@ const output = new Float32Array(REMOTE_SKIN_FLOATS_PER_PLAYER);
 const vertexCount = writeRemotePlayerSkinGeometry(states, [0, 2, -4], output);
 const canonical = buildPlayerSkinGeometry("wide");
 const rendererSource = readFileSync(new URL("../client/game/remotePlayerSkinRenderer.ts", import.meta.url), "utf8");
+const gearRendererSource = readFileSync(new URL("../client/game/remotePlayerRenderer.ts", import.meta.url), "utf8");
+assert.ok(rendererSource.includes("writeRemotePlayerArmorGeometry")
+  && rendererSource.includes("gl.bindTexture(gl.TEXTURE_2D, armorTexture)"),
+"remote players batch canonical rig armor through the installed textured atlas");
+assert.equal(gearRendererSource.includes("armorColor"), false,
+  "the obsolete flat-color remote armor boxes cannot render over authentic armor");
 assert.equal(
   rendererSource.match(/buildPlayerSkinGeometry\("wide"\)/g)?.length,
   1,
@@ -106,6 +113,7 @@ assert.notDeepEqual(output.slice(armStart, armEnd), idle.slice(armStart, armEnd)
 
 let unpackFlip = 1;
 let uploadedFlip = -1;
+const textureDimensions: Array<readonly [number, number]> = [];
 const skinUploads: Array<{ x: number; y: number; pixels: Uint8Array }> = [];
 const blendEvents: string[] = [];
 const textureUnits: number[] = [];
@@ -126,8 +134,7 @@ const fakeGl = {
   pixelStorei: (name: number, value: number) => { if (name === 0x9240) unpackFlip = value; },
   texParameteri: () => undefined, texImage2D: (_target: number, _level: number, _internal: number, width: number, height: number) => {
     uploadedFlip = unpackFlip;
-    assert.equal(width, REMOTE_SKIN_ATLAS_WIDTH);
-    assert.equal(height, REMOTE_SKIN_ATLAS_HEIGHT);
+    textureDimensions.push([width, height]);
   },
   texSubImage2D: (_target: number, _level: number, x: number, y: number, _width: number, _height: number,
     _format: number, _type: number, pixels: Uint8Array) => skinUploads.push({ x, y, pixels }),
@@ -141,6 +148,8 @@ const fakeGl = {
 } as unknown as WebGLRenderingContext;
 const glRenderer = createRemotePlayerSkinRenderer(fakeGl);
 assert.equal(uploadedFlip, 0, "remote default skin upload resets inherited UNPACK_FLIP_Y_WEBGL state");
+assert.deepEqual(textureDimensions, [[64, 256], [REMOTE_SKIN_ATLAS_WIDTH, REMOTE_SKIN_ATLAS_HEIGHT]],
+  "remote players allocate the authentic shared armor atlas and bounded skin atlas");
 glRenderer.update(states, [0, 2, -4]);
 assert.equal(skinUploads.length, 1, "one bounded atlas upload installs one visible player's fallback skin");
 const customPixels = new Uint8Array(64 * 64 * 4).fill(91);
@@ -157,12 +166,19 @@ assert.deepEqual(
 glRenderer.draw(new Float32Array(16), [1, 1, 1]);
 assert.deepEqual(blendEvents, ["enable", "draw", "disable"], "remote skin draw contains its blend state");
 assert.deepEqual(textureUnits, [fakeGl.TEXTURE0], "remote skin explicitly samples texture unit zero");
+blendEvents.length = 0;
+state.armorHead = "diamond_helmet";
+glRenderer.update(states, [0, 2, -4]);
+glRenderer.draw(new Float32Array(16), [1, 1, 1]);
+assert.deepEqual(blendEvents, ["enable", "draw", "draw", "disable"],
+  "an equipped remote draws one skin batch and one authentic textured-armor batch");
 glRenderer.destroy();
 
 const capacity = remotePlayerBufferCapacity(32);
 assert.equal(capacity.skinFloats, 32 * REMOTE_SKIN_FLOATS_PER_PLAYER);
-assert.equal(capacity.avatarFloats / 32 / PLAYER_SKIN_VERTEX_STRIDE, 10 * 36 + MAX_HELD_ITEM_VERTICES_PER_PLAYER,
-  "gear batch carries only bounded armor and held-item geometry, never a duplicate body");
+assert.equal(capacity.avatarFloats / 32 / PLAYER_SKIN_VERTEX_STRIDE, MAX_HELD_ITEM_VERTICES_PER_PLAYER,
+  "the color batch carries held items only; authentic armor stays in the textured rig batch");
+assert.equal(REMOTE_ARMOR_FLOATS_PER_PLAYER, 9 * 36 * PLAYER_SKIN_VERTEX_STRIDE);
 
 console.log(JSON.stringify({
   benchmark: "remote canonical installed-skin batch",

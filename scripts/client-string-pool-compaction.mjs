@@ -10,7 +10,16 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // application copy or making a new literal eligible requires human review.
 export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 541;
 export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 476;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "c0d77023f11f4ed9cb78e0be931e3f7a5f66d62e172d8f303b234fa9c61ad793";
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "0d82b6aafd9d683284c2e9640d079816847c69e9409b3525734c1b2a595800c6";
+export const COMPACT_CLIENT_HUMAN_SHARED_ARMOR_RENDERER_DELTA = Object.freeze({
+  previousOccurrences: 541,
+  previousUniqueValues: 476,
+  previousSourceFingerprint: "c0d77023f11f4ed9cb78e0be931e3f7a5f66d62e172d8f303b234fa9c61ad793",
+  occurrenceDelta: 0,
+  uniqueValueDelta: 0,
+  source: "client/game/playerSkinRenderer.ts#shared-local-remote-armor-texture-upload",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_HUMAN_WATER_BUFFER_DELTA = Object.freeze({
   previousOccurrences: 540,
   previousUniqueValues: 476,
@@ -202,9 +211,18 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
   source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_362;
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_356;
 export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 135;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "ff30b43cfdd60fdb8118c5e12d4c35d2431203b4024f314b583e70a425489d7c";
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "bc486e833beac173dc85e6b9455c2940456a37d2f38693bb9b7423f124864a78";
+export const COMPACT_CLIENT_REPEATED_REMOTE_ARMOR_UNIFICATION_DELTA = Object.freeze({
+  previousOccurrences: 1_362,
+  previousUniqueValues: 135,
+  previousSourceFingerprint: "ff30b43cfdd60fdb8118c5e12d4c35d2431203b4024f314b583e70a425489d7c",
+  occurrenceDelta: -6,
+  uniqueValueDelta: 0,
+  source: "remote flat-color armor removal and shared installed texture atlas",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_REPEATED_ARMOR_TEXTURE_DELTA = Object.freeze({
   previousOccurrences: 1_349,
   previousUniqueValues: 134,
@@ -596,9 +614,18 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 622;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 184;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "79a24cb4c3af619f0e960df668def170985c8f3e37bdfb18a567e457acce35d7";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 617;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 183;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "3aa23dc82630fc7f26671670be2e69d2e96eea97188b3e8779b772f729527c4e";
+export const COMPACT_CLIENT_LOW_FREQUENCY_REMOTE_ARMOR_UNIFICATION_DELTA = Object.freeze({
+  previousOccurrences: 622,
+  previousUniqueValues: 184,
+  previousSourceFingerprint: "79a24cb4c3af619f0e960df668def170985c8f3e37bdfb18a567e457acce35d7",
+  occurrenceDelta: -5,
+  uniqueValueDelta: -1,
+  source: "remote flat-color armor removal and shared installed texture atlas",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_LOW_FREQUENCY_ARMOR_TEXTURE_DELTA = Object.freeze({
   previousOccurrences: 621,
   previousUniqueValues: 184,
