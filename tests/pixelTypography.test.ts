@@ -49,10 +49,22 @@ for (const character of Array.from("°·×–—…→↑↓↔●")) {
   assert.equal(cmapSupports(character.codePointAt(0)!), true,
     `the shared face covers interface punctuation ${character} without a system-font fallback`);
 }
+const hhea = tableOffset("hhea");
+const ascender = bytes.readInt16BE(hhea + 4), descender = bytes.readInt16BE(hhea + 6);
+assert.deepEqual([ascender, descender], [896, -128], "font metrics preserve Minecraft's 7px ascent and 1px descender");
+const loca = tableOffset("loca"), glyf = tableOffset("glyf"), maxp = tableOffset("maxp");
+const glyphCount = bytes.readUInt16BE(maxp + 4);
+for (let glyph = 1; glyph < glyphCount; glyph += 1) {
+  const at = glyf + bytes.readUInt32BE(loca + glyph * 4);
+  if (bytes.readInt16BE(at) === 0) continue;
+  const yMin = bytes.readInt16BE(at + 4), yMax = bytes.readInt16BE(at + 8);
+  assert.ok(yMin >= descender && yMax <= ascender,
+    `glyph ${glyph} vertical bounds ${yMin}..${yMax} stay inside ${descender}..${ascender}`);
+}
 assert.ok(hud.includes('import { LAKECRAFT_PIXEL_FONT_CSS }') && lobby.includes('import { LAKECRAFT_PIXEL_FONT_CSS }'),
   "HUD and menu surfaces share one coherent embedded font definition");
-assert.match(font, /--lc-input-vpad:4px;padding-block:calc\(var\(--lc-input-vpad\) \+ 6px\) max\(0px,calc\(var\(--lc-input-vpad\) - 6px\)\)!important/,
-  "one root primitive moves typed text and placeholders onto the visible bitmap-font centerline without clipping");
+assert.match(font, /--lc-pixel-font:[^}]+;--lc-input-vpad:4px}[^`]+padding-block:var\(--lc-input-vpad\)!important/,
+  "native inputs use symmetric padding now that every glyph fits the font's declared vertical metrics");
 assert.ok(lobby.includes(".lc-username-menu input{--lc-input-vpad:5px")
   && readFileSync(new URL("../client/components/InventoryDrawer.tsx", import.meta.url), "utf8").includes('style="--lc-input-vpad:9px"'),
 "auth/dialog and Creative inputs retain their original total padding through the shared baseline contract");

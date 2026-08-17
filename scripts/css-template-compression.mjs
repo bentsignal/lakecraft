@@ -97,7 +97,7 @@ xoptions__control|7 xoptions__controls|2 xoptions__tabs|3 xlocal-world-create|2
 `);
 
 const COMPACT_CLIENT_PRIVATE_CUSTOM_PROPERTY_ROWS = parsePrivateIdentifierRows(`
-xpixel-font|68 xnote|16 xy-slot|13 xc-slot|10 xe-height-scale|8 xinput-vpad|7 xr-slot|6 xpaper|6 xmoss|6 xink|6 xamber|5
+xpixel-font|68 xnote|16 xy-slot|13 xc-slot|10 xe-height-scale|8 xinput-vpad|6 xr-slot|6 xpaper|6 xmoss|6 xink|6 xamber|5
 xrust|5 xt-edge|4 xe-width-scale|4 xcharcoal|2 xdisplay|2 xmoss-bright|1 xpaper-deep|1 xshadow|1 xline|1
 `);
 

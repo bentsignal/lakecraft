@@ -55,10 +55,14 @@ for (const provider of providerSource.providers) {
   if (!entry.endsWith("ascii.png") && !entry.endsWith("nonlatin_european.png")) continue;
   const atlas = atlases.get(entry) ?? decodeAtlas(entry);
   atlases.set(entry, atlas);
+  const ascent = provider.ascent;
+  if (!Number.isInteger(ascent) || ascent < 0 || ascent > 8) {
+    throw new Error(`Unexpected Minecraft bitmap ascent ${String(ascent)} for ${entry}.`);
+  }
   provider.chars.forEach((row, rowIndex) => Array.from(row).forEach((character, column) => {
     const code = character.codePointAt(0);
     if (!code || (entry.endsWith("nonlatin_european.png") && !REQUIRED_NON_ASCII.has(character))) return;
-    mappings.push({ code, cell: rowIndex * 16 + column, atlas });
+    mappings.push({ code, cell: rowIndex * 16 + column, atlas, ascent });
   }));
 }
 mappings.sort((left, right) => left.code - right.code);
@@ -79,7 +83,7 @@ const checksum = (value) => {
 };
 
 const SCALE = 128;
-function glyphFor(atlas, cell, code) {
+function glyphFor(atlas, cell, code, ascent) {
   const cellX = (cell & 15) * 8, cellY = (cell >> 4) * 8;
   const contours = [];
   let rightmost = code === 32 ? 2 : 0;
@@ -92,7 +96,10 @@ function glyphFor(atlas, cell, code) {
       if (start === column) continue;
       rightmost = Math.max(rightmost, column);
       const x0 = start * SCALE, x1 = column * SCALE;
-      const y1 = (8 - row) * SCALE, y0 = y1 - SCALE;
+      // Minecraft's bitmap provider declares ascent 7 for an 8px cell: seven
+      // rows sit above the baseline and the final row is the descender. Keep
+      // that exact -1..7 geometry inside the font's declared -128..896 box.
+      const y1 = (ascent - row) * SCALE, y0 = y1 - SCALE;
       contours.push([[x0,y0],[x0,y1],[x1,y1],[x1,y0]]);
     }
   }
@@ -114,7 +121,7 @@ function glyphFor(atlas, cell, code) {
 }
 
 const glyphs = [{ bytes: Buffer.alloc(10), advance: 8 * SCALE }];
-for (const mapping of mappings) glyphs.push(glyphFor(mapping.atlas, mapping.cell, mapping.code));
+for (const mapping of mappings) glyphs.push(glyphFor(mapping.atlas, mapping.cell, mapping.code, mapping.ascent));
 const loca = [0], glyfParts = [];
 for (const glyph of glyphs) { const bytes = padded(glyph.bytes); glyfParts.push(bytes); loca.push(loca.at(-1) + bytes.length); }
 const glyf = Buffer.concat(glyfParts);
