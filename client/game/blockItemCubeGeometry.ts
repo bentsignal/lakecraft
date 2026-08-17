@@ -156,7 +156,10 @@ export function appendBlockItemCubeGeometry(
         ];
         for (const index of winding) {
           const point = transformPoint(points[index], center, size, rotation);
-          const alpha = color[3] / 255;
+          // The third-person color shader has no alpha channel. Preserve the
+          // authored glass-frame color instead of premultiplying it toward
+          // black, which made held glass effectively disappear at avatar scale.
+          const alpha = options.thickenTransparentEdges ? 1 : color[3] / 255;
           output.push(
             point[0], point[1], point[2],
             color[0] / 255 * face[4] * alpha,

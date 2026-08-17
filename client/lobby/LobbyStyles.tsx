@@ -35,12 +35,12 @@ const TITLE_PARITY_CSS = `
 .lc-title-shade{background:radial-gradient(ellipse at 50% 41%,rgba(0,0,0,.08),rgba(0,0,0,.48) 92%),linear-gradient(0deg,rgba(0,0,0,.42),transparent 38%)}
 .lc-title-content{padding-top:clamp(38px,5vh,72px)}
 .lc-title-logo{filter:drop-shadow(0 12px 8px rgba(0,0,0,.45));isolation:isolate;position:relative}
-.lc-title-logo img{display:block;height:auto;image-rendering:auto;max-height:min(31vh,302px);object-fit:contain;user-select:none;width:min(1000px,86vw)}
+.lc-title-logo img{display:block;height:auto;image-rendering:auto;max-height:min(25vh,244px);object-fit:contain;user-select:none;width:min(820px,74vw)}
 .lc-title-menu{gap:8px;margin-top:clamp(28px,4.5vh,52px);width:min(480px,calc(100vw - 32px))}
 .lc-menu-button{background-color:#7e7e7e;background-image:linear-gradient(rgba(255,255,255,.08),rgba(0,0,0,.08));border:2px solid #111;box-shadow:inset 2px 2px #aaa,inset -2px -2px #555;color:#fff;font-size:clamp(15px,1.35vw,19px);height:44px}
 .lc-menu-button:hover:not(:disabled),.lc-menu-button:focus-visible{background:#7078ae;box-shadow:inset 2px 2px #aab0da,inset -2px -2px #3d416c;outline:2px solid #fff;outline-offset:0}
 .lc-title-footer{color:#eee;text-shadow:2px 2px #111}
-@media(max-height:620px){.lc-title-content{padding-top:24px}.lc-title-logo img{max-height:190px;width:min(820px,78vw)}.lc-title-menu{margin-top:22px}}
+@media(max-height:620px){.lc-title-content{padding-top:24px}.lc-title-logo img{max-height:158px;width:min(680px,70vw)}.lc-title-menu{margin-top:22px}}
 `;
 
 const SERVER_BROWSER_CSS = `

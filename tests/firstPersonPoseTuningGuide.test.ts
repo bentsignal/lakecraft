@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import {
   createFirstPersonRenderer,
   firstPersonHeldItemTuningGroup,
+  firstPersonHeldBlockAlphaCutoff,
 } from "../client/game/firstPersonRenderer.ts";
 import { blockIdForCubeItem } from "../client/game/blockItemCubeGeometry.ts";
 import {
@@ -73,6 +74,14 @@ assert.equal(firstPersonHeldItemTuningGroup("iron_pickaxe", BLOCK.AIR), "tool");
 assert.equal(firstPersonHeldItemTuningGroup("bow", BLOCK.AIR), "bow");
 assert.equal(firstPersonHeldItemTuningGroup("apple", BLOCK.AIR), "otherItem");
 assert.equal(firstPersonHeldItemTuningGroup(null, BLOCK.AIR), null);
+assert.equal(firstPersonHeldBlockAlphaCutoff("glass"), 0.02,
+  "first-person glass keeps its authored low-alpha frame pixels");
+assert.equal(firstPersonHeldBlockAlphaCutoff("red_stained_glass"), 0.02,
+  "stained-glass viewmodels share the visible transparent cutoff");
+assert.equal(firstPersonHeldBlockAlphaCutoff("dirt"), 0.08,
+  "opaque held blocks retain the established alpha cutoff");
+assert.ok(engine.includes("firstPersonHeldBlockAlphaCutoff(selectedItem)"),
+  "the live viewmodel render path uses the item-aware glass cutoff");
 
 for (const target of ["block", "tool", "bow", "arm", "otherItem", "rig"]) {
   assert.match(guide, new RegExp(`\\b${target}\\b`), `the guide names ${target}`);

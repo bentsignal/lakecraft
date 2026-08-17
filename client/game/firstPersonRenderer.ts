@@ -165,6 +165,11 @@ export function usesCanonicalHeldBlock(itemId: ItemId | null, block: BlockId): b
   return firstPersonHeldItemTuningGroup(itemId, block) === "block";
 }
 
+/** Keeps the authored low-alpha glass details visible in the first-person viewmodel. */
+export function firstPersonHeldBlockAlphaCutoff(itemId: ItemId | null): number {
+  return itemId === "glass" || itemId?.endsWith("_stained_glass") ? 0.02 : 0.08;
+}
+
 export type FirstPersonSpritePresentation = Readonly<{
   center: Vec3;
   size: number;

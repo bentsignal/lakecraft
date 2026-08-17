@@ -10,7 +10,7 @@ import { pathToFileURL } from "node:url";
 // corresponding globals. The ordered occurrence fingerprint makes that claim
 // fail closed whenever the first-stage bundle changes.
 export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
-  Object.freeze(["Math", "abs", 100]),
+  Object.freeze(["Math", "abs", 101]),
   // Directional doors and derived stair corners share retained transform math.
   Object.freeze(["Math", "cos", 63]),
   // The embedded block-atlas decoder keeps its pixel-grid size and byte
@@ -22,8 +22,8 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   // instead of applying one pixel-space FNV multiplication after browser decode.
   Object.freeze(["Math", "imul", 35]),
   // Superflat generation clamps its lower materialization bound once per region.
-  Object.freeze(["Math", "max", 263]),
-  Object.freeze(["Math", "min", 211]),
+  Object.freeze(["Math", "max", 264]),
+  Object.freeze(["Math", "min", 212]),
   Object.freeze(["Math", "round", 35]),
   Object.freeze(["Math", "sin", 76]),
   Object.freeze(["Math", "PI", 118]),
@@ -45,8 +45,8 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["JSON", "stringify", 20]),
   Object.freeze(["JSON", "parse", 12]),
 ]);
-export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 2_079;
-export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "3625c5c9ff00b02983f0a6067277158a5fb5296b037904297bc9c87575b38b5f";
+export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 2_082;
+export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "7dd4d249cd6131e0ee6a1fed9563bb73debd582eb9e2a7f7bfa4400c720b3b00";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [
     `${receiver}.${method}`, count,
@@ -70,13 +70,13 @@ const PROPERTY_ALIAS_COUNT_OVERRIDES = Object.freeze({
   active: 21, addEventListener: 38, ARRAY_BUFFER: 82, behavior: 30, bindBuffer: 46, bindTexture: 17,
   block: 176, bottom: 24, bufferData: 25, bufferSubData: 11, BYTES_PER_ELEMENT: 16,
   charCodeAt: 24, chunkRevisions: 11, CLAMP_TO_EDGE: 12, clear: 41, clearTimeout: 26, count: 182,
-  createBuffer: 22, current: 854, currentTarget: 19, cycleLengthMs: 20, dayNight: 9, delete: 67, deleteBuffer: 36,
+  createBuffer: 22, current: 865, currentTarget: 19, cycleLengthMs: 20, dayNight: 9, delete: 67, deleteBuffer: 36,
   deleteProgram: 18, deleteTexture: 10, documentElement: 8, drawArrays: 21, dropId: 18,
-  drops: 25, DYNAMIC_DRAW: 15, enableVertexAttribArray: 26, endsWith: 25, equipment: 39,
+  drops: 25, DYNAMIC_DRAW: 15, enableVertexAttribArray: 26, endsWith: 26, equipment: 39,
   every: 50, filter: 50, flatMap: 24, fromEntries: 9, getAttribLocation: 24,
   // Embedding the block atlas replaces the remote response dimensions/status
   // with the generated decoder's byte-array length checks.
-  getUniformLocation: 69, health: 55, height: 34, includes: 49, inventory: 102, length: 455,
+  getUniformLocation: 69, health: 55, height: 35, includes: 49, inventory: 102, length: 455,
   maxHealth: 13, operationId: 43, options: 69, pixelStorei: 11, preventDefault: 54,
   ONE_MINUS_SRC_ALPHA: 6, pendingBlocks: 11, pitch: 43, pointerLockElement: 24, position: 16,
   previousBlock: 18, previousX: 19, previousY: 16, previousYaw: 10, previousZ: 19,
@@ -94,10 +94,10 @@ export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_
   const name = entry.slice(0, separator);
   return Object.freeze([name, PROPERTY_ALIAS_COUNT_OVERRIDES[name] ?? Number(entry.slice(separator + 1))]);
 }));
-// Transparent held-block edge detection adds one reviewed endsWith and filter
-// call while leaving every other exact property count unchanged.
-export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_172;
-export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "7cd24b8c2a0342dc36e6ab1500fe028d480dee622e1773aa607802926a6cd1a6";
+// Cursor-directed inventory portrait refs and transparent held-block visibility
+// add thirteen reviewed exact-property uses.
+export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_185;
+export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "17c754f072bb955cc89d0158ae089994e8a4212b91ac26009e843bc025d92e6f";
 const PROPERTY_ALIAS_INDEX = new Map(COMPACT_CLIENT_PROPERTY_KEY_ALIASES.map(([name], index) => [name, index]));
 const PROPERTY_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_PROPERTY_KEY_ALIASES)),

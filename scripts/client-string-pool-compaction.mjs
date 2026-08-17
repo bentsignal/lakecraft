@@ -10,7 +10,7 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // application copy or making a new literal eligible requires human review.
 export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 540;
 export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 476;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "3e899a40463912088fcadcfdbf1f2e28036bcb5e64cf0b9c85447091bb4a9842";
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "776b1df560c7161ffaefb80638938eca776fdcaa451227c5add898da89fd30a8";
 export const COMPACT_CLIENT_HUMAN_TITLE_HOTBAR_DELTA = Object.freeze({
   previousOccurrences: 541,
   previousUniqueValues: 475,
@@ -193,9 +193,9 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
   source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_337;
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_336;
 export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 133;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "0f2fe4ddcdc7fd928549bf72c3245e705df29b5a1d71fda8a226fee5f3341812";
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "9be45a4e4512f0d801da5ee8a8c0427deeae1028a625f5e3003bdd02597c18ac";
 export const COMPACT_CLIENT_REPEATED_TITLE_HOTBAR_DELTA = Object.freeze({
   previousOccurrences: 1_339,
   previousUniqueValues: 133,
@@ -203,6 +203,15 @@ export const COMPACT_CLIENT_REPEATED_TITLE_HOTBAR_DELTA = Object.freeze({
   occurrenceDelta: -2,
   uniqueValueDelta: 0,
   source: "home title/footer markup replacement and status-strip simplification",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_INVENTORY_POLISH_DELTA = Object.freeze({
+  previousOccurrences: 1_337,
+  previousUniqueValues: 133,
+  previousSourceFingerprint: "0f2fe4ddcdc7fd928549bf72c3245e705df29b5a1d71fda8a226fee5f3341812",
+  occurrenceDelta: -1,
+  uniqueValueDelta: 0,
+  source: "single visible world-search prompt and inventory HUD polish",
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_REPEATED_MINECRAFT_PARITY_DELTA = Object.freeze({
@@ -563,9 +572,9 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 615;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 616;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 182;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "2810fe17fb80b69319ae079c4cd3b31fe4756dc8b1ce864843aea47d972e4e57";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "f1b64c7bcfd64461398a37871b2adf58a5ab0170c1e94cc040b7dcc932437143";
 export const COMPACT_CLIENT_LOW_FREQUENCY_TITLE_HOTBAR_DELTA = Object.freeze({
   previousOccurrences: 612,
   previousUniqueValues: 181,
@@ -573,6 +582,15 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_TITLE_HOTBAR_DELTA = Object.freeze({
   occurrenceDelta: 3,
   uniqueValueDelta: 1,
   source: "generated WebP title and installed Minecraft hotbar data-image integration",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_INVENTORY_POLISH_DELTA = Object.freeze({
+  previousOccurrences: 615,
+  previousUniqueValues: 182,
+  previousSourceFingerprint: "2810fe17fb80b69319ae079c4cd3b31fe4756dc8b1ce864843aea47d972e4e57",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 0,
+  source: "home production URL placement",
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_LOW_FREQUENCY_REMOTE_MOB_ASSET_DELTA = Object.freeze({

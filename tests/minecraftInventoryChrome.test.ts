@@ -36,11 +36,17 @@ for (const breakpoint of ["max-width:400px", "max-height:420px", "max-height:290
 }
 assert.match(styles, /lc-inventory-titlebar h2\{clip-path:inset\(50%\)/,
   "removing non-Minecraft title chrome preserves the dialog's accessible name");
-assert.match(drawer, /<PlayerSkinPreview open=\{open\} \/>/,
-  "the canonical selected skin remains live inside the exact panel");
+assert.match(drawer, /<PlayerSkinPreview open=\{open\} pointer=\{\[pointer\.x, pointer\.y\]\} \/>/,
+  "the canonical selected skin remains live and cursor-aware inside the exact panel");
 const preview = source("../client/components/PlayerSkinPreview.tsx");
 assert.ok(preview.includes('height={210}') && preview.includes('width={147}')
   && preview.includes("context.setTransform(scale"),
 "the portrait canvas matches the official viewport without stretching the selected skin");
+assert.match(styles, />\.lc-inventory-upper::after\{background:#c6c6c6;content:"";height:60px;left:228px;[^}]*top:183px;/,
+  "the unsupported offhand slot and its one-pixel texture border are cleanly masked at 3x");
+assert.match(styles, /\.lc-crafting-arrow\{visibility:hidden;width:27px\}/,
+  "the DOM arrow is hidden because the canonical inventory texture already owns that arrow");
+assert.match(styles, /\.lc-item-icon__svg\{height:min\(40px,calc\(100% - 10px\)\);width:min\(40px,calc\(100% - 10px\)\)\}/,
+  "inventory item art remains comfortably contained inside each 54px slot");
 
 console.log("Minecraft inventory chrome checks passed");

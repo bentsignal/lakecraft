@@ -49,6 +49,7 @@ const HUD_CSS = `
 .lc-item-glyph { align-items: center; display: flex; height: 100%; justify-content: center; min-height: 34px; overflow: hidden; position: relative; width: 100%; }
 .lc-item-icon__svg { display: block; filter: drop-shadow(1px 2px 0 rgba(0,0,0,.42)); height: min(34px,calc(100% - 4px)); image-rendering: pixelated; overflow: visible; width: min(34px,calc(100% - 4px)); }
 .lc-item-glyph--block .lc-item-icon__svg { height: min(36px,calc(100% - 3px)); width: min(36px,calc(100% - 3px)); }
+.lc-hotbar .lc-item-icon__svg{height:min(30px,calc(100% - 8px));width:min(30px,calc(100% - 8px))}.lc-hotbar .lc-item-glyph--block .lc-item-icon__svg{height:min(32px,calc(100% - 7px));width:min(32px,calc(100% - 7px))}
 .lc-item-glyph__count { background: none; bottom: 2px; color: #fff; font: 400 16px/16px var(--lc-pixel-font); font-synthesis: none; min-width: 11px; padding: 0; position: absolute; right: 2px; text-align: right; text-shadow: 2px 2px #3f3f3f; z-index: 2; }
 .lc-durability { background: #171717; bottom: 2px; display: block; height: 4px; left: 4px; padding: 1px; position: absolute; right: 4px; z-index: 3; }.lc-durability > span { display: block; height: 2px; image-rendering: pixelated; }
 .lc-item-glyph.is-muted { filter: grayscale(1); opacity: .45; }
@@ -100,6 +101,7 @@ const HUD_CSS = `
 .lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table)>.lc-inventory-titlebar h2{clip-path:inset(50%);height:1px;overflow:hidden;position:absolute;white-space:nowrap;width:1px}
 .lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table)>.lc-inventory-titlebar .lc-close{display:none}
 .lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table)>.lc-inventory-upper{display:block;inset:0;min-height:0;position:absolute}
+.lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table)>.lc-inventory-upper::after{background:#c6c6c6;content:"";height:60px;left:228px;pointer-events:none;position:absolute;top:183px;width:60px;z-index:3}
 .lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table) .lc-equipment-panel{gap:0;grid-template-columns:54px 147px;left:24px;position:absolute;top:24px;width:201px}
 .lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table) .lc-armor-column{grid-template-rows:repeat(4,54px)}
 .lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table) .lc-armor-slot{background:transparent;border:0;height:54px;width:54px}
@@ -110,14 +112,14 @@ const HUD_CSS = `
 .lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table) .lc-crafting-workspace{gap:18px}
 .lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table) .lc-crafting-grid{grid-template-columns:repeat(var(--craft-grid-size),54px)}
 .lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table) .lc-crafting-slot,.lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table) .lc-crafting-result{background:transparent;border:0;height:54px;width:54px}
-.lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table) .lc-crafting-arrow{font-size:38px;width:27px}
+.lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table) .lc-crafting-arrow{visibility:hidden;width:27px}
 .lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table)>.lc-pack-panel{inset:252px auto auto 24px;margin:0;position:absolute}
 .lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table)>.lc-pack-panel>h3{display:none}
 .lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table) .lc-inventory-grid{grid-template-columns:repeat(9,54px);width:486px}
 .lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table) .lc-inventory-grid__slot{background:transparent;border:0;height:54px;width:54px}
 .lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table) .lc-inventory-grid__slot.is-selected{background:rgba(255,255,255,.28);box-shadow:inset 0 0 0 2px rgba(255,255,255,.65)}
 .lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table) .lc-inventory-grid__slot.is-hotbar{margin-top:12px}
-.lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table) .lc-item-icon__svg{height:min(46px,calc(100% - 4px));width:min(46px,calc(100% - 4px))}
+.lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table) .lc-item-icon__svg{height:min(40px,calc(100% - 10px));width:min(40px,calc(100% - 10px))}
 .lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table)>.lc-inventory-error{bottom:-23px;color:#fff;left:0;position:absolute;text-shadow:2px 2px #202020}
 .lc-unsupported { align-items: center; background: var(--lc-charcoal); display: flex; inset: 0; justify-content: center; overflow: hidden; padding: 24px; position: fixed; z-index: 100; }.lc-unsupported__topo { background: repeating-radial-gradient(ellipse at 80% 20%, transparent 0 26px, rgba(168,182,107,.08) 27px 28px, transparent 29px 42px); inset: -30%; position: absolute; transform: rotate(-10deg); }.lc-unsupported__card { background: var(--lc-paper); box-shadow: 12px 14px 0 rgba(102,117,65,.48); color: var(--lc-ink); max-width: 390px; padding: 34px 31px; position: relative; transform: rotate(-1deg); }.lc-unsupported__stamp { border: 1px solid var(--lc-rust); color: var(--lc-rust); font: 9px var(--lc-note); letter-spacing: .12em; padding: 5px 7px; }.lc-unsupported__icon { color: var(--lc-moss); font: 900 44px/1 var(--lc-display); margin-top: 27px; }.lc-unsupported h2 { font-size: 35px; letter-spacing: -.045em; line-height: .95; margin: 13px 0 16px; text-transform: uppercase; }.lc-unsupported p { font: 13px/1.6 var(--lc-note); }.lc-unsupported button { align-items: center; background: var(--lc-ink); border: 0; color: var(--lc-paper); cursor: pointer; display: flex; justify-content: space-between; margin-top: 22px; padding: 13px 16px; width: 100%; }.lc-unsupported small { color: rgba(36,38,31,.55); display: block; font: 9px var(--lc-note); margin-top: 13px; }
 @media (max-width: 900px){.lc-creative-window{max-width:520px}.lc-creative-switch{display:flex}.lc-creative-workspace{display:block}.lc-creative-pane{display:none}.lc-creative-pane.is-active{display:block}.lc-creative-pane--player{border-left:0;padding-left:0}.lc-creative-grid{grid-template-columns:repeat(9,minmax(0,var(--lc-creative-slot)))}.lc-creative-window .lc-inventory-grid{margin-inline:auto}}

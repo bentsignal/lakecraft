@@ -35,6 +35,8 @@ assert.ok(browser.includes('aria-label="Back to main menu"')
   && browser.includes('onClick={onBack}')
   && browser.includes('<h1 id={TITLE_ID} tabIndex={-1}>Select World</h1>'),
   "the Select World heading has an obvious, keyboard-accessible Back action");
+assert.ok(browser.includes('>Back</button>') && !browser.includes('&#8592;</span> Back'),
+  "Back is one centered label rather than a mismatched tiny arrow plus oversized text");
 assert.ok(app.includes("onExit: () => void")
   && app.includes("onBack={onExit}"),
   "the browser Back action crosses the isolated single-player root explicitly");
@@ -53,6 +55,8 @@ const header = browser.slice(
 assert.ok(header.indexOf('aria-label="Search worlds"') >= 0
   && header.indexOf('aria-label="Search worlds"') < header.indexOf("{CREATE_LABEL}"),
   "search is left of Create New World in the header");
+assert.equal(header.includes("<span>Search worlds</span>"), false,
+  "the placeholder is the single visible search prompt");
 assert.ok(browser.includes("grid-template-columns:minmax(0,1fr) minmax(240px,auto)")
   && browser.includes(".lc-local-world-header>.lc-menu-button{min-width:240px;white-space:nowrap}")
   && browser.includes("@media(max-width:560px)")
@@ -60,9 +64,14 @@ assert.ok(browser.includes("grid-template-columns:minmax(0,1fr) minmax(240px,aut
   && browser.includes(".lc-local-world-header>.lc-menu-button{min-width:0;width:100%}"),
   "Create New World stays on one line beside search and expands safely below 560px");
 assert.ok(browser.includes(".lc-local-world-search input{background:#111;border:2px solid;")
-  && browser.includes("height:46px")
+  && browser.includes("font:16px/1.25")
+  && browser.includes("height:44px")
+  && browser.includes(".lc-local-world-search input::placeholder{color:#888;opacity:1}")
   && browser.includes(".lc-local-world-search input:focus-visible{border-color:#fff;"),
-  "search has an intentional, visible input surface and keyboard focus treatment");
+  "search has an unclipped line box, intentional placeholder, and keyboard focus treatment");
+assert.ok(browser.includes('className="lc-menu-button lc-local-world-create"')
+  && browser.includes(".lc-local-world-create{font-size:15px}"),
+"Create New World uses a slightly smaller label without changing the shared button geometry");
 
 const rowMarkup = browser.slice(browser.indexOf("<ul aria-label="), browser.indexOf("</ul>"));
 assert.ok(rowMarkup.includes("<strong>{entry.world.name}</strong>")

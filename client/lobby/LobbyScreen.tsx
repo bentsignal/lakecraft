@@ -301,6 +301,7 @@ export function LobbyScreen(props: LobbyScreenProps) {
           {menuButton("Options…", () => setOptionsOpen(true), false, 2, "lc-title-options")}
         </div>
       </section>
+      <footer className="lc-title-footer"><span /><span>craft.lakebed.app</span></footer>
       {showUsername ? <div className="lc-username-layer" role="presentation"><UsernameMenu {...props} onCancel={() => setEditingUsername(false)} /></div> : null}
       <OptionsDialog
         blocksVolume={props.settings.blocksVolume}

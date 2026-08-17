@@ -27,7 +27,12 @@ import { createRemotePlayerSkinRenderer } from "./remotePlayerSkinRenderer.ts";
 import { raycastRemotePlayers } from "./remotePlayerTargeting.ts";
 import { createDroppedItemRenderer } from "./droppedItemRenderer.ts";
 import { createPlayerProjectileRenderer, type PlayerProjectileVisual } from "./playerProjectileRenderer.ts";
-import { FIRST_PERSON_ACTION_MS, createFirstPersonRenderer, usesCanonicalHeldBlock } from "./firstPersonRenderer.ts";
+import {
+  FIRST_PERSON_ACTION_MS,
+  createFirstPersonRenderer,
+  firstPersonHeldBlockAlphaCutoff,
+  usesCanonicalHeldBlock,
+} from "./firstPersonRenderer.ts";
 import {
   createFirstPersonSkinRenderer,
   FIRST_PERSON_SKIN_ARM_BUFFER_BYTES,
@@ -4060,7 +4065,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, terrainTexture);
         gl.uniform1i(terrainAtlasLocation, 0);
-        gl.uniform1f(terrainAlphaCutoffLocation, 0.08);
+        gl.uniform1f(terrainAlphaCutoffLocation, firstPersonHeldBlockAlphaCutoff(selectedItem));
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         bindTerrainBuffer(firstPersonTexturedBuffer);

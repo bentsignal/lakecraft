@@ -43,6 +43,9 @@ assert.ok(readableGlassVertices > glassVertices,
   "third-person glass adds one dim inner edge so its installed one-pixel frame cannot disappear at avatar scale");
 assert.ok(readableGlassVertices < dirtVertices,
   "third-person glass remains visibly transparent instead of becoming an opaque cube");
+const readableGlassColors = readableGlass.filter((_, index) => index % BLOCK_ITEM_CUBE_VERTEX_FLOATS >= 3);
+assert.ok(readableGlassColors.every((channel) => channel > 0.24),
+  "the color-only third-person shader receives the authored glass-frame color instead of alpha-darkened near-black");
 assert.equal(appendBlockItemCubeGeometry([], "diamond_pickaxe"), 0, "non-block sprites never enter the cube path");
 assert.throws(() => appendBlockItemCubeGeometry([], "dirt", { size: 0 }), /finite and visible/);
 

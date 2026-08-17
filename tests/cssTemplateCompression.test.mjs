@@ -253,7 +253,7 @@ assert.ok(
 );
 assert.deepEqual(
   COMPACT_CLIENT_PRIVATE_IDENTIFIER_PREFIXES.map(([readable, compact, count]) => [readable, compact, count]),
-  [["xc-slot--", "Yq0", 1], ["xj-glyph--", "Yq1", 3], ["xl--", "Yq2", 4], ["xt--", "Yq3", 3]],
+  [["xc-slot--", "Yq0", 1], ["xj-glyph--", "Yq1", 4], ["xl--", "Yq2", 4], ["xt--", "Yq3", 3]],
   "only the four reviewed runtime-composed modifier families may use prefix compaction",
 );
 assert.equal(

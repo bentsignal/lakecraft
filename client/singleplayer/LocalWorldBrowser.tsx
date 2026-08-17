@@ -48,15 +48,15 @@ const WORLD_BROWSER_CSS = `
 .lc-local-world-browser .lc-server-browser__content{box-sizing:border-box;display:flex;flex-direction:column;height:100dvh;min-height:0;overflow:hidden}
 .lc-local-world-titlebar{align-items:center;display:grid;grid-template-columns:132px minmax(0,1fr) 132px;margin:0 0 20px;width:100%}
 .lc-local-world-titlebar h1{margin:0}
-.lc-local-world-back{align-items:center;display:inline-flex;gap:8px;justify-content:center;min-width:0;padding-inline:14px}
-.lc-local-world-back span{font-size:18px;line-height:0}
-.lc-local-world-header{align-items:end;display:grid;gap:12px;grid-template-columns:minmax(0,1fr) minmax(240px,auto);width:100%}
-.lc-local-world-search{display:grid;gap:5px;min-width:0}
-.lc-local-world-search span{font-size:13px}
+.lc-local-world-back{align-items:center;display:flex;font-size:15px;justify-content:center;min-width:0;padding:2px 14px 0}
+.lc-local-world-header{align-items:center;display:grid;gap:12px;grid-template-columns:minmax(0,1fr) minmax(240px,auto);width:100%}
+.lc-local-world-search{display:block;min-width:0}
 .lc-local-world-search input,.lc-local-world-dialog input,.lc-local-world-dialog select{box-sizing:border-box;min-width:0;width:100%}
-.lc-local-world-search input{background:#111;border:2px solid;border-color:#333 #aaa #aaa #333;color:#fff;font:18px/1 var(--lc-pixel-font,monospace);height:46px;outline:0;padding:5px 9px}
+.lc-local-world-search input{background:#111;border:2px solid;border-color:#333 #aaa #aaa #333;color:#fff;font:16px/1.25 var(--lc-pixel-font,monospace);height:44px;outline:0;padding:7px 9px 5px}
+.lc-local-world-search input::placeholder{color:#888;opacity:1}
 .lc-local-world-search input:focus-visible{border-color:#fff;outline:2px solid #fff;outline-offset:2px}
 .lc-local-world-header>.lc-menu-button{min-width:240px;white-space:nowrap}
+.lc-local-world-create{font-size:15px}
 .lc-local-world-stage{background:rgba(0,0,0,.68);border-bottom:2px solid #8a8a8a;border-top:2px solid #111;box-shadow:inset 0 10px 18px rgba(0,0,0,.35);display:flex;flex:1;margin-top:14px;min-height:0;overflow:hidden;width:100%}
 .lc-local-world-list{list-style:none;margin:0;min-height:0;overflow-x:hidden;overflow-y:auto;padding:7px;width:100%}
 .lc-local-world-row{align-items:stretch;background:#312f2b;border:2px solid #111;box-shadow:inset 0 0 0 1px #67625a;display:grid;gap:8px;grid-template-columns:minmax(0,1fr) auto;margin:0 0 8px;min-width:0;padding:6px}
@@ -274,13 +274,12 @@ export function LocalWorldBrowser({ onBack, onPlay, storage: suppliedStorage }: 
             className="lc-menu-button lc-local-world-back"
             onClick={onBack}
             type="button"
-          ><span aria-hidden="true">&#8592;</span> Back</button>
+          >Back</button>
           <h1 id={TITLE_ID} tabIndex={-1}>Select World</h1>
           <span aria-hidden="true" />
         </div>
         <div className="lc-local-world-header">
           <label className="lc-local-world-search">
-            <span>Search worlds</span>
             <input
               aria-label="Search worlds"
               onInput={(event) => setSearch(event.currentTarget.value)}
@@ -289,7 +288,7 @@ export function LocalWorldBrowser({ onBack, onPlay, storage: suppliedStorage }: 
             />
           </label>
           <button
-            className="lc-menu-button"
+            className="lc-menu-button lc-local-world-create"
             disabled={blocked || transactionReadOnly || worlds.length >= LOCAL_WORLD_REGISTRY_MAX_WORLDS}
             onClick={(event) => openModal(MODAL.CREATE, event.currentTarget)}
             type="button"

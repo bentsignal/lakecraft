@@ -424,7 +424,7 @@ export function InventoryCraftingDrawer({
                 );
               })}
             </div>
-            <PlayerSkinPreview open={open} />
+            <PlayerSkinPreview open={open} pointer={[pointer.x, pointer.y]} />
           </section> : null}
 
           <section className="lc-crafting-panel" aria-label={size === 3 ? "Crafting grid" : undefined} aria-labelledby={size === 2 ? "lc-crafting-title" : undefined}>
