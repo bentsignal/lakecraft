@@ -139,6 +139,24 @@ const BASE_STAIR_STATE_TYPES = [
 ] as const;
 const APPENDED_BLOCK_STATE_TYPES = [...EXPANDED_BLOCK_STATE_TYPES, ...NATURAL_BLOCK_STATE_TYPES] as const;
 
+/**
+ * Resolve a stair state without dynamically indexing `BLOCK` by a synthesized
+ * property name. Production compaction can safely rewrite static properties,
+ * while persisted block-state strings and numeric palette positions remain the
+ * compatibility boundary shared by development and production builds.
+ */
+export function stairBlockForState(
+  family: string,
+  facing: StairFacing,
+  upsideDown = false,
+): BlockId | null {
+  const state = `${family}_stairs_${upsideDown ? "upside_" : ""}${facing}`;
+  const baseIndex = BASE_STAIR_STATE_TYPES.indexOf(state as typeof BASE_STAIR_STATE_TYPES[number]);
+  if (baseIndex >= 0) return (BLOCK.OAK_STAIRS_EAST + baseIndex) as BlockId;
+  const appendedIndex = APPENDED_BLOCK_STATE_TYPES.indexOf(state as typeof APPENDED_BLOCK_STATE_TYPES[number]);
+  return appendedIndex >= 0 ? (57 + appendedIndex) as BlockId : null;
+}
+
 export function blockStateName(block: BlockId): string {
   return block >= BLOCK.OAK_STAIRS_EAST && block <= BLOCK.BRICK_STAIRS_WEST
     ? BASE_STAIR_STATE_TYPES[block - BLOCK.OAK_STAIRS_EAST]

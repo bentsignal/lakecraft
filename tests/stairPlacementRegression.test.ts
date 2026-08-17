@@ -55,8 +55,15 @@ for (const family of STAIR_MATERIAL_FAMILIES) {
       `${family} ${half || "normal_"}${facing} remains authorized by the held item`);
   }
   for (const [yaw, facing] of liveYaws) {
-    assert.equal(stairPlacementBlock(base, yaw, 0, floor), constant(`${family}_stairs_${facing}`),
+    const placed = stairPlacementBlock(base, yaw, 0, floor);
+    assert.equal(placed, constant(`${family}_stairs_${facing}`),
       `${family} follows the live camera after each 90-degree turn`);
+    const forwardX = Math.sin(yaw);
+    const forwardZ = -Math.cos(yaw);
+    assert.equal(blockCollisionHeightAt(placed, .5 - forwardX * .25, .5 - forwardZ * .25), .5,
+      `${family} starts low on the player's side at ${facing}`);
+    assert.equal(blockCollisionHeightAt(placed, .5 + forwardX * .25, .5 + forwardZ * .25), 1,
+      `${family} rises in the exact direction that forward movement travels at ${facing}`);
   }
 }
 assert.equal(placementBlockMatchesItem("oak_stairs", BLOCK.BRICK_STAIRS_NORTH), false,
@@ -71,5 +78,10 @@ assert.match(placementBoundary, /stairPlacementBlock\(selectedBlock, pose\.yaw, 
 assert.doesNotMatch(placementBoundary.slice(0, placementBoundary.indexOf("function repeatHeldBlockPlacement")),
   /stairPlacementBlock\([^;]*raycastFacing/s,
   "a same-frame turn cannot place from the previous retained ray");
+const placementResolver = engine.slice(engine.indexOf("export function stairPlacementBlock"), engine.indexOf("/** Maps the engine palette"));
+assert.doesNotMatch(placementResolver, /\(BLOCK as [^;]+\)\[constant\]/,
+  "production placement cannot silently collapse to canonical north through a synthesized BLOCK property");
+assert.match(placementResolver, /stairBlockForState\(family, facing, upsideDown\)/,
+  "development and compact production resolve the same numeric stair palette state");
 
 console.log("stair direction, clicked-half, and survival authorization regressions passed");

@@ -97,12 +97,13 @@ for (const path of runtimeFiles) {
 // Edition title, exact hotbar textures, visible transparent held blocks, and
 // cursor-directed 3D inventory portrait geometry, directional stair placement,
 // depth-stable glass, versioned local biomes, water/swimming, natural flora,
-// non-solid authoritative fall probes for those natural states, and corrected
-// installed-font bitmap ascent/descender geometry; none adds another Lakebed
+// non-solid authoritative fall probes for those natural states, corrected
+// installed-font bitmap ascent/descender geometry, and compact-safe numeric
+// stair-state resolution; none adds another Lakebed
 // authority or multiplayer transport.
 assert.equal(runtimeFiles.length, 197, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "0f501ea04ca0d75f758c43394f2756d48438f6d92b4eefec114fe305cc5b7f30",
+  "cd00b7c4e3f199eb783349977a0096c71c2fc142847ae990e41a7390228592fc",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

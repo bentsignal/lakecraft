@@ -77,7 +77,7 @@ const PROPERTY_ALIAS_COUNT_OVERRIDES = Object.freeze({
   // Embedding the block atlas replaces the remote response dimensions/status
   // with the generated decoder's byte-array length checks.
   getUniformLocation: 69, health: 55, height: 34, includes: 51, inventory: 102, itemId: 180, length: 462,
-  maxHealth: 13, maxStack: 23, operationId: 43, options: 69, pixelStorei: 11, preventDefault: 54,
+  indexOf: 26, maxHealth: 13, maxStack: 23, operationId: 43, options: 69, pixelStorei: 11, preventDefault: 54,
   ONE_MINUS_SRC_ALPHA: 6, pendingBlocks: 11, pitch: 43, pointerLockElement: 24, position: 16,
   previousBlock: 18, previousX: 19, previousY: 16, previousYaw: 10, previousZ: 19,
   prototype: 17, randomUUID: 10, readyState: 10, reject: 24, removeEventListener: 40,
@@ -86,7 +86,7 @@ const PROPERTY_ALIAS_COUNT_OVERRIDES = Object.freeze({
   state: 70, STATIC_DRAW: 11, status: 20, stopImmediatePropagation: 8, terrain: 22, texImage2D: 11,
   texParameteri: 24, TEXTURE_2D: 53, TEXTURE_MAG_FILTER: 6, TEXTURE_MIN_FILTER: 6,
   TRIANGLES: 19, uniform1f: 39, uniform3fv: 9, uniformMatrix4fv: 10,
-  toUpperCase: 11, UNPACK_FLIP_Y_WEBGL: 9, UNSIGNED_BYTE: 12, useProgram: 19, userId: 35, value: 37,
+  toUpperCase: 10, UNPACK_FLIP_Y_WEBGL: 9, UNSIGNED_BYTE: 12, useProgram: 19, userId: 35, value: 37,
   vertexAttribPointer: 26, world: 70, worldTimeMs: 7,
 });
 export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_SPEC.split(",").map((entry) => {
@@ -94,10 +94,10 @@ export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_
   const name = entry.slice(0, separator);
   return Object.freeze([name, PROPERTY_ALIAS_COUNT_OVERRIDES[name] ?? Number(entry.slice(separator + 1))]);
 }));
-// Cursor-directed inventory portrait refs and transparent held-block visibility
-// add thirteen reviewed exact-property uses.
-export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_227;
-export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "7d2557b74064406bd7af693ffee88969b50a4f57bf3607e8c8182c4144b094bd";
+// Cursor-directed inventory refs, transparent held blocks, and the compact-safe
+// stair palette resolver account for this reviewed exact-property boundary.
+export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_228;
+export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "9db693f2ab15ce1b278ea861202753df6a4bfd40cdd70cf1a7f259e8db9373c2";
 const PROPERTY_ALIAS_INDEX = new Map(COMPACT_CLIENT_PROPERTY_KEY_ALIASES.map(([name], index) => [name, index]));
 const PROPERTY_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_PROPERTY_KEY_ALIASES)),

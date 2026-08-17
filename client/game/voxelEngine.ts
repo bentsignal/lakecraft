@@ -166,6 +166,7 @@ import {
   isTorchBlock,
   isUpsideDownStairBlock,
   isWaterBlock,
+  stairBlockForState,
   stairFacingForBlock,
   type BedDirection,
   type BedStructure,
@@ -1078,8 +1079,7 @@ export function stairPlacementBlock(
   const family = state.slice(0, stairs);
   const upsideDown = stairPlacementIsUpsideDown(pitch, target);
   const facing = stairFacingFromLook(yaw, horizontalLook);
-  const constant = `${family}_stairs_${upsideDown ? "upside_" : ""}${facing}`.toUpperCase();
-  return (BLOCK as Readonly<Record<string, BlockId>>)[constant] ?? block;
+  return stairBlockForState(family, facing, upsideDown) ?? block;
 }
 
 /** Maps the engine palette onto the shared blast-cover categories. */
