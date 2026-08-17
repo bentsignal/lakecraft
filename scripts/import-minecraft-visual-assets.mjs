@@ -42,6 +42,13 @@ const ENTITY_PATHS = Object.freeze({
   sheep_wool: "assets/minecraft/textures/entity/sheep/sheep_wool.png",
   chest_normal: "assets/minecraft/textures/entity/chest/normal.png",
 });
+const ARMOR_TEXTURE_PATHS = Object.freeze(Object.fromEntries(
+  ["leather", "iron", "gold", "diamond"].flatMap((material) =>
+    ["humanoid", "humanoid_leggings"].flatMap((layer) => [
+      [`${material}_${layer}`, `assets/minecraft/textures/entity/equipment/${layer}/${material}.png`],
+      ...(material === "leather" ? [[`${material}_${layer}_overlay`, `assets/minecraft/textures/entity/equipment/${layer}/leather_overlay.png`]] : []),
+    ])),
+));
 const BLOCK_ITEM_MODEL_CHAINS = Object.freeze({
   chest: [
     "assets/minecraft/items/chest.json",
@@ -274,6 +281,7 @@ for (const [itemId, definition] of Object.entries(ITEMS)) {
 const bowStages = [0, 1, 2].map((stage) => png(`assets/minecraft/textures/item/bow_pulling_${stage}.png`, 16, 16));
 const models = Object.fromEntries(Object.entries(MODEL_PATHS).map(([name, path]) => [name, JSON.parse(entry(path).toString("utf8"))]));
 const entities = Object.fromEntries(Object.entries(ENTITY_PATHS).map(([name, path]) => [name, png(path)]));
+const armorTextures = Object.fromEntries(Object.entries(ARMOR_TEXTURE_PATHS).map(([name, path]) => [name, png(path, 64, 32)]));
 const blockItemModelChains = Object.fromEntries(Object.entries(BLOCK_ITEM_MODEL_CHAINS).map(([itemId, paths]) => [
   itemId,
   paths.map((path) => Object.freeze({ path, model: JSON.parse(entry(path).toString("utf8")) })),
@@ -294,6 +302,7 @@ const manifest = {
   bowStages,
   models,
   entities,
+  armorTextures,
   blockItemModelChains,
   blocks,
   blockItemTextures,
@@ -301,4 +310,4 @@ const manifest = {
 };
 await mkdir(dirname(outputPath), { recursive: true });
 await writeFile(outputPath, `${JSON.stringify(manifest, null, 2)}\n`);
-console.log(JSON.stringify({ outputPath, items: Object.keys(itemTextures).length, entities: Object.keys(entities).length, blocks: Object.keys(blocks).length, blockItemTextures: Object.keys(blockItemTextures).length, blockLayers: Object.keys(blockLayers).length, jarSha256: manifest.source.jarSha256 }));
+console.log(JSON.stringify({ outputPath, items: Object.keys(itemTextures).length, entities: Object.keys(entities).length, armorTextures: Object.keys(armorTextures).length, blocks: Object.keys(blocks).length, blockItemTextures: Object.keys(blockItemTextures).length, blockLayers: Object.keys(blockLayers).length, jarSha256: manifest.source.jarSha256 }));

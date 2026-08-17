@@ -11,9 +11,9 @@ import {
 } from "../scripts/client-builtin-alias-compaction.mjs";
 
 assert.equal(COMPACT_CLIENT_BUILTIN_ALIASES.length, 24, "the alias boundary remains deliberately narrow");
-assert.equal(COMPACT_CLIENT_BUILTIN_OCCURRENCES, 2_111);
+assert.equal(COMPACT_CLIENT_BUILTIN_OCCURRENCES, 2_112);
 assert.equal(COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT,
-  "1442a4645a51eaa81b6ec5323bb45ab1480eb590d9b12f59e8e1e3b44b34b641");
+  "276f72d90d4fa9a23d69b0df5996379c2b6e446c0d846079103778b33f90ebec");
 assert.deepEqual(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method]) => `${receiver}.${method}`), [
   "Math.abs", "Math.cos", "Math.ceil", "Math.floor", "Math.hypot", "Math.imul", "Math.max", "Math.min",
   "Math.round", "Math.sin", "Math.PI", "Object.freeze", "Object.keys", "Array.isArray", "Number.isFinite",
@@ -24,8 +24,8 @@ assert.deepEqual(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES
   .filter(([receiver, method]) => ["Math.max", "Object.freeze", "Array.isArray", "Number.isSafeInteger"]
     .includes(`${receiver}.${method}`))
   .map(([receiver, method, count]) => [`${receiver}.${method}`, count])), {
-  "Math.max": 271,
-  "Object.freeze": 173,
+  "Math.max": 272,
+  "Object.freeze": 175,
   "Array.isArray": 94,
   "Number.isSafeInteger": 55,
 }, "the chunk stream and terrain descriptor keep their validation primitive counts reviewed");

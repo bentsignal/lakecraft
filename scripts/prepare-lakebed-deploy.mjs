@@ -29,7 +29,7 @@ import { compactClientJsxPropShapes } from "./client-jsx-prop-shape-compaction.m
 import { compactClientStringPool } from "./client-string-pool-compaction.mjs";
 import { compactServerPropertyKeys } from "./server-property-key-compaction.mjs";
 import { stripRetiredLakebedGameplaySurfaces } from "./server-production-surface-transform.mjs";
-import { remoteMobTextureAtlasModule } from "./remote-texture-assets.mjs";
+import { remoteMobTextureAtlasModule, remotePlayerArmorTextureModule } from "./remote-texture-assets.mjs";
 import {
   copyOwnedStageFile,
   createOwnedStageDirectory,
@@ -150,6 +150,9 @@ const cssTemplateMinifier = {
       let source = await readFile(path, "utf8");
       if (path === join(sourceRoot, "client", "game", "generated", "mobTextureAtlas.ts")) {
         source = remoteMobTextureAtlasModule(source);
+      }
+      if (path === join(sourceRoot, "client", "game", "generated", "playerArmorTexture.ts")) {
+        source = remotePlayerArmorTextureModule(source);
       }
       const stagedSource = stripReviewedClientDevelopmentSource(path, source);
       let compactedSource = path.startsWith(`${join(sourceRoot, "client")}${sep}`)

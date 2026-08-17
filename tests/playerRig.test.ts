@@ -118,12 +118,12 @@ assert.ok(Math.abs(matrix[5] * 0.75 + matrix[13] - crouchedHipY) < 1e-7
 assert.ok(matrix[6] < 0, "stationary crouching leans both legs backward without a walk cycle");
 
 const armorDraws = playerArmorRigDraws(fullPlayerArmorAppearance("iron"));
-assert.equal(armorDraws.reduce((total, draw) => total + draw.count, 0), 20 * 36);
+assert.equal(armorDraws.reduce((total, draw) => total + draw.count, 0), 9 * 36);
 assert.deepEqual(armorDraws.map((draw) => draw.part), [
   "head", "root", "rightArm", "leftArm", "root", "rightLeg", "leftLeg", "rightLeg", "leftLeg",
-], "crown, chest plates, bracers, belt, leggings, cuffs, and boots follow their anatomical joints");
-assert.deepEqual(armorDraws.map((draw) => draw.count), [144, 144, 72, 72, 72, 36, 36, 72, 72],
-  "every detailed plate group maps to its exact articulated joint range");
+], "the exact helmet, chestplate, leggings, and boots follow their anatomical joints");
+assert.deepEqual(armorDraws.map((draw) => draw.count), [36, 36, 36, 36, 36, 36, 36, 36, 36],
+  "every Minecraft armor cuboid maps to its exact articulated joint range");
 assert.deepEqual(playerArmorRigDraws({ chest: "iron_helmet" }), [], "wrong-slot armor cannot corrupt rig ranges");
 
 const source = readFileSync(new URL("../client/game/playerRig.ts", import.meta.url), "utf8");

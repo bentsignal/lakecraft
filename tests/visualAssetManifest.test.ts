@@ -14,6 +14,8 @@ assert.equal(VISUAL_ASSET_MANIFEST.blockAtlas.logicalResolution, 16);
 assert.match(VISUAL_ASSET_MANIFEST.itemIcons.fingerprint, /^[0-9a-f]{8}$/);
 assert.match(VISUAL_ASSET_MANIFEST.blockAtlas.fingerprint, /^[0-9a-f]{8}$/);
 assert.equal(VISUAL_ASSET_MANIFEST.defaultPlayerSkin.fingerprint, "abf17456");
+assert.deepEqual(VISUAL_ASSET_MANIFEST.playerArmor.atlasResolution, [64, 256]);
+assert.equal(VISUAL_ASSET_MANIFEST.playerArmor.fingerprint, "0e1b5269");
 assert.deepEqual(VISUAL_ASSET_MANIFEST.userSkin.acceptedResolutions, [64, 128]);
 assert.equal(VISUAL_ASSET_MANIFEST.userSkin.bundled, false);
 assert.equal(VISUAL_ASSET_MANIFEST.userSkin.uploaded, false);

@@ -14,12 +14,19 @@ for (const contract of [
   "buildPlayerSkinGeometry", "gl.NEAREST", "gl.CLAMP_TO_EDGE", "uSkin", "uLight",
   "Math.PI - pose.yaw", "gl.enable(gl.BLEND)", "PLAYER_RIG_SKIN_DRAWS", "setPartMvp",
   "appendItemSpriteGeometry", "setHeldItem(itemId)", "heldItemVertexCount",
-  "buildPlayerArmorGeometry", "setArmor(appearance)", "armorVertexCount",
+  "buildPlayerArmorGeometry", "PLAYER_ARMOR_ATLAS_RGBA", "setArmor(appearance)", "armorVertexCount",
   "itemVisual(itemId)", "display.thirdPersonRight", "buildThirdPersonHeldItemGeometry(heldItem, tuning)",
   "appendBlockItemCubeGeometry", "blockIdForCubeItem(itemId)",
   "resolvePlayerRigPose(rig)", "playerArmorRigDraws", "setPartMvp(\"rightArm\", true", "drawCallCount",
   "currentThirdPersonTuning()", "heldItemTuningRevision", "rebuildHeldItemGeometry",
 ]) assert.ok((source + heldItemSource).includes(contract), `shared world skin renderer retains ${contract}`);
+assert.ok(source.includes("gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 64, 256")
+  && source.includes("gl.bindTexture(gl.TEXTURE_2D, armorTexture)")
+  && source.includes("setPartMvp(draw.part, true, mvpLocation)"),
+"local, remote, and inventory players use the exact nearest-neighbor armor atlas on the articulated skin rig");
+assert.ok(source.includes("visualAssetSha256(buffer) !== PLAYER_ARMOR_ATLAS_PNG_SHA256")
+  && source.includes("if (!destroyed)") && source.includes("image.close()"),
+"the compact remote atlas is hash-checked and cannot upload after renderer teardown");
 for (const itemId of ["dirt", "glass", "diamond_pickaxe", "apple", "bow"] as const) {
   const presentation = thirdPersonHeldItemPresentation(itemId);
   const display = itemVisual(itemId).display.thirdPersonRight;
@@ -68,5 +75,5 @@ assert.equal(heldGlass.length / 6, 12 * 36, "shared local/remote third-person gl
 assert.ok(heldGlass.filter((_, index) => index % 6 >= 3).every((channel) => channel > 0.24),
   "held glass remains high-contrast in the opaque third-person color shader");
 assert.equal(PLAYER_SKIN_VERTEX_COUNT, 432, "local player remains one bounded 12-cuboid skin batch");
-assert.doesNotMatch(source, /fetch\(|ImageData|setInterval|requestAnimationFrame/);
+assert.doesNotMatch(source, /ImageData|setInterval|requestAnimationFrame/);
 console.log("world player skin renderer contract tests passed");

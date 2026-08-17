@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { getBowIconArt, getItemIconArt, type ItemIconArt } from "../client/components/itemIconArt.ts";
 import { createLakecraftDefaultSkinPixels } from "../client/game/playerSkin.ts";
+import { PLAYER_ARMOR_ATLAS_RGBA } from "../client/game/generated/playerArmorTexture.ts";
+import { createHash } from "node:crypto";
 import { decodePng } from "../scripts/png-rgba.mjs";
 import { ITEMS, type ItemId } from "../shared/game.ts";
 import {
@@ -21,6 +23,7 @@ type ImportedAssets = Readonly<{
   bowStages: readonly string[];
   models: Readonly<Record<string, { display?: Record<string, unknown> }>>;
   entities: Readonly<Record<string, string>>;
+  armorTextures: Readonly<Record<string, string>>;
   blocks: Readonly<Record<string, string>>;
   blockItemTextures: Readonly<Record<string, string>>;
   blockLayers: Readonly<Record<string, string>>;
@@ -45,6 +48,7 @@ assert.ok(importerSource.includes(`EXPECTED_JAR_SHA256 = "${assets.source.jarSha
 assert.equal(Object.keys(assets.itemTextures).length, 67);
 assert.equal(assets.bowStages.length, 3);
 assert.equal(Object.keys(assets.entities).length, 12);
+assert.equal(Object.keys(assets.armorTextures).length, 10);
 assert.ok(Object.hasOwn(assets.entities, "chicken"), "the exact temperate chicken joins every implemented mob texture");
 assert.equal(Object.keys(assets.blocks).length, 237);
 assert.equal(Object.keys(assets.blockItemTextures).length, 15);
@@ -163,6 +167,21 @@ assert.deepEqual(
   decodePng(Buffer.from(assets.entities.player_wide, "base64")).rgba,
   "the production default player skin exactly preserves the installed standard 64x64 RGBA texture",
 );
+assert.equal(createHash("sha256").update(PLAYER_ARMOR_ATLAS_RGBA).digest("hex"), "0e1b5269d33fb6de47f7547cd1ceb46c1f11bd89f5b05e5694db0d62f7fd637b",
+  "the production armor atlas remains pinned to the reviewed installed Minecraft textures");
+for (const [materialIndex, material] of ["leather", "iron", "gold", "diamond"].entries()) {
+  for (const [layerIndex, layer] of ["humanoid", "humanoid_leggings"].entries()) {
+    const installed = decodePng(Buffer.from(assets.armorTextures[`${material}_${layer}`], "base64"));
+    assert.deepEqual([installed.width, installed.height], [64, 32]);
+    for (let pixel = 0; pixel < 64 * 32; pixel += 1) {
+      const source = pixel * 4; const atlas = ((materialIndex * 2 + layerIndex) * 64 * 32 + pixel) * 4;
+      if (material !== "leather") assert.deepEqual(
+        [...PLAYER_ARMOR_ATLAS_RGBA.subarray(atlas, atlas + 4)], [...installed.rgba.subarray(source, source + 4)],
+        `${material} ${layer} texel ${pixel} is preserved exactly`,
+      );
+    }
+  }
+}
 const tintedTiles = new Set(["grass_top", "grass_side", "leaves", "short_grass", "water"]);
 for (const [name, payload] of Object.entries(assets.blocks)) {
   const image = decodePng(Buffer.from(payload, "base64"));

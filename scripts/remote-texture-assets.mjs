@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 const BLOCK_SOURCE_SHA256 = "86634345db872108492c3ce63cca8419ca85c972765cc207eb6a82fba7469d79";
 const BLOCK_PNG_SHA256 = "0f3a9517c9850c970514a2a88873eee2bed205272cc318b484dde0bfbb7973e1";
 const MOB_SOURCE_SHA256 = "3c4ccc1ca87a3d5c8a261ee8f05ac426b3881ce82b31a3a4d4144fda47e535da";
+const ARMOR_SOURCE_SHA256 = "e77cba5f4fa363d9c0978c9bf244fda9154aae234a5a1ff8239814e9e7bc9a62";
 const ASSET_ORIGINS = [
   "https://lakecraft-production.up.railway.app",
   "https://lakecraft-creative-production.up.railway.app",
@@ -55,4 +56,15 @@ export function remoteMobTextureAtlasModule(source) {
   return `export const MOB_TEXTURE_ATLAS_WIDTH=${width},MOB_TEXTURE_ATLAS_HEIGHT=${height};`
     + `export const MOB_TEXTURE_ATLAS_PNG=${JSON.stringify(`${ASSET_ORIGINS[0]}/assets/mob-texture-atlas-${sha.slice(0, 8)}.png`)};`
     + `export const MOB_TEXTURE_ATLAS_SHA256=${JSON.stringify(sha)},MOB_TEXTURE_REGIONS=${regions} as const;`;
+}
+
+/** Keep exact armor pixels in the reviewed source while loading the immutable PNG in compact production. */
+export function remotePlayerArmorTextureModule(source) {
+  const digest = sha256(source);
+  if (digest !== ARMOR_SOURCE_SHA256) {
+    throw new Error(`Player armor texture source changed (expected ${ARMOR_SOURCE_SHA256}, found ${digest}).`);
+  }
+  const sha = exact(source, /export const PLAYER_ARMOR_ATLAS_PNG_SHA256="([0-9a-f]{64})";/g, "player armor atlas hash");
+  const url = `https://raw.githubusercontent.com/bentsignal/lakecraft/main/client/game/generated/player-armor-atlas-${sha.slice(0, 8)}.png`;
+  return `export const PLAYER_ARMOR_ATLAS_RGBA=${JSON.stringify(url)},PLAYER_ARMOR_ATLAS_PNG_SHA256=${JSON.stringify(sha)};`;
 }

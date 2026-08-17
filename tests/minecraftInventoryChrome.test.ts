@@ -9,6 +9,9 @@ const styles = source("../client/components/HudStyles.tsx");
 const drawer = source("../client/components/InventoryDrawer.tsx");
 const payload = asset.match(/= "([A-Za-z0-9+/=]+)"/)?.[1];
 
+assert.ok(!styles.includes(".lc-item-icon__svg { display: block; filter:"),
+  "slot items have no asymmetric CSS shadow shifting their visible pixels down and right");
+
 assert.ok(payload, "the installed inventory chrome has one checked-in payload");
 const png = Buffer.from(payload, "base64");
 assert.equal(png.toString("hex", 0, 8), "89504e470d0a1a0a", "inventory chrome remains a PNG");

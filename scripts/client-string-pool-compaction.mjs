@@ -10,7 +10,7 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // application copy or making a new literal eligible requires human review.
 export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 541;
 export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 476;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "5795576dd3be42919013632de050656b8c6382f09ce655ea10f27ff61e845d53";
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "c0d77023f11f4ed9cb78e0be931e3f7a5f66d62e172d8f303b234fa9c61ad793";
 export const COMPACT_CLIENT_HUMAN_WATER_BUFFER_DELTA = Object.freeze({
   previousOccurrences: 540,
   previousUniqueValues: 476,
@@ -202,9 +202,18 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
   source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_349;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 134;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "267c77f9a236e9aa52e52669249d2a20397902bbf34fc9526299cf08b1b5dd51";
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_362;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 135;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "ff30b43cfdd60fdb8118c5e12d4c35d2431203b4024f314b583e70a425489d7c";
+export const COMPACT_CLIENT_REPEATED_ARMOR_TEXTURE_DELTA = Object.freeze({
+  previousOccurrences: 1_349,
+  previousUniqueValues: 134,
+  previousSourceFingerprint: "267c77f9a236e9aa52e52669249d2a20397902bbf34fc9526299cf08b1b5dd51",
+  occurrenceDelta: 13,
+  uniqueValueDelta: 1,
+  source: "exact Minecraft humanoid armor atlas and shared textured player rig",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_REPEATED_TITLE_HOTBAR_DELTA = Object.freeze({
   previousOccurrences: 1_339,
   previousUniqueValues: 133,
@@ -587,9 +596,18 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 621;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 622;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 184;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "45aaa964dd621f281ac5b1a7e5db2a1a1497fc126b5031b39a80224155494dbb";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "79a24cb4c3af619f0e960df668def170985c8f3e37bdfb18a567e457acce35d7";
+export const COMPACT_CLIENT_LOW_FREQUENCY_ARMOR_TEXTURE_DELTA = Object.freeze({
+  previousOccurrences: 621,
+  previousUniqueValues: 184,
+  previousSourceFingerprint: "cc8fb4b3816ce98fc62c61518fede02490d8ddb9130c9b710e15e4d07d505af5",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 0,
+  source: "hash-pinned compact armor atlas loading",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_LOW_FREQUENCY_TITLE_HOTBAR_DELTA = Object.freeze({
   previousOccurrences: 612,
   previousUniqueValues: 181,

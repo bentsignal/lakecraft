@@ -27,6 +27,14 @@ export const VISUAL_ASSET_MANIFEST = Object.freeze({
     logicalResolution: 64,
     fingerprint: "abf17456",
   }),
+  playerArmor: Object.freeze({
+    sourceKind: "minecraft-26.2-local-import" as const,
+    importer: "scripts/import-minecraft-visual-assets.mjs",
+    generator: "scripts/generate-player-armor-texture.ts",
+    output: "client/game/generated/playerArmorTexture.ts",
+    atlasResolution: Object.freeze([64, 256] as const),
+    fingerprint: "0e1b5269",
+  }),
   mobs: Object.freeze({
     sourceKind: "minecraft-26.2-local-import" as const,
     importer: "scripts/import-minecraft-visual-assets.mjs",

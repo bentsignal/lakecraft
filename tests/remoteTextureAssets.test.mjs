@@ -4,13 +4,16 @@ import { readFile } from "node:fs/promises";
 import {
   remoteBlockTextureAtlasModule,
   remoteMobTextureAtlasModule,
+  remotePlayerArmorTextureModule,
 } from "../scripts/remote-texture-assets.mjs";
 import { compactClientIdentifiers } from "../scripts/css-template-compression.mjs";
 
 const blockSource = await readFile(new URL("../client/game/generated/textureAtlas.ts", import.meta.url), "utf8");
 const mobSource = await readFile(new URL("../client/game/generated/mobTextureAtlas.ts", import.meta.url), "utf8");
+const armorSource = await readFile(new URL("../client/game/generated/playerArmorTexture.ts", import.meta.url), "utf8");
 const deploySource = await readFile(new URL("../scripts/prepare-lakebed-deploy.mjs", import.meta.url), "utf8");
 const mobStage = remoteMobTextureAtlasModule(mobSource);
+const armorStage = remotePlayerArmorTextureModule(armorSource);
 
 // The remote block transform remains audited for rolling old capsules and the
 // Railway immutable asset contract, but new Lakebed capsules deliberately ship
@@ -18,6 +21,7 @@ const mobStage = remoteMobTextureAtlasModule(mobSource);
 // never blank the title screen or game bootstrap again.
 assert.doesNotMatch(deploySource, /remoteBlockTextureAtlasModule/);
 assert.match(deploySource, /remoteMobTextureAtlasModule/);
+assert.match(deploySource, /remotePlayerArmorTextureModule/);
 assert.throws(() => remoteBlockTextureAtlasModule(blockSource), /Block texture atlas source changed/,
   "the retired remote-block transform fails closed instead of serving the pre-biome PNG for the expanded atlas");
 assert.ok(mobStage.length < 600, "the sealed Lakebed stage does not embed the mob PNG");
@@ -32,6 +36,10 @@ assert.match(mobRendererSource, /source\.includes\(":"\)/,
 assert.match(mobRendererSource, /visualAssetSha256\(buffer\)/,
   "the remotely loaded mob atlas is hash-verified before decode");
 assert.doesNotMatch(compactedMobStage, /https:\/\/yproduction\.up\.railway\.app/);
+assert.ok(armorStage.length < 300, "the compact stage does not embed the exact armor pixels");
+assert.match(armorStage, /player-armor-atlas-e61f29ef\.png/);
+assert.match(armorStage, /e61f29efd59cb8d09579511b9ea84354fc5c752a485b59ee6f09a1367312d7b5/);
+assert.doesNotMatch(armorStage, /decodeStaticBytes/);
 
 for (const [path, expected] of [
   ["../apps/game-server/assets/block-texture-atlas-0f3a9517.png", "0f3a9517c9850c970514a2a88873eee2bed205272cc318b484dde0bfbb7973e1"],
@@ -39,6 +47,7 @@ for (const [path, expected] of [
   ["../apps/game-server/assets/block-texture-atlas-a607e4c6.png", "e2129f5f77e252a155d8163371485e8279dae0056de5048f5afe44092ae7139e"],
   ["../apps/game-server/assets/block-texture-atlas-d94c19f9.png", "1ac5805312f699ef1afd78a0038ccc6f2596e290dd4e6050b5ab1cd6b649ef89"],
   ["../apps/game-server/assets/mob-texture-atlas-204e2b83.png", "204e2b831ffd3716b9a1c04fab27fc832f0f0ce686c20896364a91d1b553e9f3"],
+  ["../client/game/generated/player-armor-atlas-e61f29ef.png", "e61f29efd59cb8d09579511b9ea84354fc5c752a485b59ee6f09a1367312d7b5"],
 ]) {
   const bytes = await readFile(new URL(path, import.meta.url));
   assert.equal(createHash("sha256").update(bytes).digest("hex"), expected);
