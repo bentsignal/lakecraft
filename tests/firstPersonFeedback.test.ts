@@ -30,7 +30,7 @@ function fakeGl(): WebGLRenderingContext {
 
 const capacity = firstPersonBufferCapacity();
 assert.equal(capacity[0], FIRST_PERSON_MAX_COLOR_VERTICES);
-assert.equal(capacity[1], 36, "one held atlas cube is the complete textured budget");
+assert.equal(capacity[1], 66, "the retained textured budget fits the exact two-element installed stair model");
 assert.ok(capacity[2] < 120 * 1_024, "the retained original-sprite plus block buffers stay below 120 KiB");
 
 const renderer = createFirstPersonRenderer(fakeGl());
@@ -57,6 +57,10 @@ assert.deepEqual(
   [0, 36, 1, 864],
   "held full blocks reuse one atlas cube while the standard-skin arm owns its separate batch",
 );
+
+renderer[3]("oak_stairs", BLOCK.OAK_STAIRS_NORTH);
+assert.deepEqual([stats[0], stats[1], stats[2], stats[3]], [0, 66, 1, 1_584],
+  "stairs use the bounded two-element 3D atlas model instead of an enlarged flat inventory sprite");
 
 renderer[3]("iron_pickaxe", BLOCK.AIR);
 assert.equal(stats[0], canonicalHeldSpriteVertices.iron_pickaxe,

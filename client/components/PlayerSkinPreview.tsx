@@ -1,9 +1,17 @@
 import { useEffect, useRef } from "preact/hooks";
+import type { Equipment } from "../../shared/game.ts";
 import { loadPersistedPlayerSkin } from "../game/playerSkin.ts";
 import { createPlayerSkinRenderer, type PlayerSkinRenderer } from "../game/playerSkinRenderer.ts";
 import { inventoryPreviewLook, inventoryPreviewViewProjection } from "./inventoryPreviewLook.ts";
 
 type Preview = readonly [WebGLRenderingContext, PlayerSkinRenderer, Float32Array];
+
+function applyEquipment(renderer: PlayerSkinRenderer, equipment: Equipment): void {
+  renderer.setArmor({
+    head: equipment.head?.itemId ?? null, chest: equipment.chest?.itemId ?? null,
+    legs: equipment.legs?.itemId ?? null, feet: equipment.feet?.itemId ?? null,
+  });
+}
 
 function repaint(canvas: HTMLCanvasElement | null, preview: Preview | null, pointer: readonly [number, number]): void {
   if (!canvas || !preview) return;
@@ -24,7 +32,9 @@ function repaint(canvas: HTMLCanvasElement | null, preview: Preview | null, poin
 }
 
 /** True 3D inventory portrait using the exact F5 skin geometry and rig. */
-export function PlayerSkinPreview({ open, pointer }: { open: boolean; pointer: readonly [number, number] }) {
+export function PlayerSkinPreview({ open, pointer, equipment }: {
+  open: boolean; pointer: readonly [number, number]; equipment: Equipment;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const previewRef = useRef<Preview | null>(null);
   const pointerRef = useRef(pointer);
@@ -35,6 +45,7 @@ export function PlayerSkinPreview({ open, pointer }: { open: boolean; pointer: r
     const gl = canvas?.getContext("webgl", { alpha: false, antialias: false, depth: true });
     if (!canvas || !gl) return;
     const renderer = createPlayerSkinRenderer(gl);
+    applyEquipment(renderer, equipment);
     previewRef.current = [gl, renderer, inventoryPreviewViewProjection(canvas.width / canvas.height)];
     repaint(canvas, previewRef.current, pointerRef.current);
     const persisted = loadPersistedPlayerSkin(window.localStorage);
@@ -57,6 +68,12 @@ export function PlayerSkinPreview({ open, pointer }: { open: boolean; pointer: r
       previewRef.current = null;
     };
   }, [open]);
+  useEffect(() => {
+    const preview = previewRef.current;
+    if (!preview) return;
+    applyEquipment(preview[1], equipment);
+    repaint(canvasRef.current, preview, pointerRef.current);
+  }, [equipment]);
   useEffect(() => {
     repaint(canvasRef.current, previewRef.current, pointer);
   }, [pointer[0], pointer[1]]);

@@ -91,8 +91,13 @@ function blockItemRgba(itemId: ItemId, size: number): Uint8ClampedArray | undefi
   const scale = size / 16;
   const p = (x: number, y: number, u: number, v: number): Point => [x * scale, y * scale, u, v];
   if (shaped) {
+    // Minecraft 26.2's installed block/stairs.json authors the upper element
+    // at x=8..16 and its GUI display at [30,135,0]/0.625. This projection is
+    // the matching front-facing inventory basis, inset to the model's own GUI
+    // envelope instead of stretching the shape through the slot chrome.
+    const gui = .84;
     const point = (x: number, y: number, z: number, u: number, v: number): Point =>
-      p(8 + 8 * x - 8 * z, 8 + 4 * x + 4 * z - 8 * y, u, v);
+      p(8 + (8 * x - 8 * z) * gui, 8 + (4 * x + 4 * z - 8 * y) * gui, u, v);
     const box = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): void => {
       face(rgba, size, top, [point(x0, y1, z0, x0, z0), point(x1, y1, z0, x1, z0),
         point(x1, y1, z1, x1, z1), point(x0, y1, z1, x0, z1)], 1);
@@ -102,7 +107,7 @@ function blockItemRgba(itemId: ItemId, size: number): Uint8ClampedArray | undefi
         point(x1, y0, z0, z0, 1 - y0), point(x1, y0, z1, z1, 1 - y0)], .6);
     };
     box(0, 0, 0, 1, .5, 1);
-    if (itemId.endsWith("_stairs")) box(0, .5, .5, 1, 1, 1);
+    if (itemId.endsWith("_stairs")) box(.5, .5, 0, 1, 1, 1);
     return rgba;
   }
   face(rgba, size, top, [p(8, 0, .5, 0), p(16, 4, 1, .5), p(8, 8, .5, 1), p(0, 4, 0, .5)], 1);

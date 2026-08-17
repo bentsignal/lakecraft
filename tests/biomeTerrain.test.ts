@@ -16,7 +16,7 @@ import {
   terrainHeight,
 } from "../client/game/terrain.ts";
 import { BLOCK } from "../client/game/types.ts";
-import { blockFaceIsOccluded, blockHasCollision, waterVerticalVelocity } from "../client/game/voxelEngine.ts";
+import { WATER_EXIT_SPEED, blockFaceIsOccluded, blockHasCollision, waterVerticalVelocity } from "../client/game/voxelEngine.ts";
 
 const SEED = 7_319;
 const V2 = { preset: "default", superflatGroundY: 20, generatorVersion: 2 } as const;
@@ -79,6 +79,16 @@ assert.equal(blockFaceIsOccluded(BLOCK.WATER, BLOCK.WATER), true);
 assert.equal(blockTextureForFace(BLOCK.WATER, "top"), "water");
 assert.equal(blockTextureForFace(BLOCK.CACTUS, "north"), "cactus");
 assert.ok(waterVerticalVelocity(0, true, false, 0.05) > 0, "jumping swims upward");
+let exitVelocity = 0; let exitHeight = 0;
+for (let frame = 0; frame < 30 && exitHeight < 1.1; frame += 1) {
+  const inSurfaceWater = exitHeight < .86;
+  exitVelocity = inSurfaceWater
+    ? waterVerticalVelocity(exitVelocity, true, false, 1 / 60, true)
+    : exitVelocity - 32 / 60;
+  exitHeight += exitVelocity / 60;
+}
+assert.ok(exitHeight >= 1, `surface jump clears a one-block shore (${exitHeight.toFixed(3)})`);
+assert.equal(WATER_EXIT_SPEED, 6.5);
 assert.ok(waterVerticalVelocity(0, false, true, 0.05) < 0, "sneaking swims downward");
 const throughWater = raycastVoxels([0.5, 65.5, 0.5], [1, 0, 0], (x) =>
   x === 1 ? BLOCK.WATER : x === 2 ? BLOCK.STONE : BLOCK.AIR, 4);

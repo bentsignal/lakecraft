@@ -61,15 +61,14 @@ for (const [itemId, block] of [
   assert.equal(firstPersonHeldItemTuningGroup(itemId, block), "otherItem",
     `${itemId} is a special-shaped block item and uses the otherItem knobs`);
 }
-assert.equal(firstPersonHeldItemTuningGroup("stone_brick_slab", BLOCK.STONE_BRICK_SLAB), "otherItem",
-  "the non-full-cube slab shares canonical item-sprite pose tuning through the otherItem knobs");
+assert.equal(firstPersonHeldItemTuningGroup("stone_brick_slab", BLOCK.STONE_BRICK_SLAB), "block",
+  "the slab shares the exact textured 3D block pose instead of an enlarged flat sprite");
 assert.equal(blockIdForCubeItem("stone_brick_slab"), null,
   "the slab is excluded from the executable canonical full-cube item path");
 assert.doesNotMatch(blockItemCubeSource, /stone_brick_slab:\s*BLOCK\.STONE_BRICK_SLAB/,
   "the closed full-cube item map cannot silently reclassify the slab");
-assert.match(firstPersonRendererSource,
-  /!isSlabBlock\(block\) && !isStairBlock\(block\)[\s\S]{0,100}blockTextureForFace\(block, "east"\) !== null/,
-  "full-cube tuning explicitly excludes shaped blocks even though their placed meshes have authored textures");
+assert.match(firstPersonRendererSource, /function appendSocketedTexturedShape[\s\S]*?isSlabBlock\(block\)[\s\S]*?isStairBlock\(block\)/,
+  "the block pose emits bounded authored slab and stair geometry");
 assert.equal(firstPersonHeldItemTuningGroup("iron_pickaxe", BLOCK.AIR), "tool");
 assert.equal(firstPersonHeldItemTuningGroup("bow", BLOCK.AIR), "bow");
 assert.equal(firstPersonHeldItemTuningGroup("apple", BLOCK.AIR), "otherItem");

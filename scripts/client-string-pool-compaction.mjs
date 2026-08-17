@@ -8,9 +8,18 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 540;
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 541;
 export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 476;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "f9febcf89744dfa3db52e32878d02bff39d98cd725bac142efd10fb463a5b42c";
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "5795576dd3be42919013632de050656b8c6382f09ce655ea10f27ff61e845d53";
+export const COMPACT_CLIENT_HUMAN_WATER_BUFFER_DELTA = Object.freeze({
+  previousOccurrences: 540,
+  previousUniqueValues: 476,
+  previousSourceFingerprint: "f9febcf89744dfa3db52e32878d02bff39d98cd725bac142efd10fb463a5b42c",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 0,
+  source: "client/game/voxelEngine.ts#dedicated-water-buffer-allocation",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_HUMAN_TITLE_HOTBAR_DELTA = Object.freeze({
   previousOccurrences: 541,
   previousUniqueValues: 475,

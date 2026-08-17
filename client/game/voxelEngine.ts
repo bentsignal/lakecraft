@@ -597,6 +597,8 @@ interface ChunkMesh {
   textureVertexCount: number;
   transparentBuffer: WebGLBuffer | null;
   transparentVertexCount: number;
+  waterBuffer: WebGLBuffer | null;
+  waterVertexCount: number;
   colorBuffer: WebGLBuffer | null;
   colorVertexCount: number;
   vertexCount: number;
@@ -644,6 +646,7 @@ export const LADDER_CLIMB_SPEED = 3.2;
 export const LADDER_DESCEND_SPEED = -3.2;
 export const LADDER_IDLE_SLIDE_SPEED = -1.2;
 export const WATER_SWIM_SPEED = 3;
+export const WATER_EXIT_SPEED = 6.5;
 
 export type MobTorchLightCache = Float64Array;
 
@@ -947,11 +950,12 @@ export function ladderVerticalVelocity(
 
 /** Bounded buoyancy: jump rises, sneak dives, and idle players slowly sink. */
 export function waterVerticalVelocity(
-  currentVelocity: number, ascend: boolean, descend: boolean, elapsedSeconds: number,
+  currentVelocity: number, ascend: boolean, descend: boolean, elapsedSeconds: number, surfaceExit = false,
 ): number {
-  const target = ascend && !descend ? WATER_SWIM_SPEED : descend && !ascend ? -WATER_SWIM_SPEED : -0.45;
+  const target = ascend && !descend ? surfaceExit ? WATER_EXIT_SPEED : WATER_SWIM_SPEED
+    : descend && !ascend ? -WATER_SWIM_SPEED : -0.45;
   const amount = Math.min(1, Math.max(0, Number.isFinite(elapsedSeconds) ? elapsedSeconds * 8 : 0));
-  const current = Number.isFinite(currentVelocity) ? clampNumber(currentVelocity, -WATER_SWIM_SPEED, WATER_SWIM_SPEED) : 0;
+  const current = Number.isFinite(currentVelocity) ? clampNumber(currentVelocity, -WATER_SWIM_SPEED, WATER_EXIT_SPEED) : 0;
   return current + (target - current) * amount;
 }
 
@@ -2223,6 +2227,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const chunkMeshes = new Map<string, ChunkMesh>();
   const visibleMeshes: ChunkMesh[] = [];
   const transparentMeshes: ChunkMesh[] = [];
+  const waterMeshes: ChunkMesh[] = [];
   const mobRenderer = createMobRenderer(gl);
   const localMobStreaming = !options.onMobAttack;
   const mobPopulationOptions: MobSpawnOptions = {
@@ -2555,6 +2560,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       worldVertexCount -= mesh.vertexCount;
       if (mesh.textureBuffer) gl.deleteBuffer(mesh.textureBuffer);
       if (mesh.transparentBuffer) gl.deleteBuffer(mesh.transparentBuffer);
+      if (mesh.waterBuffer) gl.deleteBuffer(mesh.waterBuffer);
       if (mesh.colorBuffer) gl.deleteBuffer(mesh.colorBuffer);
       chunkMeshes.delete(owner);
     }
@@ -2674,6 +2680,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const coordinate = parseChunkKey(chunkKey);
     const textureVertices: number[] = [];
     const transparentVertices: number[] = [];
+    const waterVertices: number[] = [];
     const colorVertices: number[] = [];
     const specialVertices = { textured: textureVertices, color: colorVertices };
     let minY = Infinity;
@@ -2836,8 +2843,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         if (blockFaceIsOccluded(block, neighbor)) continue;
         const textureName = blockTextureForFace(block, face[0]);
         if (textureName) {
-          const transparent = isGlassBlock(block) || isWaterBlock(block);
-          const destination = transparent ? transparentVertices : textureVertices;
+          const destination = isWaterBlock(block) ? waterVertices
+            : isGlassBlock(block) ? transparentVertices : textureVertices;
           const exposure = skyExposureLevel(skyOccluderColumns, x + face[1], y + face[2], z + face[3]);
           if (isGlassBlock(block)) {
             // The ordinary alpha-tested pass writes the glass frame to depth;
@@ -2860,9 +2867,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
     const previous = chunkMeshes.get(chunkKey);
     worldVertexCount -= previous?.vertexCount ?? 0;
-    if (textureVertices.length === 0 && transparentVertices.length === 0 && colorVertices.length === 0) {
+    if (textureVertices.length === 0 && transparentVertices.length === 0
+      && waterVertices.length === 0 && colorVertices.length === 0) {
       if (previous?.textureBuffer) gl.deleteBuffer(previous.textureBuffer);
       if (previous?.transparentBuffer) gl.deleteBuffer(previous.transparentBuffer);
+      if (previous?.waterBuffer) gl.deleteBuffer(previous.waterBuffer);
       if (previous?.colorBuffer) gl.deleteBuffer(previous.colorBuffer);
       chunkMeshes.delete(chunkKey);
       return;
@@ -2887,6 +2896,16 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.deleteBuffer(transparentBuffer);
       transparentBuffer = null;
     }
+    let waterBuffer = previous?.waterBuffer ?? null;
+    if (waterVertices.length) {
+      waterBuffer ??= gl.createBuffer();
+      if (!waterBuffer) throw new Error("Unable to allocate a transparent chunk mesh buffer.");
+      gl.bindBuffer(gl.ARRAY_BUFFER, waterBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(waterVertices), gl.STATIC_DRAW);
+    } else if (waterBuffer) {
+      gl.deleteBuffer(waterBuffer);
+      waterBuffer = null;
+    }
     let colorBuffer = previous?.colorBuffer ?? null;
     if (colorVertices.length) {
       colorBuffer ??= gl.createBuffer();
@@ -2899,14 +2918,17 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
     const textureVertexCount = textureVertices.length / TEXTURED_WORLD_VERTEX_FLOATS;
     const transparentVertexCount = transparentVertices.length / TEXTURED_WORLD_VERTEX_FLOATS;
+    const waterVertexCount = waterVertices.length / TEXTURED_WORLD_VERTEX_FLOATS;
     const colorVertexCount = colorVertices.length / 6;
-    const vertexCount = textureVertexCount + transparentVertexCount + colorVertexCount;
+    const vertexCount = textureVertexCount + transparentVertexCount + waterVertexCount + colorVertexCount;
     chunkMeshes.set(chunkKey, {
       key: chunkKey,
       textureBuffer,
       textureVertexCount,
       transparentBuffer,
       transparentVertexCount,
+      waterBuffer,
+      waterVertexCount,
       colorBuffer,
       colorVertexCount,
       vertexCount,
@@ -3371,10 +3393,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       fallPeakY = pose.y;
     }
     const flying = creativeFlight.flying && options.canCreativeFly?.() === true;
-    const inWater = !flying && (
-      isWaterBlock(getBlock(Math.floor(pose.x), Math.floor(pose.y + 0.15), Math.floor(pose.z)))
-      || isWaterBlock(getBlock(Math.floor(pose.x), Math.floor(pose.y + cameraPosture.bodyHeight * 0.55), Math.floor(pose.z)))
-    );
+    const waterAtFeet = !flying
+      && isWaterBlock(getBlock(Math.floor(pose.x), Math.floor(pose.y + 0.15), Math.floor(pose.z)));
+    const waterAtBody = !flying
+      && isWaterBlock(getBlock(Math.floor(pose.x), Math.floor(pose.y + cameraPosture.bodyHeight * 0.55), Math.floor(pose.z)));
+    const inWater = waterAtFeet || waterAtBody;
     const forwardInput = (controlHeld("moveForward") ? 1 : 0) - (controlHeld("moveBackward") ? 1 : 0);
     const strafe = (controlHeld("strafeRight") ? 1 : 0) - (controlHeld("strafeLeft") ? 1 : 0);
     const ladderAtFrameStart = !flying && playerTouchesLadder(pose.x, pose.y, pose.z, getBlock);
@@ -3426,7 +3449,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const verticalStartY = pose.y;
     velocity[1] = flying
       ? creativeFlightVerticalVelocity(controlHeld("jump"), shiftHeld)
-      : inWater ? waterVerticalVelocity(velocity[1], controlHeld("jump"), shiftHeld, dt)
+      : inWater ? waterVerticalVelocity(velocity[1], controlHeld("jump"), shiftHeld, dt, waterAtFeet && !waterAtBody)
       : ladderVerticalVelocity(
         velocity[1],
         touchingLadder,
@@ -3869,15 +3892,18 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     gl.uniform1f(terrainAlphaCutoffLocation, 0.5);
     visibleMeshes.length = 0;
     transparentMeshes.length = 0;
+    waterMeshes.length = 0;
     for (const mesh of chunkMeshes.values()) {
       if (!chunkIntersectsView(mesh, frustumPlanes)) continue;
       visibleChunkCount += 1;
       visibleMeshes.push(mesh);
-      if (mesh.transparentBuffer && mesh.transparentVertexCount > 0) {
+      if ((mesh.transparentBuffer && mesh.transparentVertexCount > 0)
+        || (mesh.waterBuffer && mesh.waterVertexCount > 0)) {
         const transparentDx = mesh.centerX - eye[0];
         const transparentDz = mesh.centerZ - eye[2];
         mesh.transparentDistanceSquared = transparentDx * transparentDx + transparentDz * transparentDz;
-        transparentMeshes.push(mesh);
+        if (mesh.transparentBuffer && mesh.transparentVertexCount > 0) transparentMeshes.push(mesh);
+        if (mesh.waterBuffer && mesh.waterVertexCount > 0) waterMeshes.push(mesh);
       }
       if (!mesh.textureBuffer || !mesh.textureVertexCount) continue;
       gl.uniform4fv(terrainTorchLightsLocation, chunkTorchLights(mesh));
@@ -4061,12 +4087,22 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.useProgram(program);
     }
 
+    waterMeshes.sort((left, right) => -compareTransparentChunkMeshes(left, right));
     transparentMeshes.sort(compareTransparentChunkMeshes);
-    if (transparentMeshes.length) {
+    if (waterMeshes.length || transparentMeshes.length) {
       gl.useProgram(terrainProgram);
       gl.uniform1f(terrainAlphaCutoffLocation, 0);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      const waterDrawCount = Math.min(waterMeshes.length, MAX_TRANSPARENT_CHUNK_DRAWS);
+      for (let index = 0; index < waterDrawCount; index += 1) {
+        const mesh = waterMeshes[index];
+        if (!mesh.waterBuffer || !mesh.waterVertexCount) continue;
+        gl.uniform4fv(terrainTorchLightsLocation, chunkTorchLights(mesh));
+        bindTerrainBuffer(mesh.waterBuffer);
+        gl.drawArrays(gl.TRIANGLES, 0, mesh.waterVertexCount);
+        drawCalls += 1;
+      }
       gl.depthMask(false);
       const transparentDrawCount = Math.min(transparentMeshes.length, MAX_TRANSPARENT_CHUNK_DRAWS);
       for (let index = 0; index < transparentDrawCount; index += 1) {
@@ -4439,9 +4475,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
     const saplingPlacement = selectedBlock === BLOCK.SAPLING;
     const placementBlock = selectedBlock === BLOCK.TORCH ? torchPlacementBlock(target)
-      : isStairBlock(selectedBlock) ? stairPlacementBlock(
-        selectedBlock, pose.yaw, pose.pitch, target, [raycastFacing[0], raycastFacing[2]],
-      )
+      // Resolve from the live camera yaw at the click boundary. The retained
+      // ray is only a target cache and may still describe the previous frame
+      // when a turn and placement arrive in the same browser event interval.
+      : isStairBlock(selectedBlock) ? stairPlacementBlock(selectedBlock, pose.yaw, pose.pitch, target)
         : doorPlacementBlock(selectedBlock, pose.yaw);
     const supportedSapling = !saplingPlacement || canPlaceSapling(target, getBlock(x, y - 1, z));
     if (
@@ -4723,6 +4760,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       for (const mesh of chunkMeshes.values()) {
         if (mesh.textureBuffer) gl.deleteBuffer(mesh.textureBuffer);
         if (mesh.transparentBuffer) gl.deleteBuffer(mesh.transparentBuffer);
+        if (mesh.waterBuffer) gl.deleteBuffer(mesh.waterBuffer);
         if (mesh.colorBuffer) gl.deleteBuffer(mesh.colorBuffer);
       }
       chunkMeshes.clear();

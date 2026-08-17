@@ -15,8 +15,7 @@ import { appendWorldBlockCrackLines } from "../client/game/blockCracks.ts";
 import { BLOCK_PARTICLES_PER_ACTION, createBlockParticleSystem } from "../client/game/blockParticles.ts";
 import { blockTextureForFace, textureAtlasUv, type BlockFace } from "../client/game/blockTextures.ts";
 import { writeDroppedItemGeometry, droppedBlockCubeVertexCount, type DroppedItemGeometryStats } from "../client/game/droppedItemRenderer.ts";
-import { createFirstPersonRenderer, firstPersonSpritePresentation } from "../client/game/firstPersonRenderer.ts";
-import { appendItemSpriteGeometry } from "../client/game/itemSpriteGeometry.ts";
+import { createFirstPersonRenderer } from "../client/game/firstPersonRenderer.ts";
 import { remoteHeldItemGeometry, remoteHeldItemVertexCount } from "../client/game/remotePlayerRenderer.ts";
 import {
   STONE_BRICK_SLAB_MESH_VERTEX_COUNT,
@@ -112,12 +111,6 @@ assert.equal(itemVisual("stone_brick_slab").parent, "block", "the slab retains i
 assert.equal(blockIdForCubeItem("stone_brick_slab"), null,
   "a partial-height slab cannot enter any full-cube held or dropped path");
 
-const expectedHeldGeometry: number[] = [];
-const expectedHeldVertices = appendItemSpriteGeometry(
-  expectedHeldGeometry,
-  slabArt,
-  firstPersonSpritePresentation("stone_brick_slab"),
-);
 let nextBufferId = 0;
 let boundBuffer: WebGLBuffer | null = null;
 const uploads = new Map<WebGLBuffer, Float32Array>();
@@ -135,21 +128,20 @@ const captureGl = {
 } as unknown as WebGLRenderingContext;
 const heldRenderer = createFirstPersonRenderer(captureGl);
 heldRenderer[3]("stone_brick_slab", BLOCK.STONE_BRICK_SLAB);
-const heldUpload = uploads.get(heldRenderer[0]);
-assert.ok(heldUpload, "the first-person slab uploads shared item-sprite color geometry");
-assert.equal(heldRenderer[2][0], expectedHeldVertices, "the first-person slab keeps canonical sprite vertex parity");
-assert.equal(heldUpload.length, expectedHeldGeometry.length, "the first-person slab uploads one complete color stream");
+const heldUpload = uploads.get(heldRenderer[1]);
+assert.ok(heldUpload, "the first-person slab uploads its atlas-textured 3D half block");
+assert.equal(heldRenderer[2][0], 0, "the slab no longer falls back to a flat color sprite");
+assert.equal(heldRenderer[2][1], 36, "the bounded slab box retains six textured faces");
+assert.equal(heldUpload.length, 36 * 6, "the slab uploads one complete textured stream");
 for (let offset = 0; offset < heldUpload.length; offset += 6) {
   assert.ok(Number.isFinite(heldUpload[offset])
     && Number.isFinite(heldUpload[offset + 1])
     && Number.isFinite(heldUpload[offset + 2]),
   `first-person slab vertex ${offset / 6} has a finite socketed position`);
-  for (let channel = 3; channel < 6; channel += 1) {
-    assert.ok(Math.abs(heldUpload[offset + channel] - expectedHeldGeometry[offset + channel]) < 1e-6,
-      `first-person slab vertex ${offset / 6} retains canonical inventory-art color channel ${channel - 3}`);
-  }
+  assert.ok(heldUpload[offset + 3] >= 0 && heldUpload[offset + 3] <= 1
+    && heldUpload[offset + 4] >= 0 && heldUpload[offset + 4] <= 1,
+  `first-person slab vertex ${offset / 6} stays inside the imported atlas`);
 }
-assert.equal(heldRenderer[2][1], 0, "the partial-height slab never emits textured full-cube output");
 heldRenderer[7]();
 
 assert.equal(droppedBlockCubeVertexCount("stone_brick_slab"), 0,

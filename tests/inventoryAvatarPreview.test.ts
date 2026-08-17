@@ -6,10 +6,11 @@ const drawer = readFileSync(new URL("../client/components/InventoryDrawer.tsx", 
 const preview = readFileSync(new URL("../client/components/PlayerSkinPreview.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../client/components/HudStyles.tsx", import.meta.url), "utf8");
 
-assert.ok(drawer.includes("<PlayerSkinPreview open={open} pointer={[pointer.x, pointer.y]} />"),
+assert.ok(drawer.includes("<PlayerSkinPreview equipment={workspace.equipment} open={open} pointer={[pointer.x, pointer.y]} />"),
   "inventory sends live pointer coordinates to the canonical skin portrait");
 assert.ok(preview.includes("loadPersistedPlayerSkin(window.localStorage)"), "portrait loads the user's selected skin");
-assert.ok(preview.includes("}, [open]);"), "skin changes made in the visual lab appear on the next inventory open");
+assert.ok(preview.includes("equipment.head?.itemId") && preview.includes("renderer.setArmor({"),
+  "the portrait uses the shared F5 armor renderer for the currently equipped set");
 assert.ok(preview.includes('canvas?.getContext("webgl"') && preview.includes("createPlayerSkinRenderer(gl)"),
   "portrait is a real WebGL player render using the shared F5 renderer");
 assert.ok(preview.includes("renderer.draw(viewProjection") && preview.includes("renderer.setSkin(selected, persisted.model)"),

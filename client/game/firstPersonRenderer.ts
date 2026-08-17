@@ -23,7 +23,7 @@ const HELD_BLOCK_ANCHOR_NDC = Object.freeze([0.7, -0.76, -1.16] as const);
 
 const FLOATS_PER_COLOR_VERTEX = 6;
 export const FIRST_PERSON_MAX_COLOR_VERTICES = ITEM_SPRITE_MAX_VERTICES;
-export const FIRST_PERSON_MAX_TEXTURED_VERTICES = 36;
+export const FIRST_PERSON_MAX_TEXTURED_VERTICES = 66;
 export const FIRST_PERSON_ACTION_MS = 220;
 export const FIRST_PERSON_FOOD_ACTION_MS = 1_000;
 export const FIRST_PERSON_MODEL_SCALE = FIRST_PERSON_TUNING.rig.scale;
@@ -138,13 +138,10 @@ function appendTransformedPoint(
   output.push(x + centerX, y + centerY, z + centerZ);
 }
 
-function canUseCanonicalCube(block: BlockId): boolean {
+function canUseTexturedBlock(block: BlockId): boolean {
   // Every special-shape block resolves every face to null; one side therefore
-  // distinguishes the full atlas cubes without rebuilding a six-face probe.
-  // The slab intentionally reuses the masonry tile for its placed half-height
-  // mesh, so texture presence alone must not promote its held item to a cube.
-  return block !== BLOCK.AIR && !isSlabBlock(block) && !isStairBlock(block)
-    && blockTextureForFace(block, "east") !== null;
+  // distinguishes atlas-backed cubes, slabs, and stairs from flat item art.
+  return block !== BLOCK.AIR && blockTextureForFace(block, "east") !== null;
 }
 
 export type FirstPersonHeldItemTuningGroup = "block" | "bow" | "tool" | "otherItem" | null;
@@ -155,7 +152,7 @@ export function firstPersonHeldItemTuningGroup(
   block: BlockId,
 ): FirstPersonHeldItemTuningGroup {
   if (!itemId) return null;
-  if (ITEMS[itemId].category === "block" && canUseCanonicalCube(block)) return "block";
+  if (ITEMS[itemId].category === "block" && canUseTexturedBlock(block)) return "block";
   if (itemId === "bow") return "bow";
   if (ITEMS[itemId].tool) return "tool";
   return "otherItem";
@@ -364,6 +361,41 @@ function appendSocketedTexturedCube(
   }
 }
 
+function appendSocketedTexturedShape(
+  output: number[], block: BlockId, pose: ViewmodelRigPose, tuning: FirstPersonTuning["block"],
+): void {
+  if (!isSlabBlock(block) && !isStairBlock(block)) return appendSocketedTexturedCube(output, block, pose, tuning);
+  const depth = Math.max(0.2, -HELD_BLOCK_ANCHOR_NDC[2] - tuning.center[2]);
+  const center = unprojectViewmodelAnchor(
+    HELD_BLOCK_ANCHOR_NDC[0] + tuning.center[0], HELD_BLOCK_ANCHOR_NDC[1] + tuning.center[1],
+    depth, pose.verticalFovRadians, pose.aspect,
+  );
+  const size = tuning.size * pose.itemScale * depth;
+  const rotation = tuning.rotationDegrees;
+  const box = (min: Vec3, max: Vec3, skipBottom = false): void => {
+    for (const face of CUBE_FACES) {
+      if (skipBottom && face[0] === "bottom") continue;
+      const texture = blockTextureForFace(block, face[0]);
+      if (!texture) continue;
+      const uv = textureAtlasUv(texture);
+      for (const point of face[5]) {
+        const x = min[0] + point[0] * (max[0] - min[0]);
+        const y = min[1] + point[1] * (max[1] - min[1]);
+        const z = min[2] + point[2] * (max[2] - min[2]);
+        const horizontal = face[1] !== 0 ? z : x;
+        const vertical = face[2] !== 0 ? z : y;
+        appendTransformedPoint(output, (x - .5) * size, (y - .5) * size, (z - .5) * size,
+          center[0], center[1], center[2], rotation[0] * Math.PI / 180,
+          rotation[1] * Math.PI / 180, rotation[2] * Math.PI / 180);
+        output.push(uv.left + (uv.right - uv.left) * horizontal,
+          uv.bottom + (uv.top - uv.bottom) * vertical, face[4]);
+      }
+    }
+  };
+  box([0,0,0], [1,.5,1]);
+  if (isStairBlock(block)) box([.5,.5,0], [1,1,1], true);
+}
+
 function appendSocketedItemSprite(
   output: number[],
   itemId: ItemId,
@@ -562,7 +594,7 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
     const geometry: GeometryWriter = [[], []];
     const tuningGroup = firstPersonHeldItemTuningGroup(itemId, block);
     if (tuningGroup === "block") {
-      appendSocketedTexturedCube(geometry[1], block, rigPose, activeTuning.block);
+      appendSocketedTexturedShape(geometry[1], block, rigPose, activeTuning.block);
     } else if (tuningGroup && itemId) {
       appendSocketedItemSprite(
         geometry[0], itemId, rigPose, charging, chargeStage,

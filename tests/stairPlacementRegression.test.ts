@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { STAIR_MATERIAL_FAMILIES } from "../shared/expandedBuildingCatalog.ts";
 import { BLOCK, type BlockId } from "../client/game/types.ts";
+import { blockCollisionHeightAt } from "../client/game/blockGeometry.ts";
 import { raycastVoxels } from "../client/game/terrain.ts";
 import { stairPlacementBlock, stairPlacementIsUpsideDown } from "../client/game/voxelEngine.ts";
 import { placementBlockMatchesItem } from "../client/gameplay/catalog.ts";
@@ -30,6 +31,19 @@ for (const [height, upsideDown] of [[1.25, false], [1.75, true]] as const) {
 const looks = [
   [[1, 0], "east"], [[0, -1], "north"], [[0, 1], "south"], [[-1, 0], "west"],
 ] as const;
+const liveYaws = [[0, "north"], [Math.PI / 2, "east"], [Math.PI, "south"], [-Math.PI / 2, "west"]] as const;
+const placedFacingPlayer = [
+  [BLOCK.OAK_STAIRS_NORTH, [0.5, .75], [0.5, .25]],
+  [BLOCK.OAK_STAIRS_EAST, [.25, .5], [.75, .5]],
+  [BLOCK.OAK_STAIRS_SOUTH, [.5, .25], [.5, .75]],
+  [BLOCK.OAK_STAIRS_WEST, [.75, .5], [.25, .5]],
+] as const;
+for (const [block, playerSide, awaySide] of placedFacingPlayer) {
+  assert.equal(blockCollisionHeightAt(block, playerSide[0], playerSide[1]), .5,
+    "the tread begins low on the placing player's side");
+  assert.equal(blockCollisionHeightAt(block, awaySide[0], awaySide[1]), 1,
+    "the stair rises away from the placing player");
+}
 for (const family of STAIR_MATERIAL_FAMILIES) {
   const item = `${family}_stairs` as Parameters<typeof placementBlockMatchesItem>[0];
   const base = constant(`${family}_stairs_north`);
@@ -40,11 +54,22 @@ for (const family of STAIR_MATERIAL_FAMILIES) {
     assert.equal(placementBlockMatchesItem(item, placed), true,
       `${family} ${half || "normal_"}${facing} remains authorized by the held item`);
   }
+  for (const [yaw, facing] of liveYaws) {
+    assert.equal(stairPlacementBlock(base, yaw, 0, floor), constant(`${family}_stairs_${facing}`),
+      `${family} follows the live camera after each 90-degree turn`);
+  }
 }
 assert.equal(placementBlockMatchesItem("oak_stairs", BLOCK.BRICK_STAIRS_NORTH), false,
   "canonical matching never authorizes another material family");
 const singlePlayer = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 assert.match(singlePlayer, /placementBlockMatchesItem\(placedItem, edit\.block\)/,
   "survival consumes the oriented state through canonical item identity");
+const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
+const placementBoundary = engine.slice(engine.indexOf("function tryPlaceSelectedBlock"));
+assert.match(placementBoundary, /stairPlacementBlock\(selectedBlock, pose\.yaw, pose\.pitch, target\)/,
+  "the click boundary resolves stairs from live camera yaw");
+assert.doesNotMatch(placementBoundary.slice(0, placementBoundary.indexOf("function repeatHeldBlockPlacement")),
+  /stairPlacementBlock\([^;]*raycastFacing/s,
+  "a same-frame turn cannot place from the previous retained ray");
 
 console.log("stair direction, clicked-half, and survival authorization regressions passed");

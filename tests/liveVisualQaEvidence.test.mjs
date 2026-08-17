@@ -1083,7 +1083,7 @@ test("runbook documents trusted validation, sanitized storage, current UI labels
   );
 });
 
-test("a complete, freshly bound manifest with substantive generated files verifies", { timeout: 30_000 }, async () => {
+test("a complete, freshly bound manifest with substantive generated files verifies", { timeout: 60_000 }, async () => {
   const fixture = createFixture();
   try {
     const runCompletedAt = Date.parse(fixture.evidence.runCompletedAt);

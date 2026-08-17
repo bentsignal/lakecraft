@@ -38,6 +38,11 @@ Lakecraft should feel immediately familiar to a Minecraft Java Edition player. T
 - Because Lakebed capsules only serve the favicon as a loose static asset, final atlases/fonts must be embedded as compact source data or generated at runtime.
 - Use the reviewed installed bitmap glyph geometry already embedded for compatibility. Render at integer-ish pixel sizes with a dark one-pixel-style shadow and no synthetic weight or stroke.
 
+## Transparent-block regression contract
+
+- Ordinary glass previously disappeared with camera/order changes because its opaque frame and translucent fill both lived in a non-depth-writing transparent chunk pass. Keep the installed glass geometry in two passes: the alpha-tested frame first writes depth, then the blended fill contributes color without depth writes. Third-person held glass uses bounded volumetric frame edges rather than coplanar transparent texels. `tests/glassMaterials.test.ts` and `tests/playerSkinRenderer.test.ts` guard both paths.
+- Water's installed tile is constant 180/255 alpha. Keep water in its own near-to-far, depth-writing blended buffer before the far-to-near glass fill buffer. Stable depth ownership prevents water surfaces changing or disappearing when transparent chunk order changes without drawing every transparent face twice.
+
 ## Performance and multiplayer
 
 - Target 60 FPS on an ordinary desktop, p95 frame time under 25 ms, and no unbounded mesh or DOM growth while traveling.

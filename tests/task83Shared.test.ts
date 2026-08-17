@@ -220,8 +220,8 @@ assert.equal(PRESENCE_SAMPLE_INTERVAL_MS, 50);
 assert.equal(PRESENCE_SERVER_MIN_WRITE_INTERVAL_MS, 150,
   "adding a slab cannot increase Lakebed presence/network cadence");
 const engineSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
-assert.equal(engineSource.match(/gl\.drawArrays\(/g)?.length, 15,
-  "world slabs stay inside retained chunks; the only independent addition is the bounded global emissive-aura pass");
+assert.equal(engineSource.match(/gl\.drawArrays\(/g)?.length, 16,
+  "world slabs stay batched; only the bounded emissive aura and water-depth pass draw independently");
 assert.doesNotMatch(engineSource, /STONE_BRICK_SLAB[\s\S]{0,180}gl\.drawArrays\(/,
   "slab geometry cannot draw itself outside the existing chunk batch");
 const serverSource = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");

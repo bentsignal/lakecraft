@@ -582,6 +582,8 @@ const COMPACT_CLIENT_BASE_PROPERTY_MANGLE_CACHE = Object.freeze({
   "visibleProjectileCount": "Tn",
   "walkPhase": "Sn",
   "warningSender": "na",
+  "waterBuffer": "dT",
+  "waterVertexCount": "dX",
   "wave": "te",
   "woolCount": "Pr",
   "worldCenterX": "aX",

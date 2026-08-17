@@ -36,7 +36,7 @@ for (const breakpoint of ["max-width:400px", "max-height:420px", "max-height:290
 }
 assert.match(styles, /lc-inventory-titlebar h2\{clip-path:inset\(50%\)/,
   "removing non-Minecraft title chrome preserves the dialog's accessible name");
-assert.match(drawer, /<PlayerSkinPreview open=\{open\} pointer=\{\[pointer\.x, pointer\.y\]\} \/>/,
+assert.match(drawer, /<PlayerSkinPreview equipment=\{workspace\.equipment\} open=\{open\} pointer=\{\[pointer\.x, pointer\.y\]\} \/>/,
   "the canonical selected skin remains live and cursor-aware inside the exact panel");
 const preview = source("../client/components/PlayerSkinPreview.tsx");
 assert.ok(preview.includes('height={210}') && preview.includes('width={147}')
@@ -45,6 +45,9 @@ assert.ok(preview.includes('height={210}') && preview.includes('width={147}')
 "the official portrait viewport renders the shared third-person 3D skin without stretching it");
 assert.ok(preview.includes('getExtension("WEBGL_lose_context")?.loseContext()'),
   "closing the inventory explicitly retires its short-lived WebGL context without evicting the world renderer");
+assert.match(styles, /\.lc-armor-slot>\.lc-armor-slot__label/);
+assert.match(styles, /\.lc-armor-slot \.lc-item-glyph \{ inset:0;min-height:46px;position:absolute; \}/,
+  "armor labels cannot accidentally offset the centered item-glyph container");
 assert.match(styles, />\.lc-inventory-upper::after\{background:#c6c6c6;content:"";height:60px;left:228px;[^}]*top:183px;/,
   "the unsupported offhand slot and its one-pixel texture border are cleanly masked at 3x");
 assert.match(styles, /\.lc-crafting-arrow\{visibility:hidden;width:27px\}/,

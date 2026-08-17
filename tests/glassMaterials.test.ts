@@ -62,9 +62,18 @@ assert.equal(
 );
 
 const engineSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
-const transparentPass = engineSource.slice(engineSource.indexOf("transparentMeshes.sort(compareTransparentChunkMeshes)"));
+const transparentPass = engineSource.slice(engineSource.indexOf(
+  "waterMeshes.sort((left, right) => -compareTransparentChunkMeshes(left, right))",
+));
 assert.match(transparentPass, /gl\.enable\(gl\.BLEND\)/);
 assert.match(transparentPass, /gl\.blendFunc\(gl\.SRC_ALPHA, gl\.ONE_MINUS_SRC_ALPHA\)/);
+assert.match(engineSource, /const waterVertices: number\[\] = \[\]/);
+assert.match(engineSource, /isWaterBlock\(block\) \? waterVertices/,
+  "water owns a dedicated buffer instead of sharing camera-sorted glass geometry");
+assert.ok(engineSource.indexOf("waterMeshes.sort((left, right) => -compareTransparentChunkMeshes(left, right))")
+  < engineSource.indexOf("transparentMeshes.sort(compareTransparentChunkMeshes)"));
+assert.ok(transparentPass.indexOf("mesh.waterBuffer") < transparentPass.indexOf("gl.depthMask(false)"),
+  "near-to-far water writes stable depth before glass disables depth writes");
 assert.match(transparentPass, /gl\.depthMask\(false\)/);
 assert.match(transparentPass, /gl\.depthMask\(true\)/);
 assert.match(transparentPass, /gl\.disable\(gl\.BLEND\)/);

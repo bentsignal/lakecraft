@@ -101,7 +101,7 @@ for (const path of runtimeFiles) {
 // another Lakebed authority or multiplayer transport.
 assert.equal(runtimeFiles.length, 197, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "9ca43a1c34e8ed6fb40577d703338a857ca93595baaeb4fde4c74f09f7ace74f",
+  "1188fe613233065b1893c794311967251e02d8eb4d4e69f388a3b42985b30962",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

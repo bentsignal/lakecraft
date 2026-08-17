@@ -91,8 +91,16 @@ for (const flatOrSpecial of ["iron_ingot", "coal", "leather", "chest", "oak_fenc
     `${flatOrSpecial} keeps its exact installed sprite or installed special-model render`);
 }
 for (const shaped of ["stone_brick_slab", "oak_slab", "cobblestone_stairs", "brick_stairs"] as const) {
-  assert.ok(atlasBlockItemGuiIcon(shaped)?.some((value, index) => index % 4 === 3 && value === 255),
+  const icon = atlasBlockItemGuiIcon(shaped)!;
+  assert.ok(icon.some((value, index) => index % 4 === 3 && value === 255),
     `${shaped} uses a textured runtime-rendered building silhouette`);
+  let minX = 64; let minY = 64; let maxX = -1; let maxY = -1;
+  for (let y = 0; y < 64; y += 1) for (let x = 0; x < 64; x += 1) {
+    if (!icon[(y * 64 + x) * 4 + 3]) continue;
+    minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+  }
+  assert.ok(minX >= 4 && minY >= 8 && maxX <= 59 && maxY <= 59,
+    `${shaped} stays inside the installed GUI-model envelope instead of touching slot chrome`);
 }
 
 const itemGlyphSource = readFileSync(new URL("../client/components/ItemGlyph.tsx", import.meta.url), "utf8");
@@ -118,6 +126,8 @@ assert.match(contactSheetSource, /paintAtlasBlockGuiIcon\(blockCanvas, guiBlock\
 const atlasSource = readFileSync(new URL("../client/components/atlasBlockItemIcon.ts", import.meta.url), "utf8");
 assert.doesNotMatch(atlasSource, /type Grid = string\[\]\[\]|gridRuns|grid!|get runs/,
   "cached 64px GUI icons retain RGBA only, never a string grid or derived run list");
+assert.match(atlasSource, /block\/stairs\.json[\s\S]*?box\(\.5, \.5, 0, 1, 1, 1\)/,
+  "stair GUI geometry follows the exact installed x=8..16 upper element rather than a reversed ad-hoc model");
 
 for (const renderer of ["firstPersonRenderer.ts", "voxelEngine.ts", "droppedItemRenderer.ts"] as const) {
   const source = readFileSync(new URL(`../client/game/${renderer}`, import.meta.url), "utf8");

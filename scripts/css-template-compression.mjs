@@ -80,7 +80,7 @@ xh-autosave-status|2 xk-screen__buttons|2 xlocal-world-empty|3 xlocal-world-retr
 xunsupported__card|2 xunsupported__icon|2 xunsupported__topo|2 xunsupported-title|2 xlocal-world-feedback-copy|2 xlocal-world-stage|2
 xlocal-world-list|2 xk-screen__cause|2 xf__ingredients|2 xj-glyph__count|2
 xr-grid--player|2 ysleep__actions|0 xl__fill-layer|0
-xm-slot__label|4 xoptions-layer|2 xoptions-title|2 xoptions__note|2
+xm-slot__label|5 xoptions-layer|2 xoptions-title|2 xoptions__note|2
 xl__highlight|0 ysleep-title|0 xh__buttons|2 xl__outline|0 xpack-panel|4 xpack-title|2
 xc__source|2 xf__action|2 xh-options|2 xi-history|2 xp-options|2 xi-unread|2
 xl__empty|0 xl__sprite|3 xl__sprite--empty|2 xl__sprite--fill|2 xm-column|3 xp-ground|1 xc-title|2 xe-title|4 xg__head|2
