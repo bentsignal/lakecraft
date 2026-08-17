@@ -103,7 +103,7 @@ for (const path of runtimeFiles) {
 // authority or multiplayer transport.
 assert.equal(runtimeFiles.length, 197, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "cd00b7c4e3f199eb783349977a0096c71c2fc142847ae990e41a7390228592fc",
+  "bd801e5cd691157efbfcc7fafee9093c9f84e6dbac14a034124f769777cc6381",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))
