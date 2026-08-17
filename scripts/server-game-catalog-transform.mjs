@@ -7,14 +7,14 @@ const TUPLE_CATALOGS = [
     name: "BLOCKS",
     anchor: "export const BLOCKS = defineBlocks(",
     arrayAfterAnchor: true,
-    rows: 319,
+    rows: 323,
     widths: [8, 9],
     scalarPresentationIndexes: [1, 2, 3, 4],
   },
   {
     name: "BLOCK_ITEM_SPECS",
     anchor: "const BLOCK_ITEM_SPECS",
-    rows: 319,
+    rows: 323,
     widths: [3],
     scalarPresentationIndexes: [1, 2],
   },
@@ -289,7 +289,7 @@ const SERVER_CRAFTING_TABLE_RECIPE = `function craftingTableRecipe(id: ItemId, i
 `;
 
 const CLIENT_CATALOG_IDENTIFIER = "__lakecraftGameCatalog";
-const CLIENT_CATALOG_FINGERPRINT = "3014a56f";
+const CLIENT_CATALOG_FINGERPRINT = "8aababc3";
 
 function compressStaticBytes(bytes) {
   const packed = [];

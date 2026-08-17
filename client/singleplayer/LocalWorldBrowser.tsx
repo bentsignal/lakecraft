@@ -52,7 +52,7 @@ const WORLD_BROWSER_CSS = `
 .lc-local-world-header{align-items:center;display:grid;gap:12px;grid-template-columns:minmax(0,1fr) minmax(240px,auto);width:100%}
 .lc-local-world-search{display:block;min-width:0}
 .lc-local-world-search input,.lc-local-world-dialog input,.lc-local-world-dialog select{box-sizing:border-box;min-width:0;width:100%}
-.lc-local-world-search input{background:#111;border:2px solid;border-color:#333 #aaa #aaa #333;color:#fff;font:16px/1.25 var(--lc-pixel-font,monospace);height:44px;outline:0;padding:7px 9px 5px}
+.lc-local-world-search input{--lc-input-vpad:6px;background:#111;border:2px solid;border-color:#333 #aaa #aaa #333;color:#fff;font:16px/1.25 var(--lc-pixel-font,monospace);height:44px;outline:0;padding:7px 9px 5px}
 .lc-local-world-search input::placeholder{color:#888;opacity:1}
 .lc-local-world-search input:focus-visible{border-color:#fff;outline:2px solid #fff;outline-offset:2px}
 .lc-local-world-header>.lc-menu-button{min-width:240px;white-space:nowrap}

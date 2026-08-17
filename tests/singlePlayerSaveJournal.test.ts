@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import {
   SINGLEPLAYER_SAVE_HEAD_KEY,
+  SINGLEPLAYER_GENERATOR_VERSION,
+  SINGLEPLAYER_LEGACY_GENERATOR_VERSION,
   SINGLEPLAYER_SAVE_LIMITS,
   SINGLEPLAYER_SAVE_MAX_SLOT_CHARS,
   SINGLEPLAYER_SAVE_SLOT_A_KEY,
@@ -65,6 +67,15 @@ class MemoryStorage implements SinglePlayerStorageAdapter {
   assert.match(unsupportedSinglePlayerSaveMessage(loaded.versions), /retired terrain coordinate system/);
   assert.match(unsupportedSinglePlayerSaveMessage(loaded.versions), /No data was changed/);
   assert.match(unsupportedSinglePlayerSaveMessage([99]), /newer Lakecraft version/);
+}
+
+// The base terrain version is independent of the journal envelope: existing
+// version-2 worlds remain valid while fresh worlds opt into biome generation.
+{
+  assert.equal(createDefaultSinglePlayerSnapshot().world.generatorVersion, SINGLEPLAYER_GENERATOR_VERSION);
+  const legacy = createDefaultSinglePlayerSnapshot();
+  legacy.world.generatorVersion = SINGLEPLAYER_LEGACY_GENERATOR_VERSION;
+  assert.equal(validateSinglePlayerSnapshot(legacy).ok, true);
 }
 
 function richSnapshot(): SinglePlayerSnapshot {

@@ -34,10 +34,10 @@ for (const block of ["grass", "dirt", "stone", "glass", "leaves", "door_closed",
   assert.equal(fallSupportBlockHasCollision(block), true, `${block} supports the player`);
 }
 for (const block of ["air", "torch", "door_open", "oak_fence_gate_open", "ladder", "stone_brick_slab",
-  "sandstone_slab", "deepslate_tile_slab"] as const) {
+  "sandstone_slab", "deepslate_tile_slab", "water", "short_grass", "dandelion", "poppy"] as const) {
   assert.equal(fallSupportBlockHasCollision(block), false, `${block} does not count as solid support`);
 }
 assert.equal(validFallProbeBlock("ladder"), true);
-assert.equal(validFallProbeBlock("water"), false);
+assert.equal(validFallProbeBlock("water"), true, "water is a valid append-only world state even though it provides no support");
 
 console.log("authoritative fall world probe tests passed");

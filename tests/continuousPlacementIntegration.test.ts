@@ -24,8 +24,9 @@ assert.ok(singlePlayer.includes("continuousBlockPlacement: true"), "only the off
 assert.ok(singlePlayer.includes("ITEM_TO_ENGINE[stack.itemId] === block"), "single-player proves the selected stack can pay for the exact engine block");
 assert.ok(singlePlayer.includes("consumeSelectedPlacementStack(next, selectedSlot, placedItem)"),
   "accepted initial and repeated edits consume exactly the selected slot");
-assert.ok(singlePlayer.includes("ITEM_TO_ENGINE[placedItem] !== edit.block")
-  && singlePlayer.includes("selectedStack?.itemId !== placedItem"), "placement settlement reasserts selected item and engine block identity");
+assert.ok(singlePlayer.includes("!placementBlockMatchesItem(placedItem, edit.block)")
+  && singlePlayer.includes("selectedStack?.itemId !== placedItem"),
+"placement settlement reasserts selected-item identity while accepting its exact oriented stair state");
 assert.ok(singlePlayer.includes("engine.setSelectedBlock(nextSelected ? ITEM_TO_ENGINE[nextSelected.itemId] ?? BLOCK.AIR : BLOCK.AIR)"),
   "selected depletion synchronously disarms the engine before React reconciliation");
 assert.doesNotMatch(singlePlayer.slice(singlePlayer.indexOf("onBlockEdit:"), singlePlayer.indexOf("onMobDrops:")),

@@ -129,4 +129,34 @@ legacySocket.receive({ type: "world_snapshot", edits: [{ x: 0, y: 69, z: 0, bloc
 assert.equal(legacyWorldReady, 0, "a malformed legacy snapshot cannot bypass the authoritative loading gate");
 assert.equal(legacySocket.readyState, 3, "a malformed legacy snapshot reconnects instead of revealing partial terrain");
 legacy.stop();
+
+// Generator versions are part of terrain identity. Undefined remains the
+// explicit legacy wire value, while a hello/welcome version change must fail
+// before the client joins two different deterministic worlds.
+const versionPhases: string[] = [];
+const versioned = new RealtimeMultiplayerClient({
+  endpoint: "wss://versioned.test/ws", serverId: "versioned",
+  demo: { token: "0123456789abcdef", userId: "builder", name: "Builder" },
+  localUserId: "builder", localUsername: "Builder",
+  getPose: () => ({ x: 0.5, y: 69.02, z: 0.5, yaw: 0, pitch: 0 }),
+  onPhase: (phase) => versionPhases.push(phase), onRemotePlayers: () => {}, onWorldEdits: () => {},
+  onChatEvent: () => {}, onGameMode: () => {}, onWorldChunksReady: () => {}, onDrops: () => {},
+  onPlayerHit: () => {}, onSelfHealth: () => {},
+});
+versioned.start();
+const versionedSocket = FakeWebSocket.instance;
+versionedSocket.readyState = FakeWebSocket.OPEN;
+versionedSocket.onopen?.();
+versionedSocket.receive({
+  type: "hello", capabilities: [],
+  terrain: { preset: "default", superflatGroundY: 20, generatorVersion: 2 },
+});
+versionedSocket.receive({
+  type: "welcome", resumeToken: "resume",
+  terrain: { preset: "default", superflatGroundY: 20, generatorVersion: 3 }, player: {},
+});
+assert.equal(versionedSocket.readyState, 3, "a v2 hello followed by a v3 welcome is rejected");
+assert.ok(versionPhases.includes("error"), "a generator-version mismatch reports the terrain join error");
+assert.ok(!versionPhases.includes("online"), "a generator-version mismatch never reaches online");
+versioned.stop();
 console.log("realtime terrain handshake: ok");

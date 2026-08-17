@@ -81,5 +81,7 @@ export function validFallProbeBlock(value: unknown): value is BlockType {
 /** Matches the current client collision rule; ladders reset falls separately. */
 export function fallSupportBlockHasCollision(block: BlockType): boolean {
   return block !== "air" && block !== "torch" && block !== BS.doorOpen
-    && block !== BS.oakFenceGateOpen && block !== "ladder" && !block.endsWith("_slab");
+    && block !== BS.oakFenceGateOpen && block !== "ladder" && block !== "water"
+    && block !== "short_grass" && block !== "dandelion" && block !== "poppy"
+    && !block.endsWith("_slab");
 }

@@ -1,107 +1,64 @@
 import { useEffect, useRef } from "preact/hooks";
-import {
-  createLakecraftDefaultSkinPixels,
-  loadPersistedPlayerSkin,
-  type PlayerSkinModel,
-} from "../game/playerSkin.ts";
-import { inventoryPreviewLook } from "./inventoryPreviewLook.ts";
+import { loadPersistedPlayerSkin } from "../game/playerSkin.ts";
+import { createPlayerSkinRenderer, type PlayerSkinRenderer } from "../game/playerSkinRenderer.ts";
+import { inventoryPreviewLook, inventoryPreviewViewProjection } from "./inventoryPreviewLook.ts";
 
-function paintSkin(
-  context: CanvasRenderingContext2D,
-  source: CanvasImageSource,
-  sourceSize: number,
-  model: PlayerSkinModel,
-  look: readonly [number, number] = [0, 0],
-): void {
-  const ratio = sourceSize / 64;
-  const scale = Math.min(context.canvas.width / 80, context.canvas.height / 144);
-  context.setTransform(1, 0, 0, 1, 0, 0);
-  context.clearRect(0, 0, context.canvas.width, context.canvas.height);
-  context.setTransform(scale, 0, 0, scale, (context.canvas.width - 80 * scale) / 2, 0);
-  const sample = (u: number, v: number, width: number, height: number, x: number, y: number) => {
-    context.drawImage(source, u * ratio, v * ratio, width * ratio, height * ratio, x, y, width * 4, height * 4);
-  };
-  const armWidth = model === "slim" ? 3 : 4;
-  const leftArmX = 24 - armWidth * 4;
-  context.imageSmoothingEnabled = false;
-  // Modern-skin front UVs. Transparent overlays preserve the exact hat,
-  // sleeves, jacket, and trouser details selected for the canonical F5 rig.
-  const parts = [
-    8,8,8,8,24,4, 40,8,8,8,24,4, 20,20,8,12,24,36, 20,36,8,12,24,36,
-    44,20,armWidth,12,leftArmX,36, 44,36,armWidth,12,leftArmX,36,
-    36,52,armWidth,12,56,36, 52,52,armWidth,12,56,36,
-    4,20,4,12,24,84, 4,36,4,12,24,84, 20,52,4,12,40,84, 4,52,4,12,40,84,
-  ];
-  const paintParts = (start: number, end: number) => {
-    for (let index = start; index < end; index += 6) {
-      sample(parts[index], parts[index + 1], parts[index + 2], parts[index + 3], parts[index + 4], parts[index + 5]);
-    }
-  };
-  // Minecraft's inventory portrait follows the pointer. A small body yaw and
-  // a stronger independent head turn retain the pixel-art UVs while making the
-  // selected skin visibly look toward the cursor.
-  context.save();
-  context.translate(40, 84);
-  context.transform(1, 0, look[0] * .08, 1, look[0] * 2, 0);
-  context.translate(-40, -84);
-  paintParts(12, parts.length);
-  context.restore();
-  context.save();
-  context.translate(40 + look[0] * 5, 20 + look[1] * 3);
-  context.rotate(look[0] * .1);
-  context.scale(1 - Math.abs(look[0]) * .12, 1);
-  context.translate(-40, -20);
-  paintParts(0, 12);
-  context.restore();
-}
+type Preview = readonly [WebGLRenderingContext, PlayerSkinRenderer, Float32Array];
 
-type SkinSource = readonly [CanvasImageSource, number, PlayerSkinModel];
-
-function repaint(
-  canvas: HTMLCanvasElement | null,
-  skin: SkinSource | null,
-  pointer: readonly [number, number],
-): void {
-  const context = canvas?.getContext("2d");
-  if (!canvas || !context || !skin) return;
+function repaint(canvas: HTMLCanvasElement | null, preview: Preview | null, pointer: readonly [number, number]): void {
+  if (!canvas || !preview) return;
   const bounds = canvas.getBoundingClientRect();
-  paintSkin(context, skin[0], skin[1], skin[2],
-    inventoryPreviewLook(pointer, [bounds.left, bounds.top, bounds.width, bounds.height]));
+  const look = inventoryPreviewLook(pointer, [bounds.left, bounds.top, bounds.width, bounds.height]);
+  const [gl, renderer, viewProjection] = preview;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.clearColor(0, 0, 0, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST);
+  gl.disable(gl.CULL_FACE);
+  // The shared world renderer's yaw zero faces away from this fixed portrait
+  // camera. Rotate the base pose half a turn, then subtract screen-space look
+  // so the model's authored +Z front turns toward the cursor.
+  renderer.draw(viewProjection, { x: 0, y: 0, z: 0, yaw: Math.PI - look[0] * .42, pitch: 0 }, [1,1,1], {
+    motion: "idle", phase: 0, headYaw: look[0] * .62, headPitch: look[1] * .38,
+  });
 }
 
-/** Lightweight inventory portrait drawn from the exact locally selected skin. */
+/** True 3D inventory portrait using the exact F5 skin geometry and rig. */
 export function PlayerSkinPreview({ open, pointer }: { open: boolean; pointer: readonly [number, number] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const skinRef = useRef<SkinSource | null>(null);
+  const previewRef = useRef<Preview | null>(null);
   const pointerRef = useRef(pointer);
   pointerRef.current = pointer;
   useEffect(() => {
     let active = true;
-    const context = canvasRef.current?.getContext("2d");
-    if (!context) return;
-    const fallback = document.createElement("canvas");
-    fallback.width = 64;
-    fallback.height = 64;
-    const fallbackContext = fallback.getContext("2d");
-    if (!fallbackContext) return;
-    const image = fallbackContext.createImageData(64, 64);
-    image.data.set(createLakecraftDefaultSkinPixels());
-    fallbackContext.putImageData(image, 0, 0);
-    skinRef.current = [fallback, 64, "wide"];
-    repaint(canvasRef.current, skinRef.current, pointerRef.current);
+    const canvas = canvasRef.current;
+    const gl = canvas?.getContext("webgl", { alpha: false, antialias: false, depth: true });
+    if (!canvas || !gl) return;
+    const renderer = createPlayerSkinRenderer(gl);
+    previewRef.current = [gl, renderer, inventoryPreviewViewProjection(canvas.width / canvas.height)];
+    repaint(canvas, previewRef.current, pointerRef.current);
     const persisted = loadPersistedPlayerSkin(window.localStorage);
-    if (!persisted) return () => { active = false; };
-    const selected = new Image();
-    selected.onload = () => {
-      if (!active) return;
-      skinRef.current = [selected, persisted.width, persisted.model];
-      repaint(canvasRef.current, skinRef.current, pointerRef.current);
+    if (persisted) {
+      const selected = new Image();
+      selected.onload = () => {
+        if (!active) return;
+        renderer.setSkin(selected, persisted.model);
+        repaint(canvas, previewRef.current, pointerRef.current);
+      };
+      selected.src = persisted.dataUrl;
+    }
+    return () => {
+      active = false;
+      renderer.destroy();
+      // Inventory mounts a fresh canvas while the world keeps its own WebGL
+      // context alive. Explicitly retire this short-lived context so repeated
+      // opens cannot make the browser evict the older world renderer.
+      gl.getExtension("WEBGL_lose_context")?.loseContext();
+      previewRef.current = null;
     };
-    selected.src = persisted.dataUrl;
-    return () => { active = false; };
   }, [open]);
   useEffect(() => {
-    repaint(canvasRef.current, skinRef.current, pointer);
+    repaint(canvasRef.current, previewRef.current, pointer);
   }, [pointer[0], pointer[1]]);
-  return <canvas aria-label="Your current player skin follows the pointer" className="lc-player-preview" height={210} ref={canvasRef} role="img" width={147} />;
+  return <canvas aria-label="Your current 3D player follows the pointer" className="lc-player-preview" height={210} ref={canvasRef} role="img" width={147} />;
 }

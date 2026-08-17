@@ -4,6 +4,8 @@ export interface WorldTerrainDescriptor {
   preset: WorldPreset;
   /** Inclusive grass surface Y. Ignored by the default terrain preset. */
   superflatGroundY: number;
+  /** Missing/2 preserves shipped terrain; new local worlds opt into biome generation with 3. */
+  generatorVersion?: 2 | 3;
 }
 export const DEFAULT_SUPERFLAT_GROUND_Y = 20;
 export const SUPERFLAT_MIN_GROUND_Y = 11;
@@ -17,5 +19,6 @@ export function isWorldTerrainDescriptor(value: unknown): value is WorldTerrainD
   return (candidate.preset === "default" || candidate.preset === "superflat")
     && Number.isSafeInteger(candidate.superflatGroundY)
     && (candidate.superflatGroundY as number) >= SUPERFLAT_MIN_GROUND_Y
-    && (candidate.superflatGroundY as number) <= SUPERFLAT_MAX_GROUND_Y;
+    && (candidate.superflatGroundY as number) <= SUPERFLAT_MAX_GROUND_Y
+    && (candidate.generatorVersion === undefined || candidate.generatorVersion === 2 || candidate.generatorVersion === 3);
 }

@@ -270,6 +270,26 @@ function paintDerivedTile(output, outputIndex, columns, tileSize, name) {
     }
   };
 
+  if (name === "water") {
+    // Compact deterministic fallback. The locally imported Minecraft first
+    // frame replaces it in production, while this keeps regeneration safe.
+    fill([41, 91, 176, 180]);
+    for (let y = 0; y < tileSize; y += 1) for (let x = 0; x < tileSize; x += 1) {
+      const ripple = (x * 3 + y * 5 + (y >> 1)) & 15;
+      if (ripple === 0 || ripple === 1) paint(x, y, [56, 112, 205, 180]);
+      else if (ripple === 8) paint(x, y, [31, 75, 158, 180]);
+    }
+    return;
+  }
+
+  if (["cactus", "short_grass", "dandelion", "poppy"].includes(name)) {
+    // Imported 26.2 pixels replace these compact fail-safe silhouettes.
+    fill(name === "cactus" ? [74, 122, 48, 255] : [0, 0, 0, 0]);
+    if (name !== "cactus") for (let y = 5; y < tileSize; y += 1) paint(7, y,
+      name === "poppy" ? [198, 45, 38, 255] : name === "dandelion" ? [238, 205, 47, 255] : [82, 143, 55, 255]);
+    return;
+  }
+
   if (name === "oak_log_end") {
     const bark = [102, 68, 34, 255];
     const heartwood = [187, 136, 68, 255];
@@ -690,6 +710,7 @@ function applyNamedMaterialRules(image, names, columns, tileSize) {
 
 const PLAINS_GRASS_TINT = [0x91, 0xbd, 0x59];
 const PLAINS_FOLIAGE_TINT = [0x77, 0xab, 0x2f];
+const WATER_TINT = [0x3f, 0x76, 0xe4];
 
 function tintImportedPixel(source, offset, tint) {
   return [
@@ -730,18 +751,20 @@ function applyImportedMinecraftBlockTextures(image, names, columns, tileSize, ce
     for (let y = 0; y < tileSize; y += 1) for (let x = 0; x < tileSize; x += 1) {
       const input = (y * tileSize + x) * 4;
       const output = ((tileY * tileSize + y) * image.width + tileX * tileSize + x) * 4;
-      image.rgba.set(source.rgba.subarray(input, input + 4), output);
+      image.rgba.set(name === "water" ? tintImportedPixel(source, input, WATER_TINT)
+        : name === "short_grass" ? tintImportedPixel(source, input, PLAINS_GRASS_TINT)
+          : source.rgba.subarray(input, input + 4), output);
     }
   }
   const overlayPayload = blockLayers?.grass_side_overlay;
-  if (!decoded.grass_top || !decoded.grass_side || !decoded.leaves || !overlayPayload) {
-    fail("installed grass and leaves require top, side, side-overlay, and foliage layers.");
+  if (!decoded.grass_top || !decoded.grass_side || !decoded.leaves || !decoded.short_grass || !overlayPayload) {
+    fail("installed grass, short grass, and leaves require their tint masks plus the grass-side overlay.");
   }
   const overlay = decodeImportedPng(Buffer.from(overlayPayload, "base64"));
   if (overlay.width !== tileSize || overlay.height !== tileSize) {
     fail(`imported block layer grass_side_overlay must be ${tileSize}x${tileSize}.`);
   }
-  for (const [name, tint] of [["grass_top", PLAINS_GRASS_TINT], ["leaves", PLAINS_FOLIAGE_TINT]]) {
+  for (const [name, tint] of [["grass_top", PLAINS_GRASS_TINT], ["short_grass", PLAINS_GRASS_TINT], ["leaves", PLAINS_FOLIAGE_TINT]]) {
     const tile = names.indexOf(name);
     const source = decoded[name];
     const tileX = cells[tile] % columns;

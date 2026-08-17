@@ -63,7 +63,7 @@ assert.ok(browser.includes("grid-template-columns:minmax(0,1fr) minmax(240px,aut
   && browser.includes(".lc-local-world-header{align-items:stretch;grid-template-columns:1fr}")
   && browser.includes(".lc-local-world-header>.lc-menu-button{min-width:0;width:100%}"),
   "Create New World stays on one line beside search and expands safely below 560px");
-assert.ok(browser.includes(".lc-local-world-search input{background:#111;border:2px solid;")
+assert.ok(browser.includes(".lc-local-world-search input{--lc-input-vpad:6px;background:#111;border:2px solid;")
   && browser.includes("font:16px/1.25")
   && browser.includes("height:44px")
   && browser.includes(".lc-local-world-search input::placeholder{color:#888;opacity:1}")

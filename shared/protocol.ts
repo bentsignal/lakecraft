@@ -1,6 +1,6 @@
 import type { ItemId } from "./game.ts";
 import * as BS from "./bundleStrings.ts";
-import { EXPANDED_BLOCK_STATE_TYPES, type ExpandedWorldBlockState } from "./expandedBuildingCatalog.ts";
+import { EXPANDED_BLOCK_STATE_TYPES, NATURAL_BLOCK_STATE_TYPES, type ExpandedWorldBlockState, type NaturalBlockState } from "./expandedBuildingCatalog.ts";
 
 export const BLOCK_TYPES = [
   "air",
@@ -61,9 +61,10 @@ export const BLOCK_TYPES = [
   "brick_stairs_south",
   "brick_stairs_west",
   ...EXPANDED_BLOCK_STATE_TYPES,
+  ...NATURAL_BLOCK_STATE_TYPES,
 ] as const;
 
-export type BlockType = (typeof BLOCK_TYPES)[number] | ExpandedWorldBlockState;
+export type BlockType = (typeof BLOCK_TYPES)[number] | ExpandedWorldBlockState | NaturalBlockState;
 
 export type InventoryItem = ItemId;
 

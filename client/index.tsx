@@ -1330,7 +1330,7 @@ function RailwayMultiplayerSession({
     } catch (error) {
       setEngineError(error instanceof Error ? error.message : "Unable to start the WebGL world.");
     }
-  }, [inWorld, inventoryReady, realtimeTerrain?.preset, realtimeTerrain?.superflatGroundY]);
+  }, [inWorld, inventoryReady, realtimeTerrain?.preset, realtimeTerrain?.superflatGroundY, realtimeTerrain?.generatorVersion]);
 
   useEffect(() => {
     for (const [dropId, attemptedAt] of droppedPickupAttemptRef.current) {
@@ -1887,7 +1887,8 @@ function RailwayMultiplayerSession({
           }}
           onTerrain={(terrain) => setRealtimeTerrain((current) => current
             && current.preset === terrain.preset
-            && current.superflatGroundY === terrain.superflatGroundY ? current : terrain)}
+            && current.superflatGroundY === terrain.superflatGroundY
+            && current.generatorVersion === terrain.generatorVersion ? current : terrain)}
           onWorldSettings={(settings) => {
             engineRef.current?.setDayNightClock({epochMs:Date.now(),epochPhase:settings.dayPhase});
             engineRef.current?.setDaylightCycle(settings.daylightCycle);

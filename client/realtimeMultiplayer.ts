@@ -1043,7 +1043,8 @@ export class RealtimeMultiplayerClient {
         : isWorldTerrainDescriptor(message.terrain) ? message.terrain : null;
       if (!welcomeTerrain
         || (this.terrain && (welcomeTerrain.preset !== this.terrain.preset
-          || welcomeTerrain.superflatGroundY !== this.terrain.superflatGroundY))) {
+          || welcomeTerrain.superflatGroundY !== this.terrain.superflatGroundY
+          || welcomeTerrain.generatorVersion !== this.terrain.generatorVersion))) {
         this.options.onPhase("error", "Server terrain changed during join.");
         this.socket?.close(1002, "Terrain preset mismatch");
         return;

@@ -92,7 +92,7 @@ function blockItemRgba(itemId: ItemId, size: number): Uint8ClampedArray | undefi
   const p = (x: number, y: number, u: number, v: number): Point => [x * scale, y * scale, u, v];
   if (shaped) {
     const point = (x: number, y: number, z: number, u: number, v: number): Point =>
-      p(8 + 6 * x - 7 * z, 8 + 3 * x + 3 * z - 7 * y, u, v);
+      p(8 + 8 * x - 8 * z, 8 + 4 * x + 4 * z - 8 * y, u, v);
     const box = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): void => {
       face(rgba, size, top, [point(x0, y1, z0, x0, z0), point(x1, y1, z0, x1, z0),
         point(x1, y1, z1, x1, z1), point(x0, y1, z1, x0, z1)], 1);
@@ -105,9 +105,9 @@ function blockItemRgba(itemId: ItemId, size: number): Uint8ClampedArray | undefi
     if (itemId.endsWith("_stairs")) box(0, .5, .5, 1, 1, 1);
     return rgba;
   }
-  face(rgba, size, top, [p(8, 1, .5, 0), p(14, 4, 1, .5), p(8, 8, .5, 1), p(1, 4, 0, .5)], 1);
-  face(rgba, size, left, [p(1, 4, 0, 0), p(8, 8, 1, 0), p(8, 14, 1, 1), p(1, 10, 0, 1)], .8);
-  face(rgba, size, right, [p(8, 8, 0, 0), p(14, 4, 1, 0), p(14, 10, 1, 1), p(8, 14, 0, 1)], .6);
+  face(rgba, size, top, [p(8, 0, .5, 0), p(16, 4, 1, .5), p(8, 8, .5, 1), p(0, 4, 0, .5)], 1);
+  face(rgba, size, left, [p(0, 4, 0, 0), p(8, 8, 1, 0), p(8, 16, 1, 1), p(0, 12, 0, 1)], .8);
+  face(rgba, size, right, [p(8, 8, 0, 0), p(16, 4, 1, 0), p(16, 12, 1, 1), p(8, 16, 0, 1)], .6);
   return rgba;
 }
 

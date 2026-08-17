@@ -123,6 +123,10 @@ export type DecorativeBlockItemId =
   | typeof ADDITIONAL_ARCHITECTURAL_ITEMS[number]
   | typeof CATALOG_V3_BLOCK_ITEMS[number];
 
+/** Naturally generated plants that are also available for Creative decoration. */
+export const NATURAL_DECORATION_ITEMS = ["cactus", "short_grass", "dandelion", "poppy"] as const;
+export type NaturalDecorationItem = typeof NATURAL_DECORATION_ITEMS[number];
+
 export type ExpandedBlockItemId =
   | `${ExtraWoodFamily}_${"log" | "planks" | "leaves" | "slab" | "stairs" | "door"}`
   | `bamboo_${"block" | "planks" | "slab" | "stairs"}`
@@ -132,7 +136,7 @@ export type ExpandedBlockItemId =
   | "chiseled_sandstone" | "smooth_stone" | "calcite" | "deepslate"
   | typeof DEEPSLATE_BUILDING_ITEMS[number]
   | `${StoneShapeFamily}_${"slab" | "stairs"}`
-  | DecorativeBlockItemId;
+  | DecorativeBlockItemId | NaturalDecorationItem;
 
 export type ExpandedWorldBlockState = ExpandedBlockItemId
   | `${"oak" | "cobblestone" | "stone_brick" | "brick"}_stairs_upside_${BuildingDirection}`
@@ -142,6 +146,12 @@ export type ExpandedWorldBlockState = ExpandedBlockItemId
   | `${StoneShapeFamily}_stairs_upside_${BuildingDirection}`
   | `${ExtraWoodFamily}_door_${"closed" | "open"}_${BuildingDirection}`
   | `oak_door_${"closed" | "open"}_${Exclude<BuildingDirection, "north">}`;
+
+/** Natural states append after every deployed state so existing numeric IDs never move. */
+export const NATURAL_BLOCK_STATE_TYPES = [
+  "water", ...NATURAL_DECORATION_ITEMS,
+] as const;
+export type NaturalBlockState = typeof NATURAL_BLOCK_STATE_TYPES[number];
 
 const directions = BUILDING_DIRECTIONS as readonly string[];
 const stairStates = (family: string): string[] => [
@@ -196,4 +206,5 @@ export const EXPANDED_BLOCK_ITEM_IDS = Object.freeze([
   ...LEGACY_STONE_SHAPE_FAMILIES.flatMap(([family]) => [`${family}_slab`, `${family}_stairs`]),
   ...CATALOG_V3_BLOCK_ITEMS,
   ...CATALOG_V3_STONE_SHAPE_FAMILIES.flatMap(([family]) => [`${family}_slab`, `${family}_stairs`]),
+  ...NATURAL_DECORATION_ITEMS,
 ] as ExpandedBlockItemId[]);

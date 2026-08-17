@@ -69,6 +69,11 @@ assert.match(transparentPass, /gl\.depthMask\(false\)/);
 assert.match(transparentPass, /gl\.depthMask\(true\)/);
 assert.match(transparentPass, /gl\.disable\(gl\.BLEND\)/);
 assert.doesNotMatch(engineSource, /texel\.a < 0\.5/, "low-alpha glass center pixels must reach blending");
+assert.match(engineSource,
+  /if \(isGlassBlock\(block\)\) \{[\s\S]*?appendConnectedGlassFace\(\s*textureVertices[\s\S]*?appendConnectedGlassFace\(\s*destination/,
+  "glass frames write stable depth in the opaque pass before their translucent fill blends");
+assert.match(engineSource, /playerSkinRenderer\.setHeldItem\(selectedItem\)/,
+  "creative and survival use the same selected-item path for local third-person glass");
 assert.ok(
   engineSource.indexOf("if (nameplateVertexCount)") < engineSource.indexOf("transparentMeshes.sort(compareTransparentChunkMeshes)"),
   "glass composites after opaque terrain, players, mobs, drops, and nameplates",

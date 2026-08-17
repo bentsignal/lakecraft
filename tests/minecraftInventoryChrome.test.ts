@@ -40,8 +40,11 @@ assert.match(drawer, /<PlayerSkinPreview open=\{open\} pointer=\{\[pointer\.x, p
   "the canonical selected skin remains live and cursor-aware inside the exact panel");
 const preview = source("../client/components/PlayerSkinPreview.tsx");
 assert.ok(preview.includes('height={210}') && preview.includes('width={147}')
-  && preview.includes("context.setTransform(scale"),
-"the portrait canvas matches the official viewport without stretching the selected skin");
+  && preview.includes("createPlayerSkinRenderer(gl)")
+  && preview.includes("inventoryPreviewViewProjection(canvas.width / canvas.height)"),
+"the official portrait viewport renders the shared third-person 3D skin without stretching it");
+assert.ok(preview.includes('getExtension("WEBGL_lose_context")?.loseContext()'),
+  "closing the inventory explicitly retires its short-lived WebGL context without evicting the world renderer");
 assert.match(styles, />\.lc-inventory-upper::after\{background:#c6c6c6;content:"";height:60px;left:228px;[^}]*top:183px;/,
   "the unsupported offhand slot and its one-pixel texture border are cleanly masked at 3x");
 assert.match(styles, /\.lc-crafting-arrow\{visibility:hidden;width:27px\}/,

@@ -1,7 +1,7 @@
 import type { BlockId, ItemId } from "../../shared/game.ts";
 import { BLOCK, blockStateName, type BlockId as EngineBlockId } from "../game/types.ts";
 import type { GameAudioSurface } from "../game/audio.ts";
-import { EXPANDED_BLOCK_ITEM_IDS, EXPANDED_BLOCK_STATE_TYPES, EXTRA_WOOD_FAMILIES } from "../../shared/expandedBuildingCatalog.ts";
+import { EXPANDED_BLOCK_ITEM_IDS, EXPANDED_BLOCK_STATE_TYPES, EXTRA_WOOD_FAMILIES, NATURAL_DECORATION_ITEMS } from "../../shared/expandedBuildingCatalog.ts";
 
 const EXPANDED_WOOD_SHAPE_PREFIXES = [...EXTRA_WOOD_FAMILIES, "bamboo"] as const;
 
@@ -48,6 +48,7 @@ const BASE_ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
 export const ENGINE_TO_GAME: Readonly<Partial<Record<EngineBlockId, BlockId>>> = Object.freeze({
   ...BASE_ENGINE_TO_GAME,
   ...Object.fromEntries(EXPANDED_BLOCK_STATE_TYPES.map((state, index) => [57 + index, gameItemForExpandedState(state)])),
+  ...Object.fromEntries(NATURAL_DECORATION_ITEMS.map((item) => [BLOCK[item.toUpperCase() as keyof typeof BLOCK], item])),
 });
 
 const BASE_ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
@@ -72,8 +73,14 @@ export const ITEM_TO_ENGINE: Readonly<Partial<Record<ItemId, EngineBlockId>>> = 
   })),
 });
 
+/** Authorize a placed directional state by its canonical inventory identity. */
+export function placementBlockMatchesItem(itemId: ItemId, block: EngineBlockId): boolean {
+  return ITEM_TO_ENGINE[itemId] !== undefined && ENGINE_TO_GAME[block] === itemId;
+}
+
 export function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
   const state = blockStateName(block);
+  if ((NATURAL_DECORATION_ITEMS as readonly string[]).includes(state)) return "grass";
   if (state.includes("_planks") || state.includes("_log") || state.includes("_leaves") || state.includes("_door_")
     || (state.includes("_slab") || state.includes("_stairs_"))
       && EXPANDED_WOOD_SHAPE_PREFIXES.some((family) => state.startsWith(`${family}_`))) return "wood";

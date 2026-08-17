@@ -1,6 +1,6 @@
 
 import * as BS from "./bundleStrings.ts";
-import { EXPANDED_BLOCK_STATE_TYPES, type ExpandedWorldBlockState } from "./expandedBuildingCatalog.ts";
+import { EXPANDED_BLOCK_STATE_TYPES, NATURAL_BLOCK_STATE_TYPES, type ExpandedWorldBlockState, type NaturalBlockState } from "./expandedBuildingCatalog.ts";
 export const WORLD_EDIT_CHUNK_SIZE = 8;
 export const WORLD_EDIT_MIN_XZ = -1_000_000;
 export const WORLD_EDIT_MAX_XZ = 1_000_000;
@@ -73,9 +73,10 @@ export const WORLD_CHUNK_BLOCK_TYPES = [
   "brick_stairs_south",
   "brick_stairs_west",
   ...EXPANDED_BLOCK_STATE_TYPES,
+  ...NATURAL_BLOCK_STATE_TYPES,
 ] as const;
 
-export type WorldChunkBlockType = (typeof WORLD_CHUNK_BLOCK_TYPES)[number] | ExpandedWorldBlockState;
+export type WorldChunkBlockType = (typeof WORLD_CHUNK_BLOCK_TYPES)[number] | ExpandedWorldBlockState | NaturalBlockState;
 
 if (WORLD_CHUNK_BLOCK_TYPES.length > WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES) {
   throw new Error("World chunk block palette exceeds the current codec capacity.");

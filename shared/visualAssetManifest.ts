@@ -8,7 +8,7 @@ export const VISUAL_ASSET_MANIFEST = Object.freeze({
     generator: "scripts/generate-item-icon-art.ts",
     output: "client/components/itemIconArt.ts",
     logicalResolution: 16,
-    fingerprint: "b8763553",
+    fingerprint: "a8cfcbe9",
   }),
   blockAtlas: Object.freeze({
     sourceKind: "original-concept-plus-minecraft-26.2-local-import" as const,
@@ -17,7 +17,7 @@ export const VISUAL_ASSET_MANIFEST = Object.freeze({
     generator: "scripts/pixelate-texture-sheet.mjs",
     output: "client/game/generated/texture-atlas-v1.png",
     logicalResolution: 16,
-    fingerprint: "6e609e70",
+    fingerprint: "f1bb2aa4",
   }),
   defaultPlayerSkin: Object.freeze({
     sourceKind: "minecraft-26.2-local-import" as const,

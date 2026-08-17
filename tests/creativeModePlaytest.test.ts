@@ -71,7 +71,7 @@ const itemIds = canonicalLocalItemIds();
 assert.deepEqual(itemIds, Object.keys(ITEMS).sort(), "catalog covers every canonical game item exactly once");
 for (const itemId of itemIds) {
   const picked = pickCreativeCatalogItem(empty, 4, itemId);
-  assert.deepEqual(picked[4], createItemStack(itemId, ITEMS[itemId].maxStack));
+  assert.deepEqual(picked[4], createItemStack(itemId));
   assert.equal(picked.filter(Boolean).length, 1);
 }
 assert.deepEqual(empty, createEmptyInventory(), "catalog picks never mutate their source inventory");
@@ -146,6 +146,9 @@ assert.ok(drawer.includes("Player Inventory"), "catalog-first UI exposes the ful
 assert.ok(drawer.includes("Object.values(ITEMS)"), "catalog derives from the canonical item table");
 assert.ok(drawer.includes("takeCreativeCatalogStack(stateRef.current"), "catalog clicks use the shared cursor workspace");
 assert.ok(drawer.includes("insertCreativeCatalogStack(stateRef.current"), "modifier clicks use the shared slot-addressed workspace");
+assert.ok(drawer.includes("const stack = createItemStack(item.id)"), "catalog tiles never obscure their art with a 64 counter");
+assert.ok(app.includes('if (gameModeRef.current === "creative") return true;'),
+  "the visible one-item Creative stack still places infinitely without consumption");
 assert.equal(drawer.includes("onCreativePick"), false, "catalog picks never bypass the workspace to overwrite the selected hotbar slot");
 assert.ok(drawer.includes('if (!commitWorkspace()) return;\n    onClose(keyboardCode);'),
   "Creative and Survival both commit one stowed workspace before reporting the close key");

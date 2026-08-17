@@ -95,11 +95,13 @@ for (const path of runtimeFiles) {
 // dirt/loading presentation, the shared world-loading surface, and hash-checked
 // remote mob-atlas decoding for the compact capsule, the embedded Lake Bed
 // Edition title, exact hotbar textures, visible transparent held blocks, and
-// cursor-directed inventory portrait geometry; none adds another Lakebed
-// authority or multiplayer transport.
+// cursor-directed 3D inventory portrait geometry, directional stair placement,
+// depth-stable glass, versioned local biomes, water/swimming, natural flora,
+// and non-solid authoritative fall probes for those natural states; none adds
+// another Lakebed authority or multiplayer transport.
 assert.equal(runtimeFiles.length, 197, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "335373cf9a0098d6b9a1fe49e97e8b57d2a00c2660a77a281d6791fab4ac5cb8",
+  "9ca43a1c34e8ed6fb40577d703338a857ca93595baaeb4fde4c74f09f7ace74f",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

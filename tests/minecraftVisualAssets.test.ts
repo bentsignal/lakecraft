@@ -46,8 +46,8 @@ assert.equal(Object.keys(assets.itemTextures).length, 67);
 assert.equal(assets.bowStages.length, 3);
 assert.equal(Object.keys(assets.entities).length, 12);
 assert.ok(Object.hasOwn(assets.entities, "chicken"), "the exact temperate chicken joins every implemented mob texture");
-assert.equal(Object.keys(assets.blocks).length, 232);
-assert.equal(Object.keys(assets.blockItemTextures).length, 11);
+assert.equal(Object.keys(assets.blocks).length, 237);
+assert.equal(Object.keys(assets.blockItemTextures).length, 15);
 assert.deepEqual(Object.keys(assets.blockLayers), ["grass_side_overlay"]);
 assert.deepEqual(Object.keys(assets.blockItemModelChains), [
   "chest", "oak_fence", "oak_fence_gate", "stone_brick_slab",
@@ -105,7 +105,9 @@ assert.deepEqual(assets.models.block.display?.firstperson_righthand, {
   scale: [0.4, 0.4, 0.4],
 });
 
-function assertExactPixels(art: ItemIconArt, payload: string, label: string): void {
+function assertExactPixels(
+  art: ItemIconArt, payload: string, label: string, tintChannels?: readonly [number, number, number],
+): void {
   const image = decodePng(Buffer.from(payload, "base64"));
   assert.deepEqual([image.width, image.height], [16, 16], `${label} source remains 16x16`);
   const actual = new Map<string, string>();
@@ -116,8 +118,9 @@ function assertExactPixels(art: ItemIconArt, payload: string, label: string): vo
   for (let y = 0; y < 16; y += 1) for (let x = 0; x < 16; x += 1) {
     const offset = (y * 16 + x) * 4;
     if (image.rgba[offset + 3] < 128) continue;
-    expected.set(`${x}:${y}`, `#${[0, 1, 2]
-      .map((channel) => image.rgba[offset + channel].toString(16).padStart(2, "0")).join("")}`);
+    expected.set(`${x}:${y}`, `#${[0, 1, 2].map((channel) => (
+      tintChannels ? Math.round(image.rgba[offset + channel] * tintChannels[channel] / 255) : image.rgba[offset + channel]
+    ).toString(16).padStart(2, "0")).join("")}`);
   }
   assert.deepEqual(actual, expected, `${label} production runs exactly preserve installed RGBA pixels`);
 }
@@ -128,7 +131,9 @@ const exactItems = Object.entries(ITEMS)
 assert.equal(exactItems.length, 67);
 for (const itemId of exactItems) assertExactPixels(getItemIconArt(itemId), assets.itemTextures[itemId], itemId);
 for (const [itemId, payload] of Object.entries(assets.blockItemTextures)) {
-  assertExactPixels(getItemIconArt(itemId as ItemId), payload, itemId);
+  if (itemId === "cactus") continue; // Full blocks use the shared isometric atlas cube in inventory.
+  assertExactPixels(getItemIconArt(itemId as ItemId), payload, itemId,
+    itemId === "short_grass" ? [0x91, 0xbd, 0x59] : undefined);
 }
 for (const stage of [1, 2, 3] as const) {
   assertExactPixels(getBowIconArt(stage), assets.bowStages[stage - 1], `bow_pulling_${stage - 1}`);
@@ -158,7 +163,7 @@ assert.deepEqual(
   decodePng(Buffer.from(assets.entities.player_wide, "base64")).rgba,
   "the production default player skin exactly preserves the installed standard 64x64 RGBA texture",
 );
-const tintedTiles = new Set(["grass_top", "grass_side", "leaves"]);
+const tintedTiles = new Set(["grass_top", "grass_side", "leaves", "short_grass", "water"]);
 for (const [name, payload] of Object.entries(assets.blocks)) {
   const image = decodePng(Buffer.from(payload, "base64"));
   assert.deepEqual([image.width, image.height], [16, 16], `${name} retains its exact block tile`);
@@ -183,12 +188,14 @@ for (const [name, payload] of Object.entries(assets.blocks)) {
 const tint = (value: number, channel: number): number => Math.round(value * channel / 255);
 const plainsGrass = [0x91, 0xbd, 0x59] as const;
 const plainsFoliage = [0x77, 0xab, 0x2f] as const;
-const sourceTiles = Object.fromEntries(["grass_top", "grass_side", "leaves"].map((name) => [
+const waterTint = [0x3f, 0x76, 0xe4] as const;
+const sourceTiles = Object.fromEntries(["grass_top", "grass_side", "leaves", "short_grass", "water"].map((name) => [
   name,
   decodePng(Buffer.from(assets.blocks[name], "base64")),
 ]));
 const grassOverlay = decodePng(Buffer.from(assets.blockLayers.grass_side_overlay, "base64"));
-for (const [name, channels] of [["grass_top", plainsGrass], ["leaves", plainsFoliage]] as const) {
+for (const [name, channels] of [["grass_top", plainsGrass], ["short_grass", plainsGrass],
+  ["leaves", plainsFoliage], ["water", waterTint]] as const) {
   const source = sourceTiles[name];
   const tile = TEXTURE_ATLAS_NAMES.indexOf(name);
   const cell = TEXTURE_ATLAS_CELLS[tile];

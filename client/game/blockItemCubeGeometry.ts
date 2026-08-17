@@ -10,7 +10,7 @@ import {
   type TextureAtlasName,
 } from "./generated/textureAtlas.ts";
 import { BLOCK, type BlockId } from "./types.ts";
-import { EXPANDED_BLOCK_ITEM_IDS } from "../../shared/expandedBuildingCatalog.ts";
+import { EXPANDED_BLOCK_ITEM_IDS, NATURAL_DECORATION_ITEMS } from "../../shared/expandedBuildingCatalog.ts";
 
 type Vec3 = readonly [number, number, number];
 
@@ -53,6 +53,7 @@ export function blockIdForCubeItem(itemId: ItemId): BlockId | null {
   const base = BLOCK_ITEMS[itemId];
   if (base !== undefined) return base;
   if (!(EXPANDED_BLOCK_ITEM_IDS as readonly string[]).includes(itemId)
+    || (NATURAL_DECORATION_ITEMS as readonly string[]).includes(itemId) && itemId !== "cactus"
     || itemId.endsWith("_slab") || itemId.endsWith("_stairs") || itemId.endsWith("_door")) return null;
   return (BLOCK as Readonly<Record<string, BlockId>>)[itemId.toUpperCase()] ?? null;
 }
@@ -107,6 +108,38 @@ function transformPoint(point: Vec3, center: Vec3, size: number, rotation: Vec3)
   return [x + center[0], y + center[1], z + center[2]];
 }
 
+/** Opaque color-only rods stay legible from every third-person camera angle. */
+function appendGlassFrame(
+  output: number[], block: BlockId, center: Vec3, size: number, rotation: Vec3,
+): number {
+  const texture = blockTextureForFace(block, "north");
+  if (!texture) return 0;
+  let frame: readonly [number, number, number, number] = [180, 225, 225, 0];
+  for (let y = 0; y < TEXTURE_TILE_SIZE; y += 1) for (let x = 0; x < TEXTURE_TILE_SIZE; x += 1) {
+    const sample = atlasPixel(texture, x, y);
+    if (sample[3] > frame[3] || sample[3] === frame[3]
+      && sample[0] + sample[1] + sample[2] > frame[0] + frame[1] + frame[2]) frame = sample;
+  }
+  const edge = 2 / TEXTURE_TILE_SIZE;
+  const bars: Array<readonly [Vec3, Vec3]> = [];
+  for (const a of [0, 1 - edge]) for (const b of [0, 1 - edge]) {
+    bars.push([[0, a, b], [1, a + edge, b + edge]]);
+    bars.push([[a, 0, b], [a + edge, 1, b + edge]]);
+    bars.push([[a, b, 0], [a + edge, b + edge, 1]]);
+  }
+  const start = output.length;
+  for (const [min, max] of bars) for (const face of CUBE_FACES) for (const point of face[5]) {
+    const transformed = transformPoint([
+      min[0] + point[0] * (max[0] - min[0]),
+      min[1] + point[1] * (max[1] - min[1]),
+      min[2] + point[2] * (max[2] - min[2]),
+    ], center, size, rotation);
+    output.push(transformed[0], transformed[1], transformed[2],
+      frame[0] / 255 * face[4], frame[1] / 255 * face[4], frame[2] / 255 * face[4]);
+  }
+  return (output.length - start) / BLOCK_ITEM_CUBE_VERTEX_FLOATS;
+}
+
 /**
  * Emits one true six-face cube from the exact authored world-atlas texels.
  * Each non-transparent texel becomes two color-shaded triangles, so the held
@@ -124,6 +157,9 @@ export function appendBlockItemCubeGeometry(
   const rotation = options.rotationDegrees ?? [0, 0, 0];
   if (!Number.isFinite(size) || size <= 0 || !center.every(Number.isFinite) || !rotation.every(Number.isFinite)) {
     throw new Error("Block item cube options must be finite and visible.");
+  }
+  if (options.thickenTransparentEdges && (itemId === "glass" || itemId.endsWith("_stained_glass"))) {
+    return appendGlassFrame(output, block, center, size, rotation);
   }
   const start = output.length;
   for (const face of CUBE_FACES) {

@@ -66,6 +66,7 @@ import {
   ENGINE_TO_GAME,
   GameplaySessionSurface,
   ITEM_TO_ENGINE,
+  placementBlockMatchesItem,
 } from "../gameplay/index.ts";
 import {
   clientAudioLevels,
@@ -1205,6 +1206,7 @@ function LocalGameplaySession({
     };
     const engine = createGameplaySessionEngine(canvas, createLocalGameplayAuthority({
       seed: worldRef.current.seed,
+      terrain: { preset: "default", superflatGroundY: 20, generatorVersion: worldRef.current.generatorVersion as 2 | 3 },
       streamingChunkRadius: clientSettingsRef.current.renderDistance,
       initialEdits: [...editsRef.current.values()],
       initialBedStructures: initialSnapshot.world.beds ?? [],
@@ -1393,7 +1395,7 @@ function LocalGameplaySession({
           const placedItem = ENGINE_TO_GAME[edit.block];
           const selectedSlot = selectedRef.current;
           const selectedStack = next[selectedSlot];
-          if (!placedItem || ITEM_TO_ENGINE[placedItem] !== edit.block || selectedStack?.itemId !== placedItem) {
+          if (!placedItem || selectedStack?.itemId !== placedItem || !placementBlockMatchesItem(placedItem, edit.block)) {
             throw new Error("Accepted local placement no longer matches the selected stack.");
           }
           const payment = consumeSelectedPlacementStack(next, selectedSlot, placedItem);

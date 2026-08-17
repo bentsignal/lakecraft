@@ -51,6 +51,15 @@ for (const character of Array.from("°·×–—…→↑↓↔●")) {
 }
 assert.ok(hud.includes('import { LAKECRAFT_PIXEL_FONT_CSS }') && lobby.includes('import { LAKECRAFT_PIXEL_FONT_CSS }'),
   "HUD and menu surfaces share one coherent embedded font definition");
+const baseline = font.match(/--lc-input-vpad:(\d+)px;padding-block:calc\(var\(--lc-input-vpad\) \+ (\d+)px\) calc\(var\(--lc-input-vpad\) - (\d+)px\)!important/);
+assert.ok(baseline, "one root primitive governs typed text and placeholder geometry for every text input");
+const [, defaultPadding, topShift, bottomShift] = baseline.map(Number);
+assert.equal(topShift, bottomShift);
+assert.equal(defaultPadding + topShift + defaultPadding - bottomShift, defaultPadding * 2,
+  "optical centering redistributes padding downward without changing field height");
+assert.ok(lobby.includes(".lc-username-menu input{--lc-input-vpad:5px")
+  && readFileSync(new URL("../client/components/InventoryDrawer.tsx", import.meta.url), "utf8").includes('style="--lc-input-vpad:9px"'),
+"auth/dialog and Creative inputs retain their original total padding through the shared baseline contract");
 assert.ok(notices.includes("interface font") && notices.includes("26.2 assets") && notices.includes("font-atlas pixel"),
   "embedded font provenance remains explicit");
 

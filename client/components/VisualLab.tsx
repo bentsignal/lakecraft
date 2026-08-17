@@ -331,7 +331,7 @@ export function VisualLab({ open, onApplySkin, onClose, skinStorage }: VisualLab
         <div className="lc-visual-lab__body">
           <aside className="lc-visual-lab__catalog">
             {catalogMode ? <>
-            <label><span>SEARCH CATALOG</span><input className="lc-visual-lab__search" onInput={(event) => setSearch(event.currentTarget.value)} placeholder="pickaxe, ore, food…" type="search" value={search} /></label>
+            <label><span>SEARCH CATALOG</span><input className="lc-visual-lab__search" onInput={(event) => setSearch(event.currentTarget.value)} placeholder="pickaxe, ore, food…" style="--lc-input-vpad:9px" type="search" value={search} /></label>
             <div aria-label="Catalog category" className="lc-visual-lab__filters" role="group">
               {FILTERS.map((value) => <button aria-pressed={filter === value} key={value} onClick={() => setFilter(value)} type="button">{value}</button>)}
             </div>

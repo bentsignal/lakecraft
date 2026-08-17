@@ -116,7 +116,7 @@ export function rightClickInventorySlot(state: InventoryWorkspace, slot: number)
   return clickInventorySlot(state, slot, true);
 }
 
-/** Takes one infinite canonical Creative stack onto the shared inventory cursor. */
+/** Takes one Creative item; placement remains infinite while Creative is active. */
 export function takeCreativeCatalogStack(
   state: InventoryWorkspace,
   itemId: ItemId,
@@ -130,8 +130,8 @@ export function takeCreativeCatalogStack(
 }
 
 /**
- * Ctrl/Cmd-click inserts one full Creative stack into the first compatible or
- * free player slot. The operation is atomic: partial capacity changes nothing.
+ * Ctrl/Cmd-click inserts one Creative item into the first compatible or free
+ * player slot. Creative placement does not consume this visible count.
  */
 export function insertCreativeCatalogStack(
   state: InventoryWorkspace,
@@ -445,7 +445,7 @@ function withCount(stack: ItemStack, count: number): ItemStack {
 }
 
 function createCreativeStack(itemId: ItemId): ItemStack {
-  return createItemStack(itemId, ITEMS[itemId].maxStack);
+  return createItemStack(itemId);
 }
 
 function cloneStack(stack: ItemStack | null): ItemStack | null {

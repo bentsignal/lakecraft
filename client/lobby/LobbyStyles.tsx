@@ -20,7 +20,7 @@ const LOBBY_CSS = `
 .lc-world-line strong{font-size:15px;font-weight:400}.lc-world-line small{color:#aaa;font-size:12px}
 .lc-username-menu{background:rgba(0,0,0,.65);border:2px solid #111;margin-top:clamp(34px,7vh,76px);padding:20px;text-align:center}
 .lc-username-menu h2{font-size:25px;font-weight:400;margin:0 0 11px}.lc-username-menu>p{color:#ddd;font-size:13px;margin:0 0 15px}
-.lc-username-menu input{background:#111;border:2px solid;border-color:#333 #aaa #aaa #333;color:#fff;font-size:18px;height:42px;outline:0;padding:5px 9px;text-shadow:2px 2px #202020;width:100%}.lc-username-menu input:focus{border-color:#fff}
+.lc-username-menu input{--lc-input-vpad:5px;background:#111;border:2px solid;border-color:#333 #aaa #aaa #333;color:#fff;font-size:18px;height:42px;outline:0;padding:5px 9px;text-shadow:2px 2px #202020;width:100%}.lc-username-menu input:focus{border-color:#fff}
 .lc-username-help{color:#aaa!important;font-size:12px!important;height:18px;margin:7px 0 12px!important}.lc-username-help.is-error,.lc-title-error{color:#ff5555!important}
 .lc-menu-link{background:none;border:0;color:#aaa;cursor:pointer;font-size:12px;margin-top:14px;text-decoration:underline}
 .lc-title-loading{background:rgba(0,0,0,.55);font-size:16px;margin-top:80px;padding:10px 14px}.lc-title-error{background:rgba(0,0,0,.65);font-size:13px;margin:1px 0 0;padding:7px;text-align:center}

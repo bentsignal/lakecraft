@@ -10,6 +10,7 @@ import {
   appendStairMesh,
   stairFacingFromYaw,
   stairPlacementBlock,
+  stairPlacementIsUpsideDown,
 } from "../client/game/voxelEngine.ts";
 import {
   blockCollisionHeightAt,
@@ -23,7 +24,8 @@ import { readFileSync } from "node:fs";
 import { BLOCK, isSlabBlock, isStairBlock, stairFacingForBlock } from "../client/game/types.ts";
 import { createEmptyInventory } from "../shared/game.ts";
 import { blockTextureForFace } from "../client/game/blockTextures.ts";
-import { ENGINE_TO_GAME, ITEM_TO_ENGINE } from "../client/gameplay/catalog.ts";
+import { ENGINE_TO_GAME, ITEM_TO_ENGINE, placementBlockMatchesItem } from "../client/gameplay/catalog.ts";
+import { raycastVoxels } from "../client/game/terrain.ts";
 
 const slabs = [BLOCK.STONE_BRICK_SLAB, BLOCK.OAK_SLAB, BLOCK.COBBLESTONE_SLAB, BLOCK.BRICK_SLAB] as const;
 for (const slab of slabs) {
@@ -60,6 +62,9 @@ assert.equal(planPlayerHalfStep(0.5, 1, 0.5, 0, 0.3, false, 0, () => false, () =
 assert.equal(planPlayerHalfStep(0.5, 1, 0.5, 0, 0.3, true, 0, () => false, () => false), null,
   "a step is accepted only when the raised pose has exact support");
 const engineSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
+const singlePlayerSource = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
+assert.match(singlePlayerSource, /placementBlockMatchesItem\(placedItem, edit\.block\)/,
+  "survival consumes directional placement through canonical item identity");
 assert.match(engineSource, /stepVisualOffsetY \+= initialY - step\[1\]/,
   "the rendered camera/body stays at its pre-step height when collision authority steps upward");
 assert.match(engineSource, /stepVisualOffsetY \+= dt \* 5;[\s\S]*?stepVisualOffsetY > 0/,
@@ -79,8 +84,27 @@ assert.deepEqual([0, Math.PI / 2, Math.PI, -Math.PI / 2].map(stairFacingFromYaw)
 assert.equal(stairFacingFromYaw(Math.PI * 2), "north", "wrapped camera yaw preserves its cardinal direction");
 
 const placementTarget = {
-  block: { x: 0, y: 1, z: 0, block: BLOCK.STONE }, place: { x: 0, y: 0, z: 0 }, distance: 2,
+  block: { x: 0, y: 1, z: 0, block: BLOCK.STONE }, place: { x: 0, y: 0, z: 0 },
+  hit: { x: 0.5, y: 1, z: 0.5 }, distance: 2,
 } as const;
+const floorTarget = { ...placementTarget, place: { x: 0, y: 2, z: 0 }, hit: { x: 0.5, y: 2, z: 0.5 } } as const;
+const lowerSideTarget = { ...placementTarget, place: { x: 0, y: 1, z: -1 }, hit: { x: 0.5, y: 1.25, z: 0 } } as const;
+const upperSideTarget = { ...lowerSideTarget, hit: { x: 0.5, y: 1.75, z: 0 } } as const;
+assert.equal(stairPlacementIsUpsideDown(-1, floorTarget), false, "top face always places a normal stair");
+assert.equal(stairPlacementIsUpsideDown(1, placementTarget), true, "underside always places an upside-down stair");
+assert.equal(stairPlacementIsUpsideDown(1, lowerSideTarget), false, "lower side hit ignores camera pitch");
+assert.equal(stairPlacementIsUpsideDown(-1, upperSideTarget), true, "upper side hit ignores camera pitch");
+assert.equal(stairPlacementBlock(BLOCK.OAK_STAIRS_NORTH, 0, 0, lowerSideTarget, [1, 0]), BLOCK.OAK_STAIRS_EAST,
+  "the actual horizontal ray wins over a stale yaw fallback");
+assert.equal(stairPlacementBlock(BLOCK.OAK_STAIRS_NORTH, 0, 0, lowerSideTarget, [-1, 0]), BLOCK.OAK_STAIRS_WEST,
+  "opposite camera rays produce opposite stair headings");
+for (const [originY, expected] of [[1.25, false], [1.75, true]] as const) {
+  const sideHit = raycastVoxels([0.5, originY, -2], [0, 0, 1],
+    (x, y, z) => x === 0 && y === 1 && z === 0 ? BLOCK.STONE : BLOCK.AIR, 4);
+  assert.ok(sideHit?.hit, "shared raycast retains the exact side-face impact point");
+  assert.equal(stairPlacementIsUpsideDown(0, sideHit ?? undefined), expected,
+    `${expected ? "upper" : "lower"} ray hit selects the correct stair half`);
+}
 const directionFixtures = [[0, "NORTH"], [Math.PI / 2, "EAST"], [Math.PI, "SOUTH"], [-Math.PI / 2, "WEST"]] as const;
 for (const [family, source] of STONE_SHAPE_FAMILIES) {
   const slabItem = `${family}_slab` as keyof typeof ITEMS;
@@ -104,6 +128,11 @@ for (const [family, source] of STONE_SHAPE_FAMILIES) {
   const upside = directionFixtures.map(([yaw, suffix]) => stairPlacementBlock(north, yaw, 0, placementTarget)
     === BLOCK[`${family}_stairs_upside_${suffix}`.toUpperCase() as keyof typeof BLOCK]);
   assert.deepEqual(upside, [true, true, true, true], `${family} underside stairs preserve every cardinal heading`);
+  for (const suffix of ["EAST", "NORTH", "SOUTH", "WEST", "UPSIDE_EAST", "UPSIDE_NORTH", "UPSIDE_SOUTH", "UPSIDE_WEST"] as const) {
+    const variant = BLOCK[`${family}_stairs_${suffix}`.toUpperCase() as keyof typeof BLOCK];
+    assert.equal(placementBlockMatchesItem(stairItem, variant), true,
+      `${family} ${suffix.toLowerCase()} authorizes against its canonical inventory item`);
+  }
   for (const [shapeItem, placedBlock] of [[slabItem, `${family}_slab`], [stairItem, `${family}_stairs_upside_west`]] as const) {
     const familyInventory = createEmptyInventory();
     familyInventory[0] = { itemId: shapeItem, count: 1 };
@@ -157,7 +186,7 @@ assert.equal(BLOCK_TYPES[BLOCK.OAK_SLAB], "oak_slab");
 assert.equal(BLOCK_TYPES[BLOCK.BRICK_STAIRS_WEST], "brick_stairs_west");
 assert.ok(BLOCK.NETHER_WART_BLOCK <= REALTIME_BLOCK_ID_MAX);
 assert.equal(BLOCK.DEEPSLATE_TILE_STAIRS_UPSIDE_WEST, 498, "the complete deployed v1 palette keeps its last numeric id");
-assert.equal(BLOCK_TYPES.length, 753, "the v2 append-only catalog crosses the retired 9-bit ceiling");
+assert.equal(BLOCK_TYPES.length, 758, "the append-only catalog includes five natural biome states");
 assert.ok(BLOCK.RESIN_BRICK_STAIRS_UPSIDE_WEST > 511 && BLOCK.RESIN_BRICK_STAIRS_UPSIDE_WEST <= REALTIME_BLOCK_ID_MAX);
 assert.ok(BLOCK.DEEPSLATE_TILE_STAIRS_UPSIDE_WEST <= REALTIME_BLOCK_ID_MAX);
 const encoded = encodeRealtimeChunkEdits(0, 0, [{x:1,y:20,z:1,block:BLOCK.NETHER_WART_BLOCK}]);

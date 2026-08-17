@@ -14,19 +14,19 @@ import {
   takeCreativeCatalogStack,
 } from "../shared/inventoryWorkspace.ts";
 
-// Normal click takes an infinite full stack onto the same cursor used by every
-// inventory interaction; clicking or dropping onto a chosen slot places it.
+// Normal click takes one visible infinite-use item onto the same cursor used by
+// every inventory interaction; Creative placement itself does not consume it.
 let state = createInventoryWorkspace(createEmptyInventory(), createEmptyEquipment());
 let result = takeCreativeCatalogStack(state, "dirt");
 assert.equal(result.ok, true);
 if (!result.ok) throw new Error(result.reason);
 state = result.state;
-assert.deepEqual(state.cursor, createItemStack("dirt", 64));
+assert.deepEqual(state.cursor, createItemStack("dirt"));
 result = leftClickInventorySlot(state, 11);
 assert.equal(result.ok, true);
 if (!result.ok) throw new Error(result.reason);
 state = result.state;
-assert.deepEqual(state.inventory[11], createItemStack("dirt", 64));
+assert.deepEqual(state.inventory[11], createItemStack("dirt"));
 assert.equal(state.cursor, null);
 
 // A second catalog item goes to the next chosen slot and never replaces slot 8
@@ -54,8 +54,8 @@ assert.equal(blocked.reason, "cursor_blocked");
 assert.deepEqual(blocked.state, held);
 assert.notEqual(blocked.state, held);
 
-// Ctrl/Cmd-click atomically fills the first compatible stack, then the first
-// free slot. Repeated distinct choices accumulate without touching slot 8.
+// Ctrl/Cmd-click adds exactly one item to the first compatible stack. Repeated
+// distinct choices accumulate without touching slot 8 or showing 64 counters.
 const partial = createEmptyInventory();
 partial[0] = createItemStack("dirt", 32);
 state = createInventoryWorkspace(partial, createEmptyEquipment());
@@ -63,16 +63,17 @@ result = insertCreativeCatalogStack(state, "dirt");
 assert.equal(result.ok, true);
 if (!result.ok) throw new Error(result.reason);
 state = result.state;
-assert.equal(state.inventory[0]?.count, 64);
-assert.deepEqual(state.inventory[1], createItemStack("dirt", 32));
+assert.equal(state.inventory[0]?.count, 33);
+assert.equal(state.inventory[1], null);
 result = insertCreativeCatalogStack(state, "diamond_pickaxe");
 assert.equal(result.ok, true);
 if (!result.ok) throw new Error(result.reason);
 state = result.state;
-assert.deepEqual(state.inventory[2], createItemStack("diamond_pickaxe"));
+assert.deepEqual(state.inventory[1], createItemStack("diamond_pickaxe"));
 assert.equal(state.inventory[8], null);
 
-// Full or merely insufficient capacity is conservative: no partial minting.
+// Full capacity remains conservative, while one compatible unit of capacity
+// accepts the complete one-item Creative grant.
 const full = Array.from({ length: 36 }, () => createItemStack("cobblestone", 64)) as Inventory;
 state = createInventoryWorkspace(full, createEmptyEquipment());
 const fullFailure = insertCreativeCatalogStack(state, "dirt");
@@ -83,9 +84,11 @@ assert.deepEqual(fullFailure.state, state);
 const oneSpace = full.map((stack) => ({ ...stack })) as Inventory;
 oneSpace[0] = createItemStack("dirt", 63);
 state = createInventoryWorkspace(oneSpace, createEmptyEquipment());
-const partialFailure = insertCreativeCatalogStack(state, "dirt");
-assert.equal(partialFailure.ok, false);
-assert.deepEqual(partialFailure.state, state, "one free unit cannot partially accept a 64-stack Creative grant");
+const exactFit = insertCreativeCatalogStack(state, "dirt");
+assert.equal(exactFit.ok, true);
+if (!exactFit.ok) throw new Error(exactFit.reason);
+assert.deepEqual(exactFit.state.inventory[0], createItemStack("dirt", 64),
+  "one free unit accepts the complete one-item Creative grant");
 
 // Closing/reopening projects the exact shared workspace into the canonical save.
 state = createInventoryWorkspace(createEmptyInventory(), createEmptyEquipment());
@@ -115,5 +118,7 @@ assert.equal(styles.includes("overflow-x:auto"), false, "Creative tabs and panes
 assert.ok(drawer.includes("onDragStart") && drawer.includes("onDragOver") && drawer.includes("onDrop"));
 assert.ok(drawer.includes("event.metaKey || event.ctrlKey"));
 assert.ok(drawer.includes('aria-live="polite"'));
+assert.ok(drawer.includes("const stack = createItemStack(item.id)"));
+assert.ok(drawer.includes("take one infinite Creative item"));
 
 console.log("Creative side-by-side inventory workspace checks passed");

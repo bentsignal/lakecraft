@@ -171,11 +171,11 @@ export function giveLocalItem(inventory: Inventory, itemId: ItemId, count: numbe
   return { ok: true, inventory: added.inventory, itemId, count };
 }
 
-/** Creative catalog picks replace exactly one selected slot with one canonical full stack. */
+/** Creative catalog picks show one item; Creative placement never consumes it. */
 export function pickCreativeCatalogItem(inventory: Inventory, slot: number, itemId: ItemId): Inventory {
   const next = cloneInventory(inventory);
   if (!Number.isInteger(slot) || slot < 0 || slot >= next.length) return next;
-  next[slot] = createItemStack(itemId, ITEMS[itemId].maxStack);
+  next[slot] = createItemStack(itemId);
   return next;
 }
 

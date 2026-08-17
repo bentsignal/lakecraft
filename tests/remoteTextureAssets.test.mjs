@@ -10,7 +10,6 @@ import { compactClientIdentifiers } from "../scripts/css-template-compression.mj
 const blockSource = await readFile(new URL("../client/game/generated/textureAtlas.ts", import.meta.url), "utf8");
 const mobSource = await readFile(new URL("../client/game/generated/mobTextureAtlas.ts", import.meta.url), "utf8");
 const deploySource = await readFile(new URL("../scripts/prepare-lakebed-deploy.mjs", import.meta.url), "utf8");
-const blockStage = remoteBlockTextureAtlasModule(blockSource);
 const mobStage = remoteMobTextureAtlasModule(mobSource);
 
 // The remote block transform remains audited for rolling old capsules and the
@@ -19,34 +18,19 @@ const mobStage = remoteMobTextureAtlasModule(mobSource);
 // never blank the title screen or game bootstrap again.
 assert.doesNotMatch(deploySource, /remoteBlockTextureAtlasModule/);
 assert.match(deploySource, /remoteMobTextureAtlasModule/);
-
-assert.ok(blockStage.length < 7_000, "the sealed Lakebed stage keeps only the expanded name/cell map, never the full block atlas");
-assert.match(blockStage, /await load\(\)/);
-assert.match(blockStage, /block-texture-atlas-0f3a9517\.png/);
-assert.match(blockStage, /crypto\.subtle\.digest\("SHA-256",buffer\)/);
-assert.match(blockStage, /0f3a9517c9850c970514a2a88873eee2bed205272cc318b484dde0bfbb7973e1/);
-assert.doesNotMatch(blockStage, /0xa607e4c6/);
-assert.match(blockStage, /TEXTURE_ATLAS_NAMES=.*nether_wart_block/);
-assert.doesNotMatch(blockStage, /decodeStaticBytes/);
+assert.throws(() => remoteBlockTextureAtlasModule(blockSource), /Block texture atlas source changed/,
+  "the retired remote-block transform fails closed instead of serving the pre-biome PNG for the expanded atlas");
 assert.ok(mobStage.length < 600, "the sealed Lakebed stage does not embed the mob PNG");
 assert.match(mobStage, /mob-texture-atlas-204e2b83\.png/);
 assert.doesNotMatch(mobStage, /iVBOR/);
 
-const compactedBlockStage = compactClientIdentifiers(blockStage);
 const compactedMobStage = compactClientIdentifiers(mobStage);
-for (const origin of [
-  "https://lakecraft-production.up.railway.app",
-  "https://lakecraft-creative-production.up.railway.app",
-]) {
-  assert.ok(compactedBlockStage.includes(`${origin}/assets/block-texture-atlas-0f3a9517.png`));
-}
 assert.ok(compactedMobStage.includes("https://lakecraft-production.up.railway.app/assets/mob-texture-atlas-204e2b83.png"));
 const mobRendererSource = await readFile(new URL("../client/game/mobRenderer.ts", import.meta.url), "utf8");
 assert.match(mobRendererSource, /source\.includes\(":"\)/,
   "the runtime recognizes the compact stage's URL contract instead of passing it to atob");
 assert.match(mobRendererSource, /visualAssetSha256\(buffer\)/,
   "the remotely loaded mob atlas is hash-verified before decode");
-assert.doesNotMatch(compactedBlockStage, /https:\/\/y(?:creative-)?production\.up\.railway\.app/);
 assert.doesNotMatch(compactedMobStage, /https:\/\/yproduction\.up\.railway\.app/);
 
 for (const [path, expected] of [

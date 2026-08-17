@@ -27,8 +27,9 @@ export interface TerrainRegionOptions {
 export const TERRAIN_MIN_Y = 1;
 export const MAX_TERRAIN_REGION_COLUMNS = 16_384;
 
-const MIN_TERRAIN_HEIGHT = 63;
-const MAX_TERRAIN_HEIGHT = 80;
+const MIN_TERRAIN_HEIGHT = 57;
+const MAX_TERRAIN_HEIGHT = 90;
+export const TERRAIN_SEA_LEVEL = 65;
 const SPAWN_HEIGHT = 68;
 const SPAWN_PLATEAU_RADIUS = 3;
 const SPAWN_BLEND_RADIUS = 9;
@@ -169,27 +170,49 @@ function rawTerrainHeight(x: number, z: number, seed: number): number {
   return 68.9 + broadHills + rollingGround + ridgeLift + smallVariation;
 }
 
+function biomeTerrainHeight(x: number, z: number, seed: number): number {
+  const broad = (valueNoise(x, z, seed + 17, 42) - 0.5) * 9;
+  const rolling = (valueNoise(x, z, seed + 113, 14) - 0.5) * 4;
+  const ridge = Math.max(0, valueNoise(x, z, seed + 241, 30) - 0.58);
+  const basin = Math.max(0, 0.46 - valueNoise(x, z, seed + 1_003, 38));
+  return 66.5 + broad + rolling + ridge * ridge * 105 - basin * 28;
+}
+
+export function terrainBiome(
+  x: number, z: number, seed: number, terrain?: WorldTerrainDescriptor,
+): "plains" | "desert" {
+  if (terrain?.generatorVersion !== 3 || Math.max(Math.abs(x), Math.abs(z)) <= SAND_SPAWN_SANCTUARY_RADIUS) {
+    return "plains";
+  }
+  return valueNoise(x, z, seed + 6_019, 72) > 0.58 ? "desert" : "plains";
+}
+
 export function terrainHeight(x: number, z: number, seed: number, terrain?: WorldTerrainDescriptor): number {
   if (terrain?.preset === "superflat") return terrain.superflatGroundY;
-  const naturalHeight = rawTerrainHeight(x, z, seed);
+  const modern = terrain?.generatorVersion === 3;
+  const naturalHeight = modern ? biomeTerrainHeight(x, z, seed) : rawTerrainHeight(x, z, seed);
   const spawnDistance = Math.max(Math.abs(x), Math.abs(z));
   const spawnBlend = Math.max(
     0,
     Math.min(1, (spawnDistance - SPAWN_PLATEAU_RADIUS) / (SPAWN_BLEND_RADIUS - SPAWN_PLATEAU_RADIUS)),
   );
   const height = lerp(SPAWN_HEIGHT, naturalHeight, smoothstep(spawnBlend));
-  return Math.max(MIN_TERRAIN_HEIGHT, Math.min(MAX_TERRAIN_HEIGHT, Math.round(height)));
+  return Math.max(modern ? MIN_TERRAIN_HEIGHT : 63, Math.min(modern ? MAX_TERRAIN_HEIGHT : 80, Math.round(height)));
 }
 
 /**
  * Returns the globally anchored sand depth for a surface column. Patches are
  * clipped out of the spawn sanctuary and never alter the column's height.
  */
-export function terrainSandDepth(x: number, z: number, seed: number): 0 | 2 | 3 {
+export function terrainSandDepth(x: number, z: number, seed: number, terrain?: WorldTerrainDescriptor): 0 | 2 | 3 {
   if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(seed)) return 0;
   const blockX = Math.floor(x);
   const blockZ = Math.floor(z);
   if (Math.max(Math.abs(blockX), Math.abs(blockZ)) <= SAND_SPAWN_SANCTUARY_RADIUS) return 0;
+  if (terrain?.generatorVersion === 3) {
+    if (terrainBiome(blockX, blockZ, seed, terrain) === "desert") return 3;
+    return terrainHeight(blockX, blockZ, seed, terrain) <= TERRAIN_SEA_LEVEL + 1 ? 2 : 0;
+  }
   const ownerCellX = Math.floor(blockX / SAND_PATCH_CELL_SIZE);
   const ownerCellZ = Math.floor(blockZ / SAND_PATCH_CELL_SIZE);
   for (let cellX = ownerCellX - 1; cellX <= ownerCellX + 1; cellX += 1) {
@@ -211,11 +234,14 @@ export function terrainSandDepth(x: number, z: number, seed: number): 0 | 2 | 3 
 }
 
 /** The natural strata, including surface deposits, before deterministic ore replacement. */
-export function terrainBaseBlock(x: number, y: number, z: number, seed: number): BlockId {
-  const top = terrainHeight(x, z, seed);
-  if (y < TERRAIN_MIN_Y || y > top) return BLOCK.AIR;
+export function terrainBaseBlock(
+  x: number, y: number, z: number, seed: number, terrain?: WorldTerrainDescriptor,
+): BlockId {
+  const top = terrainHeight(x, z, seed, terrain);
+  if (y < TERRAIN_MIN_Y) return BLOCK.AIR;
+  if (y > top) return terrain?.generatorVersion === 3 && y <= TERRAIN_SEA_LEVEL ? BLOCK.WATER : BLOCK.AIR;
   if (y === TERRAIN_MIN_Y) return BLOCK.BEDROCK;
-  const sandDepth = terrainSandDepth(x, z, seed);
+  const sandDepth = terrainSandDepth(x, z, seed, terrain);
   if (sandDepth > 0 && y > top - sandDepth) return BLOCK.SAND;
   const dirtDepth = Math.min(top - 1, hash2(x, z, seed + 401) > 0.62 ? 3 : 2);
   return y === top ? BLOCK.GRASS : y >= top - dirtDepth ? BLOCK.DIRT : BLOCK.STONE;
@@ -506,7 +532,9 @@ function createGravelCellCache(region: TerrainRegion): GravelCellCache {
   };
 }
 
-function addGround(blocks: Map<string, BlockId>, region: TerrainRegion, seed: number): void {
+function addGround(
+  blocks: Map<string, BlockId>, region: TerrainRegion, seed: number, terrain?: WorldTerrainDescriptor,
+): void {
   const oreCells = createOreCellCache(region);
   const gravelCells = createGravelCellCache(region);
   const clayColumns = createClayColumnCache(region, seed);
@@ -514,12 +542,15 @@ function addGround(blocks: Map<string, BlockId>, region: TerrainRegion, seed: nu
     const xPrefix = `${x},`;
     for (let z = region.minZ; z <= region.maxZ; z += 1) {
       const zSuffix = `,${z}`;
-      const top = terrainHeight(x, z, seed);
-      const sandDepth = terrainSandDepth(x, z, seed);
+      const top = terrainHeight(x, z, seed, terrain);
+      const sandDepth = terrainSandDepth(x, z, seed, terrain);
       const clayDepth = cachedClayDepth(clayColumns, x, z);
       const dirtDepth = Math.min(top - 1, hash2(x, z, seed + 401) > 0.62 ? 3 : 2);
-      for (let y = region.minY; y <= top; y += 1) {
-        const base = y === TERRAIN_MIN_Y
+      const surface = terrain?.generatorVersion === 3 ? Math.max(top, TERRAIN_SEA_LEVEL) : top;
+      for (let y = region.minY; y <= surface; y += 1) {
+        const base = y > top
+          ? BLOCK.WATER
+          : y === TERRAIN_MIN_Y
           ? BLOCK.BEDROCK
           : sandDepth > 0 && y > top - sandDepth
           ? BLOCK.SAND
@@ -709,19 +740,19 @@ function carveCaves(blocks: Map<string, BlockId>, region: TerrainRegion, seed: n
   applyCaveCarveMask(blocks, carveMask);
 }
 
-function isTreeSite(x: number, z: number, seed: number): boolean {
+function isTreeSite(x: number, z: number, seed: number, terrain?: WorldTerrainDescriptor): boolean {
   // Keep the shared spawn visually clear and safe from leaf/trunk collision.
   if (Math.max(Math.abs(x), Math.abs(z)) <= SPAWN_BLEND_RADIUS + TREE_MARGIN) return false;
-  if (terrainSandDepth(x, z, seed) > 0) return false;
+  if (terrainSandDepth(x, z, seed, terrain) > 0) return false;
 
   // Low-frequency forest noise creates recognizable groves and open meadows.
   const forestDensity = valueNoise(x, z, seed + 977, 24);
   if (forestDensity < 0.38) return false;
 
-  const ground = terrainHeight(x, z, seed);
+  const ground = terrainHeight(x, z, seed, terrain);
   for (let dx = -1; dx <= 1; dx += 1) {
     for (let dz = -1; dz <= 1; dz += 1) {
-      if (Math.abs(terrainHeight(x + dx, z + dz, seed) - ground) > 1) return false;
+      if (Math.abs(terrainHeight(x + dx, z + dz, seed, terrain) - ground) > 1) return false;
     }
   }
   return true;
@@ -733,8 +764,9 @@ function addTree(
   x: number,
   z: number,
   seed: number,
+  terrain?: WorldTerrainDescriptor,
 ): void {
-  const ground = terrainHeight(x, z, seed);
+  const ground = terrainHeight(x, z, seed, terrain);
   const trunkHeight = hash2(x, z, seed + 613) > 0.62 ? 5 : 4;
   for (let dy = 1; dy <= trunkHeight; dy += 1) {
     if (isInside(region, x, z)) blocks.set(blockKey(x, ground + dy, z), BLOCK.WOOD);
@@ -757,7 +789,9 @@ function addTree(
   if (isInside(region, x, z)) blocks.set(blockKey(x, crownY + 2, z), BLOCK.LEAVES);
 }
 
-function addTrees(blocks: Map<string, BlockId>, region: TerrainRegion, seed: number): void {
+function addTrees(
+  blocks: Map<string, BlockId>, region: TerrainRegion, seed: number, terrain?: WorldTerrainDescriptor,
+): void {
   // Evaluate neighboring tree cells too, then clip writes to this region. This makes
   // independently generated adjacent regions agree on tree canopies at their seam.
   const minCellX = Math.floor((region.minX - TREE_MARGIN) / TREE_CELL_SIZE);
@@ -769,7 +803,26 @@ function addTrees(blocks: Map<string, BlockId>, region: TerrainRegion, seed: num
       if (hash2(cellX, cellZ, seed + 503) < 0.24) continue;
       const x = cellX * TREE_CELL_SIZE + Math.floor(hash2(cellX, cellZ, seed + 521) * TREE_CELL_SIZE);
       const z = cellZ * TREE_CELL_SIZE + Math.floor(hash2(cellX, cellZ, seed + 547) * TREE_CELL_SIZE);
-      if (isTreeSite(x, z, seed)) addTree(blocks, region, x, z, seed);
+      if (isTreeSite(x, z, seed, terrain)) addTree(blocks, region, x, z, seed, terrain);
+    }
+  }
+}
+
+function addBiomePlants(
+  blocks: Map<string, BlockId>, region: TerrainRegion, seed: number, terrain?: WorldTerrainDescriptor,
+): void {
+  if (terrain?.generatorVersion !== 3) return;
+  for (let x = region.minX; x <= region.maxX; x += 1) for (let z = region.minZ; z <= region.maxZ; z += 1) {
+    const top = terrainHeight(x, z, seed, terrain);
+    if (top < TERRAIN_SEA_LEVEL || blocks.has(blockKey(x, top + 1, z))) continue;
+    const chance = hash2(x, z, seed + 7_019);
+    if (terrainBiome(x, z, seed, terrain) === "desert") {
+      if (chance > 0.035 || hash2(x, z, seed + 7_043) > 0.18) continue;
+      const height = 2 + +(hash2(x, z, seed + 7_067) > 0.55);
+      for (let y = 1; y <= height; y += 1) blocks.set(blockKey(x, top + y, z), BLOCK.CACTUS);
+    } else if (chance < 0.12) {
+      blocks.set(blockKey(x, top + 1, z), chance < 0.012 ? BLOCK.POPPY
+        : chance < 0.024 ? BLOCK.DANDELION : BLOCK.SHORT_GRASS);
     }
   }
 }
@@ -805,9 +858,10 @@ export function createTerrainRegion(
     addSuperflatGround(blocks, region, options.terrain.superflatGroundY);
     return blocks;
   }
-  addGround(blocks, region, seed);
+  addGround(blocks, region, seed, options.terrain);
   carveCaves(blocks, region, seed);
-  addTrees(blocks, region, seed);
+  addTrees(blocks, region, seed, options.terrain);
+  addBiomePlants(blocks, region, seed, options.terrain);
   return blocks;
 }
 
@@ -878,6 +932,7 @@ export function raycastVoxels(
       return {
         block: { x, y, z, block: currentBlock },
         place,
+        hit: { x: pointX, y: pointY, z: pointZ },
         distance,
       };
     }

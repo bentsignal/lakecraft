@@ -22,7 +22,7 @@ import { ITEMS, type ItemId } from "../shared/game.ts";
 const capacity = droppedItemBufferCapacity();
 assert.equal(capacity.itemCount, 256);
 assert.equal(capacity.vertexCount, MAX_RENDERED_DROPPED_ITEMS * DROPPED_ITEM_VERTICES_PER_ITEM);
-assert.equal(DROPPED_ITEM_MAX_ICON_RUNS, 131, "the fixed batch covers the most detailed exact production icon");
+assert.equal(DROPPED_ITEM_MAX_ICON_RUNS, 150, "the fixed batch covers the most detailed exact production icon");
 assert.equal(DROPPED_BLOCK_CUBE_GRID_SIZE, 4, "distance drops use a bounded authored-atlas mip");
 assert.equal(DROPPED_BLOCK_CUBE_MAX_VERTICES, 576, "six 4x4 faces fit below the sprite stride");
 for (const itemId of Object.keys(ITEMS) as ItemId[]) {
@@ -30,7 +30,7 @@ for (const itemId of Object.keys(ITEMS) as ItemId[]) {
     assert.ok(getItemIconArt(itemId).runs.length <= DROPPED_ITEM_MAX_ICON_RUNS, `${itemId} fits the fixed drop batch stride`);
   }
 }
-assert.equal(capacity.totalBytes, 4_829_184, "the complete exact-sprite batch remains fixed and bounded");
+assert.equal(capacity.totalBytes, 5_529_600, "the complete exact-sprite batch remains fixed and bounded");
 assert.deepEqual(droppedItemBufferCapacity(-2), { itemCount: 0, vertexCount: 0, floatCount: 0, totalBytes: 0 });
 assert.equal(droppedItemBufferCapacity(999).itemCount, MAX_RENDERED_DROPPED_ITEMS);
 

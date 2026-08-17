@@ -3,7 +3,7 @@ import { AGENT_BLOCK_NAMES } from "../apps/game-server/src/agentBuilder.ts";
 import { blockTextureForFace } from "../client/game/blockTextures.ts";
 import { BLOCK, isGlassBlock, isLightEmittingBlock, isLuminousBlock } from "../client/game/types.ts";
 import { blockFaceIsOccluded } from "../client/game/voxelEngine.ts";
-import { ITEM_TO_ENGINE } from "../client/gameplay/catalog.ts";
+import { ITEM_TO_ENGINE, placementBlockMatchesItem } from "../client/gameplay/catalog.ts";
 import { TEXTURE_ATLAS_NAMES } from "../client/game/generated/textureAtlas.ts";
 import {
   ADDITIONAL_ARCHITECTURAL_ITEMS,
@@ -16,6 +16,7 @@ import {
   EXPANDED_BLOCK_ITEM_IDS,
   LEGACY_STONE_SHAPE_FAMILIES,
   LUMINOUS_BLOCK_ITEMS,
+  NATURAL_DECORATION_ITEMS,
   STONE_SHAPE_FAMILIES,
 } from "../shared/expandedBuildingCatalog.ts";
 import { ITEMS } from "../shared/game.ts";
@@ -36,15 +37,18 @@ const v3Tail = [
   ...CATALOG_V3_BLOCK_ITEMS,
   ...CATALOG_V3_STONE_SHAPE_FAMILIES.flatMap(([family]) => [`${family}_slab`, `${family}_stairs`]),
 ];
+const naturalTailLength = NATURAL_DECORATION_ITEMS.length;
 assert.equal(secondWave.length, 66);
-assert.deepEqual(EXPANDED_BLOCK_ITEM_IDS.slice(-(additions.length + secondWave.length + legacyShapeTail.length + v3Tail.length), -(secondWave.length + legacyShapeTail.length + v3Tail.length)), additions,
+assert.deepEqual(EXPANDED_BLOCK_ITEM_IDS.slice(-(additions.length + secondWave.length + legacyShapeTail.length + v3Tail.length + naturalTailLength), -(secondWave.length + legacyShapeTail.length + v3Tail.length + naturalTailLength)), additions,
   "the first decorative wave retains its append-only IDs");
-assert.deepEqual(EXPANDED_BLOCK_ITEM_IDS.slice(-(secondWave.length + legacyShapeTail.length + v3Tail.length), -(legacyShapeTail.length + v3Tail.length)), secondWave,
+assert.deepEqual(EXPANDED_BLOCK_ITEM_IDS.slice(-(secondWave.length + legacyShapeTail.length + v3Tail.length + naturalTailLength), -(legacyShapeTail.length + v3Tail.length + naturalTailLength)), secondWave,
   "the second decorative wave is one append-only tail");
-assert.deepEqual(EXPANDED_BLOCK_ITEM_IDS.slice(-(legacyShapeTail.length + v3Tail.length), -v3Tail.length), legacyShapeTail,
+assert.deepEqual(EXPANDED_BLOCK_ITEM_IDS.slice(-(legacyShapeTail.length + v3Tail.length + naturalTailLength), -(v3Tail.length + naturalTailLength)), legacyShapeTail,
   "the deployed stone slab/stair expansion preserves its complete id range");
-assert.deepEqual(EXPANDED_BLOCK_ITEM_IDS.slice(-v3Tail.length), v3Tail,
+assert.deepEqual(EXPANDED_BLOCK_ITEM_IDS.slice(-(v3Tail.length + NATURAL_DECORATION_ITEMS.length), -NATURAL_DECORATION_ITEMS.length), v3Tail,
   "waxed copper and the widened shape catalog are one new append-only tail");
+assert.deepEqual(EXPANDED_BLOCK_ITEM_IDS.slice(-NATURAL_DECORATION_ITEMS.length), NATURAL_DECORATION_ITEMS,
+  "Creative natural decorations append without moving any deployed item IDs");
 assert.deepEqual(AGENT_BLOCK_NAMES, BLOCK_TYPES, "browser and agent builders publish the identical numeric palette");
 
 for (const item of additions) {
@@ -63,6 +67,12 @@ for (const item of CATALOG_V3_BLOCK_ITEMS) {
   const block = ITEM_TO_ENGINE[item];
   assert.equal(typeof block, "number", `${item} maps to one engine block`);
   assert.ok(blockTextureForFace(block!, "north"), `${item} resolves its exact or oxidation-equivalent texture`);
+}
+for (const item of NATURAL_DECORATION_ITEMS) {
+  assert.ok(ITEMS[item], `${item} is visible in the Creative catalog`);
+  assert.equal(ITEM_TO_ENGINE[item], BLOCK[item.toUpperCase() as keyof typeof BLOCK]);
+  assert.equal(placementBlockMatchesItem(item, ITEM_TO_ENGINE[item]!), true,
+    `${item} placement uses its canonical world state`);
 }
 assert.equal(blockTextureForFace(BLOCK.WAXED_COPPER_BLOCK, "north"), "copper_block");
 assert.equal(blockTextureForFace(BLOCK.WAXED_EXPOSED_CUT_COPPER, "north"), "exposed_cut_copper");

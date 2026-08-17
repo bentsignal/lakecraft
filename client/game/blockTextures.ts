@@ -102,6 +102,8 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
 
 /** Resolve the material tile for one exposed cube face. Special geometry returns null. */
 export function blockTextureForFace(block: BlockId, face: BlockFace): TextureAtlasName | null {
+  if (block === BLOCK.WATER) return "water";
+  if (block === BLOCK.CACTUS) return "cactus";
   if (block === BLOCK.GRASS) {
     if (face === "top") return "grass_top";
     if (face === "bottom") return "dirt";

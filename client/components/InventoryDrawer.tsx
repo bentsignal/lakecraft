@@ -289,6 +289,7 @@ export function InventoryCraftingDrawer({
                 className="lc-creative-search"
                 onInput={(event) => setCatalogSearch(event.currentTarget.value)}
                 placeholder="Search items..."
+                style="--lc-input-vpad:9px"
                 type="search"
                 value={catalogSearch}
               />
@@ -302,12 +303,12 @@ export function InventoryCraftingDrawer({
               <div className="lc-creative-grid-wrap">
                 <div className="lc-creative-grid" role="grid" aria-label="Infinite creative item catalog">
                   {items.map((item) => {
-                    const stack = createItemStack(item.id, item.maxStack);
+                    const stack = createItemStack(item.id);
                     return (
                       <button
                         {...itemTooltipAttributes(stack)}
                         aria-describedby="lc-creative-help"
-                        aria-label={`${item.label}; take a full stack`}
+                        aria-label={`${item.label}; take one infinite Creative item`}
                         className="lc-slot"
                         draggable
                         key={item.id}

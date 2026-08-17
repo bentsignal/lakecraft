@@ -9,7 +9,7 @@ assert.ok(engine.includes('fallDamageForDistance } from "../../shared/fallDamage
 assert.ok(engine.includes("fallPeakY = fallAirborne ? Math.max(fallPeakY, pose.y)"));
 assert.ok(engine.includes("fallPeakY - pose.y - LOCAL_FALL_LANDING_EPSILON"), "collision epsilon cannot turn a three-block fall harmful");
 assert.ok(engine.includes("const damage = fallDamageForDistance(fallDistance)"));
-assert.ok(engine.includes("if (touchingLadder)"), "ladder contact clears local fall tracking");
+assert.ok(engine.includes("touchingLadder || inWater"), "ladder or water contact clears local fall tracking");
 assert.ok(engine.includes("playerHealth -= appliedDamage"));
 assert.ok(engine.includes('options.onPlayerDamage?.(appliedDamage, "fall")'));
 assert.ok(engine.includes("fallAirborne = false;\n      fallPeakY = pose.y;"), "relocation and respawn clear stale descent state");

@@ -39,13 +39,27 @@ const glass: number[] = [];
 const glassVertices = appendBlockItemCubeGeometry(glass, "glass");
 const readableGlass: number[] = [];
 const readableGlassVertices = appendBlockItemCubeGeometry(readableGlass, "glass", { thickenTransparentEdges: true });
-assert.ok(readableGlassVertices > glassVertices,
-  "third-person glass adds one dim inner edge so its installed one-pixel frame cannot disappear at avatar scale");
+assert.equal(readableGlassVertices, 12 * 36,
+  "third-person glass is twelve bounded volumetric frame rods instead of a fragile transparent face");
+assert.ok(readableGlassVertices < glassVertices,
+  "the reviewed frame is smaller than the raw per-texel clear-glass surface");
 assert.ok(readableGlassVertices < dirtVertices,
   "third-person glass remains visibly transparent instead of becoming an opaque cube");
 const readableGlassColors = readableGlass.filter((_, index) => index % BLOCK_ITEM_CUBE_VERTEX_FLOATS >= 3);
 assert.ok(readableGlassColors.every((channel) => channel > 0.24),
   "the color-only third-person shader receives the authored glass-frame color instead of alpha-darkened near-black");
+for (const [axis, sign, lateral] of [[0, 1, 2], [0, -1, 2], [2, 1, 0], [2, -1, 0]] as const) {
+  const coordinates = readableGlass.filter((_, index) => index % BLOCK_ITEM_CUBE_VERTEX_FLOATS === axis);
+  const extreme = sign > 0 ? Math.max(...coordinates) : Math.min(...coordinates);
+  const visible: number[] = [];
+  for (let offset = 0; offset < readableGlass.length; offset += BLOCK_ITEM_CUBE_VERTEX_FLOATS) {
+    if (Math.abs(readableGlass[offset + axis] - extreme) < 0.00001) visible.push(offset);
+  }
+  const ys = visible.map((offset) => readableGlass[offset + 1]);
+  const sides = visible.map((offset) => readableGlass[offset + lateral]);
+  assert.ok(Math.max(...ys) - Math.min(...ys) >= 0.99 && Math.max(...sides) - Math.min(...sides) >= 0.99,
+    `glass frame has bright full-height/full-width silhouette from camera ${axis}:${sign}`);
+}
 assert.equal(appendBlockItemCubeGeometry([], "diamond_pickaxe"), 0, "non-block sprites never enter the cube path");
 assert.throws(() => appendBlockItemCubeGeometry([], "dirt", { size: 0 }), /finite and visible/);
 

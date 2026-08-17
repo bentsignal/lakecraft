@@ -18,7 +18,7 @@ type Vec3 = readonly [number, number, number];
 export const MAX_RENDERED_DROPPED_ITEMS = 256;
 export const DROPPED_ITEM_RENDER_DISTANCE = 48;
 export const DROPPED_ITEM_MESH_INTERVAL_MS = 1_000 / 30;
-export const DROPPED_ITEM_MAX_ICON_RUNS = 131;
+export const DROPPED_ITEM_MAX_ICON_RUNS = 150;
 /** Four exact authored-atlas color samples per axis keep one six-face drop below the sprite stride. */
 export const DROPPED_BLOCK_CUBE_GRID_SIZE = 4;
 export const DROPPED_BLOCK_CUBE_MAX_VERTICES = 6 * DROPPED_BLOCK_CUBE_GRID_SIZE * DROPPED_BLOCK_CUBE_GRID_SIZE * 6;

@@ -104,6 +104,7 @@ import {
   TEXTURE_ATLAS_RGBA,
   TEXTURE_ATLAS_ROWS,
   TEXTURE_TILE_SIZE,
+  type TextureAtlasName,
 } from "./generated/textureAtlas.ts";
 import {
   consumeMobContactDamage,
@@ -159,10 +160,12 @@ import {
   isGlassBlock,
   isLightEmittingBlock,
   isLuminousBlock,
+  isPlantBlock,
   isSlabBlock,
   isStairBlock,
   isTorchBlock,
   isUpsideDownStairBlock,
+  isWaterBlock,
   stairFacingForBlock,
   type BedDirection,
   type BedStructure,
@@ -640,6 +643,7 @@ const LOCAL_FALL_LANDING_EPSILON = 0.05;
 export const LADDER_CLIMB_SPEED = 3.2;
 export const LADDER_DESCEND_SPEED = -3.2;
 export const LADDER_IDLE_SLIDE_SPEED = -1.2;
+export const WATER_SWIM_SPEED = 3;
 
 export type MobTorchLightCache = Float64Array;
 
@@ -806,7 +810,7 @@ export function blockOccludesFaces(block: BlockId): boolean {
 
 /** Glass keeps neighboring opaque faces, but adjacent glass cells share no internal seam. */
 export function blockFaceIsOccluded(block: BlockId, neighbor: BlockId): boolean {
-  return (isGlassBlock(block) && neighbor === block) || blockOccludesFaces(neighbor);
+  return ((isGlassBlock(block) || isWaterBlock(block)) && neighbor === block) || blockOccludesFaces(neighbor);
 }
 
 /** Stable far-to-near key order for the bounded per-chunk transparent pass. */
@@ -829,6 +833,8 @@ export function sortTransparentChunkKeysBackToFront(
 export function blockHasCollision(block: BlockId): boolean {
   const door = doorStateForBlock(block);
   return block !== BLOCK.AIR
+    && !isWaterBlock(block)
+    && !isPlantBlock(block)
     && !isTorchBlock(block)
     && door?.open !== true
     && block !== BLOCK.OAK_FENCE_GATE_OPEN
@@ -939,6 +945,16 @@ export function ladderVerticalVelocity(
   return Math.max(PLAYER_TERMINAL_VELOCITY, boundedVelocity - PLAYER_GRAVITY * dt);
 }
 
+/** Bounded buoyancy: jump rises, sneak dives, and idle players slowly sink. */
+export function waterVerticalVelocity(
+  currentVelocity: number, ascend: boolean, descend: boolean, elapsedSeconds: number,
+): number {
+  const target = ascend && !descend ? WATER_SWIM_SPEED : descend && !ascend ? -WATER_SWIM_SPEED : -0.45;
+  const amount = Math.min(1, Math.max(0, Number.isFinite(elapsedSeconds) ? elapsedSeconds * 8 : 0));
+  const current = Number.isFinite(currentVelocity) ? clampNumber(currentVelocity, -WATER_SWIM_SPEED, WATER_SWIM_SPEED) : 0;
+  return current + (target - current) * amount;
+}
+
 export function isDoorBlock(block: BlockId): boolean {
   return block === BLOCK.DOOR_CLOSED || block === BLOCK.DOOR_OPEN || blockStateName(block).includes("_door_");
 }
@@ -1024,13 +1040,40 @@ export function stairFacingFromYaw(yaw: number): NonNullable<ReturnType<typeof s
   return (["north", "east", "south", "west"] as const)[((quarter % 4) + 4) % 4];
 }
 
-export function stairPlacementBlock(block: BlockId, yaw: number, pitch = 0, target?: Readonly<BlockTarget>): BlockId {
+/** Resolve the clicked face/height before the camera pitch fallback used by old callers. */
+export function stairPlacementIsUpsideDown(pitch: number, target?: Readonly<BlockTarget>): boolean {
+  if (!target) return pitch > 0.55;
+  if (target.place.y < target.block.y) return true;
+  if (target.place.y > target.block.y) return false;
+  const localHitY = (target.hit?.y ?? Number.NaN) - target.block.y;
+  return Number.isFinite(localHitY) ? localHitY > 0.5 : pitch > 0.55;
+}
+
+function stairFacingFromLook(
+  yaw: number,
+  horizontalLook?: readonly [number, number],
+): NonNullable<ReturnType<typeof stairFacingForBlock>> {
+  const x = horizontalLook?.[0] ?? Number.NaN;
+  const z = horizontalLook?.[1] ?? Number.NaN;
+  if (!Number.isFinite(x) || !Number.isFinite(z) || Math.abs(x) + Math.abs(z) < 0.000001) {
+    return stairFacingFromYaw(yaw);
+  }
+  return Math.abs(x) > Math.abs(z) ? x > 0 ? "east" : "west" : z > 0 ? "south" : "north";
+}
+
+export function stairPlacementBlock(
+  block: BlockId,
+  yaw: number,
+  pitch = 0,
+  target?: Readonly<BlockTarget>,
+  horizontalLook?: readonly [number, number],
+): BlockId {
   const state = blockStateName(block);
   const stairs = state.indexOf("_stairs_");
   if (stairs < 0) return block;
   const family = state.slice(0, stairs);
-  const upsideDown = target?.place.y !== undefined && target.place.y < target.block.y || pitch > 0.55;
-  const facing = stairFacingFromYaw(yaw);
+  const upsideDown = stairPlacementIsUpsideDown(pitch, target);
+  const facing = stairFacingFromLook(yaw, horizontalLook);
   const constant = `${family}_stairs_${upsideDown ? "upside_" : ""}${facing}`.toUpperCase();
   return (BLOCK as Readonly<Record<string, BlockId>>)[constant] ?? block;
 }
@@ -1471,14 +1514,16 @@ export function appendSaplingMesh(
   z: number,
   shade = 1,
   exposureLevel?: number,
+  height = 1,
+  texture: TextureAtlasName = "sapling",
 ): void {
-  const uv = textureAtlasUv("sapling");
+  const uv = textureAtlasUv(texture);
   const left = x + 0.12;
   const right = x + 0.88;
   const near = z + 0.12;
   const far = z + 0.88;
   const bottom = y;
-  const top = y + 1;
+  const top = y + height;
   const vertex = (px: number, py: number, pz: number, u: number, v: number): void => {
     pushTexturedVertex(output, [px, py, pz], u, v, retainedTerrainShade(shade, exposureLevel));
   };
@@ -1494,6 +1539,12 @@ export function appendSaplingMesh(
   vertex(right, bottom, near, uv.left, uv.bottom);
   vertex(left, top, far, uv.right, uv.top);
   vertex(left, bottom, far, uv.right, uv.bottom);
+}
+
+function appendPlantMesh(
+  output: number[], x: number, y: number, z: number, block: BlockId, shade: number, exposure?: number,
+): void {
+  appendSaplingMesh(output, x, y, z, shade, exposure, 1, blockTextureForFace(block, "north")!);
 }
 
 export const OAK_FENCE_BOX_VERTEX_COUNT = 36;
@@ -2723,6 +2774,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         appendSaplingMesh(textureVertices, x, y, z, blockMaterialVariation(x, y, z), exposure);
         continue;
       }
+      if (isPlantBlock(block)) {
+        const exposure = skyExposureLevel(skyOccluderColumns, x, y + 1, z);
+        appendPlantMesh(textureVertices, x, y, z, block, blockMaterialVariation(x, y, z), exposure);
+        continue;
+      }
       if (block === BLOCK.OAK_FENCE) {
         appendOakFenceMesh(
           textureVertices,
@@ -2780,12 +2836,21 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         if (blockFaceIsOccluded(block, neighbor)) continue;
         const textureName = blockTextureForFace(block, face[0]);
         if (textureName) {
-          const destination = isGlassBlock(block) ? transparentVertices : textureVertices;
+          const transparent = isGlassBlock(block) || isWaterBlock(block);
+          const destination = transparent ? transparentVertices : textureVertices;
           const exposure = skyExposureLevel(skyOccluderColumns, x + face[1], y + face[2], z + face[3]);
-          if (isGlassBlock(block)) appendConnectedGlassFace(
-            destination, x, y, z, face, getBlock, face[4] * variation, exposure, block,
-          );
-          else appendTexturedBlockFace(destination, x, y, z, face, textureName,
+          if (isGlassBlock(block)) {
+            // The ordinary alpha-tested pass writes the glass frame to depth;
+            // the later blend pass then contributes only its translucent fill.
+            // Sharing identical geometry prevents the frame from appearing or
+            // disappearing as transparent faces reorder around the camera.
+            appendConnectedGlassFace(
+              textureVertices, x, y, z, face, getBlock, face[4] * variation, exposure, block,
+            );
+            appendConnectedGlassFace(
+              destination, x, y, z, face, getBlock, face[4] * variation, exposure, block,
+            );
+          } else appendTexturedBlockFace(destination, x, y, z, face, textureName,
             face[4] * variation, exposure, isLuminousBlock(block) || textureName === "furnace_front");
           continue;
         }
@@ -3306,6 +3371,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       fallPeakY = pose.y;
     }
     const flying = creativeFlight.flying && options.canCreativeFly?.() === true;
+    const inWater = !flying && (
+      isWaterBlock(getBlock(Math.floor(pose.x), Math.floor(pose.y + 0.15), Math.floor(pose.z)))
+      || isWaterBlock(getBlock(Math.floor(pose.x), Math.floor(pose.y + cameraPosture.bodyHeight * 0.55), Math.floor(pose.z)))
+    );
     const forwardInput = (controlHeld("moveForward") ? 1 : 0) - (controlHeld("moveBackward") ? 1 : 0);
     const strafe = (controlHeld("strafeRight") ? 1 : 0) - (controlHeld("strafeLeft") ? 1 : 0);
     const ladderAtFrameStart = !flying && playerTouchesLadder(pose.x, pose.y, pose.z, getBlock);
@@ -3343,8 +3412,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     cameraPostureTarget.fovRadians = movementFovRadians(movementMode, options.getFieldOfViewRadians?.());
     smoothPlayerPosture(cameraPosture, cameraPostureTarget, dt, cameraPosture);
     writeHorizontalMovementDelta(pose.yaw, movement, dt, horizontalMovementDelta);
-    const dx = horizontalMovementDelta.x;
-    const dz = horizontalMovementDelta.z;
+    const dx = horizontalMovementDelta.x * (inWater ? 0.46 : 1);
+    const dz = horizontalMovementDelta.z * (inWater ? 0.46 : 1);
     const movementStartX = pose.x;
     const movementStartZ = pose.z;
     const protectLedge = !flying && movementMode === "sneak" && grounded;
@@ -3357,6 +3426,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const verticalStartY = pose.y;
     velocity[1] = flying
       ? creativeFlightVerticalVelocity(controlHeld("jump"), shiftHeld)
+      : inWater ? waterVerticalVelocity(velocity[1], controlHeld("jump"), shiftHeld, dt)
       : ladderVerticalVelocity(
         velocity[1],
         touchingLadder,
@@ -3373,7 +3443,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (flying) {
       fallAirborne = false;
       fallPeakY = pose.y;
-    } else if (touchingLadder) {
+    } else if (touchingLadder || inWater) {
       fallAirborne = false;
       fallPeakY = pose.y;
     } else if (!grounded) {
@@ -4369,7 +4439,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
     const saplingPlacement = selectedBlock === BLOCK.SAPLING;
     const placementBlock = selectedBlock === BLOCK.TORCH ? torchPlacementBlock(target)
-      : isStairBlock(selectedBlock) ? stairPlacementBlock(selectedBlock, pose.yaw, pose.pitch, target)
+      : isStairBlock(selectedBlock) ? stairPlacementBlock(
+        selectedBlock, pose.yaw, pose.pitch, target, [raycastFacing[0], raycastFacing[2]],
+      )
         : doorPlacementBlock(selectedBlock, pose.yaw);
     const supportedSapling = !saplingPlacement || canPlaceSapling(target, getBlock(x, y - 1, z));
     if (

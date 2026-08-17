@@ -7,7 +7,7 @@ export { gameplaySessionPaused, scheduleGameplayPointerLockAfterEscapeRelease } 
 export type { GameplaySessionBlockers } from "./pointerSession.ts";
 export { createGameplayPointerSessionState, transitionGameplayPointerSession } from "./pointerSession.ts";
 export type { GameplayPointerSessionEvent, GameplayPointerSessionState, GameplayPointerSessionTransition } from "./pointerSession.ts";
-export { audioSurfaceForBlock, ENGINE_TO_GAME, ITEM_TO_ENGINE } from "./catalog.ts";
+export { audioSurfaceForBlock, ENGINE_TO_GAME, ITEM_TO_ENGINE, placementBlockMatchesItem } from "./catalog.ts";
 export { createGameplayPresentationOptions } from "./presentation.ts";
 export type { GameplayPresentationContext } from "./presentation.ts";
 export { gameplayChatShortcutDraft } from "./chatShortcut.ts";

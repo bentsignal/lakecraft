@@ -24,6 +24,7 @@ import type { WorldTerrainDescriptor } from "../../shared/worldPreset.ts";
 import {
   EXPANDED_BLOCK_STATE_TYPES,
   LUMINOUS_BLOCK_ITEMS,
+  NATURAL_BLOCK_STATE_TYPES,
   STAIR_MATERIAL_FAMILIES,
   type ExpandedBlockConstantName,
 } from "../../shared/expandedBuildingCatalog.ts";
@@ -89,8 +90,9 @@ const BASE_BLOCK = {
 } as const;
 export const BLOCK = Object.freeze({
   ...BASE_BLOCK,
-  ...Object.fromEntries(EXPANDED_BLOCK_STATE_TYPES.map((state, index) => [state.toUpperCase(), 57 + index])),
-}) as typeof BASE_BLOCK & Readonly<Record<ExpandedBlockConstantName, number>>;
+  ...Object.fromEntries([...EXPANDED_BLOCK_STATE_TYPES, ...NATURAL_BLOCK_STATE_TYPES]
+    .map((state, index) => [state.toUpperCase(), 57 + index])),
+}) as typeof BASE_BLOCK & Readonly<Record<ExpandedBlockConstantName | Uppercase<typeof NATURAL_BLOCK_STATE_TYPES[number]>, number>>;
 
 export type BlockId = (typeof BLOCK)[keyof typeof BLOCK];
 
@@ -104,6 +106,14 @@ export function isTorchBlock(block: BlockId): boolean {
 
 export function isGlassBlock(block: BlockId): boolean {
   return block === BLOCK.GLASS || blockStateName(block).endsWith("_stained_glass");
+}
+
+export function isWaterBlock(block: BlockId): boolean {
+  return block === BLOCK.WATER;
+}
+
+export function isPlantBlock(block: BlockId): boolean {
+  return block === BLOCK.SHORT_GRASS || block === BLOCK.DANDELION || block === BLOCK.POPPY;
 }
 
 export function isLuminousBlock(block: BlockId): boolean {
@@ -127,11 +137,12 @@ const BASE_STAIR_STATE_TYPES = [
   "stone_brick_stairs_east", "stone_brick_stairs_north", "stone_brick_stairs_south", "stone_brick_stairs_west",
   "brick_stairs_east", "brick_stairs_north", "brick_stairs_south", "brick_stairs_west",
 ] as const;
+const APPENDED_BLOCK_STATE_TYPES = [...EXPANDED_BLOCK_STATE_TYPES, ...NATURAL_BLOCK_STATE_TYPES] as const;
 
 export function blockStateName(block: BlockId): string {
   return block >= BLOCK.OAK_STAIRS_EAST && block <= BLOCK.BRICK_STAIRS_WEST
     ? BASE_STAIR_STATE_TYPES[block - BLOCK.OAK_STAIRS_EAST]
-    : block >= 57 ? EXPANDED_BLOCK_STATE_TYPES[block - 57] ?? "" : "";
+    : block >= 57 ? APPENDED_BLOCK_STATE_TYPES[block - 57] ?? "" : "";
 }
 
 export function stairFacingForBlock(block: BlockId): StairFacing | null {
@@ -379,6 +390,8 @@ export interface RemotePlayer extends PlayerPose {
 export interface BlockTarget {
   block: WorldEdit;
   place: { x: number; y: number; z: number };
+  /** Exact point where the shared ray first entered this block's solid shape. */
+  hit?: { x: number; y: number; z: number };
   distance: number;
 }
 

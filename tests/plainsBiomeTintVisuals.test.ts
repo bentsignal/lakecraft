@@ -42,6 +42,8 @@ const greenPixels = (rgba: Uint8Array): number => {
 assert.ok(greenPixels(tilePixels("grass_top")) > 200, "fixed plains grass top cannot regress to its grayscale source mask");
 assert.ok(greenPixels(tilePixels("grass_side")) > 40, "fixed plains grass sides retain their installed tinted overlay");
 assert.ok(greenPixels(tilePixels("leaves")) > 100, "fixed plains oak leaves cannot regress to their grayscale source mask");
+assert.ok(greenPixels(tilePixels("short_grass")) > 30,
+  "short grass applies the same fixed plains tint instead of rendering its grayscale source mask");
 
 for (const itemId of ["grass", "leaves"] as const) {
   const iconColors = getItemIconArt(itemId).runs.map(({ color }) => [
@@ -68,6 +70,13 @@ for (const itemId of ["grass", "leaves"] as const) {
     .some((offset) => dropped[offset + 4] > dropped[offset + 3] && dropped[offset + 4] > dropped[offset + 5]),
   `${itemId} dropped cube inherits the plains-tinted atlas`);
 }
+
+assert.ok(getItemIconArt("short_grass").runs.some(({ color }) => {
+  const red = Number.parseInt(color.slice(1, 3), 16);
+  const green = Number.parseInt(color.slice(3, 5), 16);
+  const blue = Number.parseInt(color.slice(5, 7), 16);
+  return green > red && green > blue;
+}), "Creative short-grass art applies the fixed plains tint too");
 
 const terrain = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 const firstPerson = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");

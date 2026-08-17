@@ -492,6 +492,10 @@ export const BLOCKS = defineBlocks([
   ["tuff_brick_stairs","Tuff Brick Stairs","Tuff Brick Stairs building block.","#59665f","#78857d",2.5,"pickaxe","tuff_brick_stairs","wood"],
   ["resin_brick_slab","Resin Brick Slab","Resin Brick Slab building block.","#7b2928","#a54538",2.5,"pickaxe","resin_brick_slab","wood"],
   ["resin_brick_stairs","Resin Brick Stairs","Resin Brick Stairs building block.","#7b2928","#a54538",2.5,"pickaxe","resin_brick_stairs","wood"],
+  ["cactus","Cactus","A prickly desert plant.","#527d36","#76a84d",0.4,"hand","cactus"],
+  ["short_grass","Short Grass","A tuft of plains grass.","#64963e","#8fc85d",0,"hand","short_grass"],
+  ["dandelion","Dandelion","A small yellow flower.","#d8b82e","#ffe766",0,"hand","dandelion"],
+  ["poppy","Poppy","A small red flower.","#a72d27","#e95043",0,"hand","poppy"],
 ]);
 
 function blockItem(id: BlockId, shortLabel: string, glyph: string): ItemDefinition {
@@ -737,6 +741,7 @@ const BLOCK_ITEM_SPECS = [
   ["tuff_brick_stairs","TUF·ST","◿"],
   ["resin_brick_slab","RES·SL","▂"],
   ["resin_brick_stairs","RES·ST","◿"],
+  ["cactus","CAC","▥"], ["short_grass","GRS","✣"], ["dandelion","DAN","✿"], ["poppy","POP","✿"],
 ] as const;
 
 const BASIC_ITEM_SPECS: readonly BasicItemSpec[] = [

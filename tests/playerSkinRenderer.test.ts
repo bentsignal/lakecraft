@@ -6,6 +6,7 @@ import { THIRD_PERSON_TUNING, thirdPersonPoseGroupForItem } from "../client/game
 import { blockIdForCubeItem } from "../client/game/blockItemCubeGeometry.ts";
 import { resolvePlayerRigPose, writePlayerRigPartMatrix } from "../client/game/playerRig.ts";
 import { itemVisual } from "../shared/visualCatalog.ts";
+import { buildThirdPersonHeldItemGeometry } from "../client/game/thirdPersonHeldItem.ts";
 
 const source = readFileSync(new URL("../client/game/playerSkinRenderer.ts", import.meta.url), "utf8");
 const heldItemSource = readFileSync(new URL("../client/game/thirdPersonHeldItem.ts", import.meta.url), "utf8");
@@ -19,7 +20,7 @@ for (const contract of [
   "resolvePlayerRigPose(rig)", "playerArmorRigDraws", "setPartMvp(\"rightArm\", true", "drawCallCount",
   "currentThirdPersonTuning()", "heldItemTuningRevision", "rebuildHeldItemGeometry",
 ]) assert.ok((source + heldItemSource).includes(contract), `shared world skin renderer retains ${contract}`);
-for (const itemId of ["dirt", "diamond_pickaxe", "apple", "bow"] as const) {
+for (const itemId of ["dirt", "glass", "diamond_pickaxe", "apple", "bow"] as const) {
   const presentation = thirdPersonHeldItemPresentation(itemId);
   const display = itemVisual(itemId).display.thirdPersonRight;
   const tuning = THIRD_PERSON_TUNING[thirdPersonPoseGroupForItem(itemId)];
@@ -49,7 +50,7 @@ for (const model of ["wide", "slim"] as const) {
   const armMaxX = -0.25;
   const wristMinY = model === "wide" ? 0.75 : 0.71875;
   writePlayerRigPartMatrix(partMatrix, "rightArm", idlePose, model, true);
-  for (const itemId of ["dirt", "diamond_pickaxe", "apple", "bow"] as const) {
+  for (const itemId of ["dirt", "glass", "diamond_pickaxe", "apple", "bow"] as const) {
     const center = thirdPersonHeldItemPresentation(itemId).center!;
     const socketX = center[0] + partMatrix[12];
     const socketY = partMatrix[5] * center[1] + partMatrix[9] * center[2] + partMatrix[13];
@@ -62,6 +63,10 @@ for (const model of ["wide", "slim"] as const) {
       `${model} ${itemId} grip stays on or immediately in front of the hand surface`);
   }
 }
+const heldGlass = buildThirdPersonHeldItemGeometry("glass");
+assert.equal(heldGlass.length / 6, 12 * 36, "shared local/remote third-person glass uses the volumetric frame");
+assert.ok(heldGlass.filter((_, index) => index % 6 >= 3).every((channel) => channel > 0.24),
+  "held glass remains high-contrast in the opaque third-person color shader");
 assert.equal(PLAYER_SKIN_VERTEX_COUNT, 432, "local player remains one bounded 12-cuboid skin batch");
 assert.doesNotMatch(source, /fetch\(|ImageData|setInterval|requestAnimationFrame/);
 console.log("world player skin renderer contract tests passed");

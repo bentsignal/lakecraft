@@ -74,6 +74,18 @@ const cutoutPixels = renderedPixels("glass");
 assert.ok(opaquePixels.some((value, index) => index % 4 === 3 && value === 255 && cutoutPixels[index] === 0),
   "alpha-cutout glass keeps transparent projected texels where opaque dirt paints pixels");
 
+for (const itemId of ["dirt", "sand"] as const) {
+  const icon = atlasBlockItemGuiIcon(itemId)!;
+  let minX = 64; let minY = 64; let maxX = -1; let maxY = -1; let sumX = 0; let sumY = 0; let count = 0;
+  for (let y = 0; y < 64; y += 1) for (let x = 0; x < 64; x += 1) {
+    if (!icon[(y * 64 + x) * 4 + 3]) continue;
+    minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+    sumX += x; sumY += y; count += 1;
+  }
+  assert.deepEqual([minX, minY, maxX, maxY], [0, 0, 63, 63], `${itemId} fills the canonical 16px GUI projection`);
+  assert.deepEqual([sumX / count, sumY / count], [31.5, 31.5], `${itemId} is exactly centered rather than inset or offset`);
+}
+
 for (const flatOrSpecial of ["iron_ingot", "coal", "leather", "chest", "oak_fence"] as const) {
   assert.equal(atlasBlockItemGuiIcon(flatOrSpecial), undefined,
     `${flatOrSpecial} keeps its exact installed sprite or installed special-model render`);

@@ -25,6 +25,7 @@ export type ItemIconArt = Readonly<{ family: ItemIconFamily; variant: string; ru
 type Grid = string[][];
 type Palette = Record<string, string>;
 const cache = new Map<ItemId, ItemIconArt>();
+const PLAINS_GRASS_TINT = [0x91, 0xbd, 0x59] as const;
 type ImportedVisualAssets = Readonly<{
   itemTextures: Readonly<Partial<Record<ItemId, string>>>;
   blockItemTextures: Readonly<Partial<Record<ItemId, string>>>;
@@ -102,11 +103,14 @@ function importedPngRuns(payload: string, label: string): ItemIconRun[] {
     for (let x = 0; x < ITEM_ICON_SIZE;) {
       const offset = (y * ITEM_ICON_SIZE + x) * 4;
       if (image.rgba[offset + 3] < 128) { x += 1; continue; }
-      const color = `#${[0, 1, 2].map((channel) => image.rgba[offset + channel].toString(16).padStart(2, "0")).join("")}`;
+      const channelValue = (pixelOffset: number, channel: number): number => label === "short_grass"
+        ? Math.round(image.rgba[pixelOffset + channel] * PLAINS_GRASS_TINT[channel] / 255)
+        : image.rgba[pixelOffset + channel];
+      const color = `#${[0, 1, 2].map((channel) => channelValue(offset, channel).toString(16).padStart(2, "0")).join("")}`;
       let end = x + 1;
       while (end < ITEM_ICON_SIZE) {
         const next = (y * ITEM_ICON_SIZE + end) * 4;
-        const nextColor = `#${[0, 1, 2].map((channel) => image.rgba[next + channel].toString(16).padStart(2, "0")).join("")}`;
+        const nextColor = `#${[0, 1, 2].map((channel) => channelValue(next, channel).toString(16).padStart(2, "0")).join("")}`;
         if (image.rgba[next + 3] < 128 || nextColor !== color) break;
         end += 1;
       }
