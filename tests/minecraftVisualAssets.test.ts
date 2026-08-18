@@ -46,7 +46,10 @@ const importerSource = readFileSync(new URL("../scripts/import-minecraft-visual-
 assert.ok(importerSource.includes(`EXPECTED_JAR_SHA256 = "${assets.source.jarSha256}"`)
   && importerSource.includes("jarSha256 !== EXPECTED_JAR_SHA256"),
 "the importer fails before asset extraction unless the installed JAR matches the reviewed 26.2 hash");
-assert.equal(Object.keys(assets.itemTextures).length, 67);
+assert.equal(Object.keys(assets.itemTextures).length, 70);
+for (const bucket of ["bucket", "water_bucket", "lava_bucket"]) {
+  assert.ok(Object.hasOwn(assets.itemTextures, bucket), `${bucket} uses the exact installed 26.2 item texture`);
+}
 assert.deepEqual(Object.keys(assets.itemTextureOverlays), [
   "leather_helmet", "leather_chestplate", "leather_leggings", "leather_boots",
 ]);
@@ -54,7 +57,8 @@ assert.equal(assets.bowStages.length, 3);
 assert.equal(Object.keys(assets.entities).length, 12);
 assert.equal(Object.keys(assets.armorTextures).length, 10);
 assert.ok(Object.hasOwn(assets.entities, "chicken"), "the exact temperate chicken joins every implemented mob texture");
-assert.equal(Object.keys(assets.blocks).length, 237);
+assert.equal(Object.keys(assets.blocks).length, 238);
+assert.ok(Object.hasOwn(assets.blocks, "lava"), "lava uses the exact installed 26.2 still texture");
 assert.equal(Object.keys(assets.blockItemTextures).length, 15);
 assert.deepEqual(Object.keys(assets.blockLayers), ["grass_side_overlay"]);
 assert.deepEqual(Object.keys(assets.blockItemModelChains), [
@@ -138,7 +142,7 @@ function assertExactPixels(
 const exactItems = Object.entries(ITEMS)
   .filter(([, item]) => item.category !== "block")
   .map(([itemId]) => itemId as ItemId);
-assert.equal(exactItems.length, 67);
+assert.equal(exactItems.length, 70);
 for (const itemId of exactItems) assertExactPixels(getItemIconArt(itemId), assets.itemTextures[itemId], itemId,
   itemId.startsWith("leather_") ? [0xa0, 0x65, 0x40] : undefined, assets.itemTextureOverlays[itemId]);
 for (const [itemId, payload] of Object.entries(assets.blockItemTextures)) {

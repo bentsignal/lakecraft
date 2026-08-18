@@ -37,7 +37,7 @@ export type RealtimePickupSink = (operationId: string, dropId: string) => Promis
 export type RealtimeRespawnSink = () => Promise<PlayerPose>;
 export type RealtimePlayerAttackSink = (operationId: string, targetId: string) => void;
 export type RealtimeMobAttackSink = (operationId: string, mobId: string) => void;
-export type RealtimeSelfDamageSink = (operationId: string, damage: number) => void;
+export type RealtimeSelfDamageSink = (operationId: string, damage: number, cause: "fall" | "drowning" | "lava") => void;
 export type RealtimeInventorySink = (requestJson: string) => Promise<InventoryActionMutationResult>;
 
 export function RealtimeMultiplayerTransport(props: {
@@ -128,7 +128,7 @@ export function RealtimeMultiplayerTransport(props: {
     props.registerRespawnSink(() => client.submitRespawn());
     props.registerPlayerAttackSink((operationId, targetId) => client.submitPlayerAttack(operationId, targetId));
     props.registerMobAttackSink?.((operationId, mobId) => client.submitMobAttack(operationId, mobId));
-    props.registerSelfDamageSink((operationId, damage) => client.submitSelfDamage(operationId, damage));
+    props.registerSelfDamageSink((operationId, damage, cause) => client.submitSelfDamage(operationId, damage, cause));
     props.registerInventorySink((requestJson) => client.submitInventoryAction(requestJson));
     client.start();
     return () => {

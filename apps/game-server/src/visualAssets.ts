@@ -4,6 +4,7 @@ export const VISUAL_ASSET_PATHS = Object.freeze({
   "/assets/block-texture-atlas-a607e4c6.png": "block-texture-atlas-a607e4c6.png",
   "/assets/block-texture-atlas-d94c19f9.png": "block-texture-atlas-d94c19f9.png",
   "/assets/mob-texture-atlas-204e2b83.png": "mob-texture-atlas-204e2b83.png",
+  "/assets/lake-bed-edition-title-f3a68a4c.webp": "lake-bed-edition-title-f3a68a4c.webp",
 } as const);
 
 /** Immutable, public visual data shared by the single- and multiplayer renderer. */
@@ -20,7 +21,7 @@ export function handleVisualAssetRequest(request: Request, url = new URL(request
     headers: {
       "access-control-allow-origin": "*",
       "cache-control": "public, max-age=31536000, immutable",
-      "content-type": "image/png",
+      "content-type": name.endsWith(".webp") ? "image/webp" : "image/png",
       etag: `"${name.slice(0, -4)}"`,
     },
   });

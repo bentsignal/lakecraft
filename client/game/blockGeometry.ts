@@ -2,7 +2,7 @@ import {
   BLOCK,
   isSlabBlock,
   isUpsideDownStairBlock,
-  isWaterBlock,
+  isFluidBlock,
   stairFacingForBlock,
   type BlockId,
   type StairFacing,
@@ -109,7 +109,7 @@ export function blockContainsSolidPoint(
   blockZ = Math.floor(pointZ),
   stairShape: StairShape = "straight",
 ): boolean {
-  if (block === BLOCK.AIR || isWaterBlock(block) || !Number.isFinite(blockY) || !Number.isFinite(pointY)) return false;
+  if (block === BLOCK.AIR || isFluidBlock(block) || !Number.isFinite(blockY) || !Number.isFinite(pointY)) return false;
   if (!isSlabBlock(block) && block !== BLOCK.BED && !stairFacingForBlock(block)) return true;
   const localX = pointX - blockX;
   const localZ = pointZ - blockZ;

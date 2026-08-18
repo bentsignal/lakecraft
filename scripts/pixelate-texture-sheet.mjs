@@ -282,6 +282,13 @@ function paintDerivedTile(output, outputIndex, columns, tileSize, name) {
     return;
   }
 
+  if (name === "lava") {
+    // Compact fail-safe only; the reviewed installed 26.2 still-lava frame
+    // replaces every pixel during deterministic atlas generation.
+    fill([207, 74, 8, 255]);
+    return;
+  }
+
   if (["cactus", "short_grass", "dandelion", "poppy"].includes(name)) {
     // Imported 26.2 pixels replace these compact fail-safe silhouettes.
     fill(name === "cactus" ? [74, 122, 48, 255] : [0, 0, 0, 0]);

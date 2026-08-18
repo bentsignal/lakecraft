@@ -7,10 +7,12 @@ export type SurvivalHudProps = {
   maxHunger?: number;
   armor?: number;
   maxArmor?: number;
+  air?: number;
+  maxAir?: number;
 };
 
 export type SurvivalIconState = "full" | "half" | "empty";
-type SurvivalIconKind = "health" | "hunger" | "armor";
+type SurvivalIconKind = "health" | "hunger" | "armor" | "air";
 
 export function survivalIconStates(value = 0, max = 20) {
   const safeMax = Math.max(2, max);
@@ -41,10 +43,11 @@ function Meter({ kind, value, max }: { kind: SurvivalIconKind; value: number; ma
   );
 }
 
-export function SurvivalHud({ health = 20, maxHealth = 20, hunger = 20, maxHunger = 20, armor = 0, maxArmor = 20 }: SurvivalHudProps) {
+export function SurvivalHud({ health = 20, maxHealth = 20, hunger = 20, maxHunger = 20, armor = 0, maxArmor = 20, air = 10, maxAir = 10 }: SurvivalHudProps) {
   return (
     <div className="lc-survival" aria-label="Survival status">
       {armor > 0 ? <div className="lc-survival__armor"><Meter kind="armor" max={maxArmor} value={armor} /></div> : null}
+      {air < maxAir ? <div className="lc-survival__air"><Meter kind="air" max={maxAir * 2} value={air * 2} /></div> : null}
       <Meter kind="health" max={maxHealth} value={health} />
       <Meter kind="hunger" max={maxHunger} value={hunger} />
     </div>

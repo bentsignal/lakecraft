@@ -150,6 +150,9 @@ export type ExpandedWorldBlockState = ExpandedBlockItemId
 /** Natural states append after every deployed state so existing numeric IDs never move. */
 export const NATURAL_BLOCK_STATE_TYPES = [
   "water", ...NATURAL_DECORATION_ITEMS,
+  "water_flow_1", "water_flow_2", "water_flow_3", "water_flow_4",
+  "water_flow_5", "water_flow_6", "water_flow_7",
+  "lava", "lava_flow_1", "lava_flow_2", "lava_flow_3",
 ] as const;
 export type NaturalBlockState = typeof NATURAL_BLOCK_STATE_TYPES[number];
 

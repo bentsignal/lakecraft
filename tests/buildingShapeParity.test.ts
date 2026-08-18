@@ -186,7 +186,7 @@ assert.equal(BLOCK_TYPES[BLOCK.OAK_SLAB], "oak_slab");
 assert.equal(BLOCK_TYPES[BLOCK.BRICK_STAIRS_WEST], "brick_stairs_west");
 assert.ok(BLOCK.NETHER_WART_BLOCK <= REALTIME_BLOCK_ID_MAX);
 assert.equal(BLOCK.DEEPSLATE_TILE_STAIRS_UPSIDE_WEST, 498, "the complete deployed v1 palette keeps its last numeric id");
-assert.equal(BLOCK_TYPES.length, 758, "the append-only catalog includes five natural biome states");
+assert.equal(BLOCK_TYPES.length, 769, "the append-only catalog includes natural terrain and derived fluid states");
 assert.ok(BLOCK.RESIN_BRICK_STAIRS_UPSIDE_WEST > 511 && BLOCK.RESIN_BRICK_STAIRS_UPSIDE_WEST <= REALTIME_BLOCK_ID_MAX);
 assert.ok(BLOCK.DEEPSLATE_TILE_STAIRS_UPSIDE_WEST <= REALTIME_BLOCK_ID_MAX);
 const encoded = encodeRealtimeChunkEdits(0, 0, [{x:1,y:20,z:1,block:BLOCK.NETHER_WART_BLOCK}]);

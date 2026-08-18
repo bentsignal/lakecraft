@@ -740,6 +740,19 @@ function carveCaves(blocks: Map<string, BlockId>, region: TerrainRegion, seed: n
   applyCaveCarveMask(blocks, carveMask);
 }
 
+function addLavaSprings(
+  blocks: Map<string, BlockId>, region: TerrainRegion, seed: number, terrain?: WorldTerrainDescriptor,
+): void {
+  if (terrain?.generatorVersion !== 3) return;
+  for (let x = region.minX; x <= region.maxX; x += 1) for (let z = region.minZ; z <= region.maxZ; z += 1) {
+    for (let y = Math.max(1, region.minY); y <= 8; y += 1) {
+      const cell = blockKey(x, y, z);
+      if (blocks.has(cell) || !blocks.has(blockKey(x, y - 1, z)) || hash3(x, y, z, seed + 8_113) >= 0.035) continue;
+      blocks.set(cell, BLOCK.LAVA);
+    }
+  }
+}
+
 function isTreeSite(x: number, z: number, seed: number, terrain?: WorldTerrainDescriptor): boolean {
   // Keep the shared spawn visually clear and safe from leaf/trunk collision.
   if (Math.max(Math.abs(x), Math.abs(z)) <= SPAWN_BLEND_RADIUS + TREE_MARGIN) return false;
@@ -860,6 +873,7 @@ export function createTerrainRegion(
   }
   addGround(blocks, region, seed, options.terrain);
   carveCaves(blocks, region, seed);
+  addLavaSprings(blocks, region, seed, options.terrain);
   addTrees(blocks, region, seed, options.terrain);
   addBiomePlants(blocks, region, seed, options.terrain);
   return blocks;

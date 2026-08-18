@@ -26,6 +26,13 @@ const TUPLE_CATALOGS = [
     scalarPresentationIndexes: [1, 2, 3, 4, 5],
   },
   {
+    name: "CONTAINER_ITEM_SPECS",
+    anchor: "const CONTAINER_ITEM_SPECS",
+    rows: 3,
+    widths: [6],
+    scalarPresentationIndexes: [1, 2, 3, 4],
+  },
+  {
     name: "UTILITY_ITEM_SPECS",
     anchor: "const UTILITY_ITEM_SPECS",
     rows: 2,
@@ -79,7 +86,7 @@ const TUPLE_CATALOGS = [
 ];
 
 const OBJECT_CATALOGS = [
-  { name: "RECIPES", anchor: "export const RECIPES", properties: ["label", "note"], expectedMatches: 216 },
+  { name: "RECIPES", anchor: "export const RECIPES", properties: ["label", "note"], expectedMatches: 218 },
   { name: "SMELTING_RECIPES", anchor: "export const SMELTING_RECIPES", properties: ["label"], expectedMatches: 10 },
 ];
 
@@ -262,6 +269,11 @@ function foodItem(id: ItemId, hunger: number): ItemDefinition {
 const SERVER_ITEM_ENTRIES = `const ITEM_ENTRIES: Array<readonly [ItemId, ItemDefinition]> = [
   ...BLOCK_ITEM_SPECS.map(([id]) => [id, blockItem(id)] as const),
   ...BASIC_ITEM_SPECS.map(([id]) => [id, { id, category: "material", maxStack: 64 } as ItemDefinition] as const),
+  ...CONTAINER_ITEM_SPECS.map(([id, maxStack]) => [id, {
+    id, category: "material", maxStack,
+    ...(id === "water_bucket" ? { placesBlock: "water" as const }
+      : id === "lava_bucket" ? { placesBlock: "lava" as const } : {}),
+  } as ItemDefinition] as const),
   ...UTILITY_ITEM_SPECS.map(([id, maxDurability]) => [id, { id, category: "tool", maxStack: 1, utility: { maxDurability } } as ItemDefinition] as const),
   ...RANGED_ITEM_SPECS.map(([id, category, maxStack, maxDurability, maxChargeMs]) => [id, { id, category, maxStack, ranged: { maxDurability, maxChargeMs } } as ItemDefinition] as const),
   ...FOOD_ITEM_SPECS.map(([id, hunger]) => [id, foodItem(id, hunger)] as const),
@@ -289,7 +301,7 @@ const SERVER_CRAFTING_TABLE_RECIPE = `function craftingTableRecipe(id: ItemId, i
 `;
 
 const CLIENT_CATALOG_IDENTIFIER = "__lakecraftGameCatalog";
-const CLIENT_CATALOG_FINGERPRINT = "8aababc3";
+const CLIENT_CATALOG_FINGERPRINT = "aa3b7c33";
 
 function compressStaticBytes(bytes) {
   const packed = [];
@@ -402,7 +414,7 @@ export function compactClientGameCatalog(source) {
     fail("RECIPES generated spread anchor changed.");
   }
   const literalRecipeText = recipeRange.text.slice(1, recipeSpread);
-  const literalRecipes = parseObjectRows(literalRecipeText, "RECIPES", 108);
+  const literalRecipes = parseObjectRows(literalRecipeText, "RECIPES", 109);
   const recipeIndex = catalogs.length;
   catalogs.push(literalRecipes);
   replacements.push({
@@ -447,7 +459,7 @@ export function stripServerGamePresentation(source) {
   }
   contents = replaceAnchoredRange(contents, "function defineBlocks(", "export const BLOCKS = defineBlocks(", SERVER_DEFINE_BLOCKS, "block mechanics builder", "79dcea12");
   contents = replaceAnchoredRange(contents, "function blockItem(", "type BasicItemSpec =", SERVER_ITEM_BUILDERS, "item mechanics builders", "0eb24b09");
-  contents = replaceAnchoredRange(contents, "const ITEM_ENTRIES:", "export const ITEMS =", SERVER_ITEM_ENTRIES, "item mechanics catalog", "f62069d2");
+  contents = replaceAnchoredRange(contents, "const ITEM_ENTRIES:", "export const ITEMS =", SERVER_ITEM_ENTRIES, "item mechanics catalog", "cadb670e");
   contents = replaceAnchoredRange(contents, "function craftingTableRecipe(", "const GENERATED_TOOL_RECIPES =", SERVER_CRAFTING_TABLE_RECIPE, "recipe mechanics builder", "6fb8bfa0");
   return contents;
 }

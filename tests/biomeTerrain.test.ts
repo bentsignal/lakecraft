@@ -30,10 +30,11 @@ assert.deepEqual(
 assert.equal(isWorldTerrainDescriptor(V2), true);
 assert.equal(isWorldTerrainDescriptor(V3), true);
 assert.equal(isWorldTerrainDescriptor({ ...V3, generatorVersion: 4 }), false);
-assert.deepEqual(BLOCK_TYPES.slice(-5), NATURAL_BLOCK_STATE_TYPES);
-assert.deepEqual(WORLD_CHUNK_BLOCK_TYPES.slice(-5), NATURAL_BLOCK_STATE_TYPES);
+assert.deepEqual(BLOCK_TYPES.slice(-NATURAL_BLOCK_STATE_TYPES.length), NATURAL_BLOCK_STATE_TYPES);
+assert.deepEqual(WORLD_CHUNK_BLOCK_TYPES.slice(-NATURAL_BLOCK_STATE_TYPES.length), NATURAL_BLOCK_STATE_TYPES);
 assert.deepEqual(NATURAL_BLOCK_STATE_TYPES.map((state) => BLOCK[state.toUpperCase() as keyof typeof BLOCK]),
-  [753, 754, 755, 756, 757], "natural IDs append after every shipped placeable state");
+  [753, 754, 755, 756, 757, 758, 759, 760, 761, 762, 763, 764, 765, 766, 767, 768],
+  "natural and derived-fluid IDs append without renumbering any shipped state");
 
 const startedAt = performance.now();
 const whole = createTerrainRegion(SEED, -64, 63, -64, 63, { terrain: V3 });

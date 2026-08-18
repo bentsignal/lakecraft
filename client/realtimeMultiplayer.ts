@@ -488,7 +488,7 @@ export class RealtimeMultiplayerClient {
   private pendingBlocks = new Map<string, PendingBlockEdit>();
   private pendingChat = new Map<string, string>();
   private pendingDrops = new Map<string, PendingDrop>();
-  private pendingSelfDamage = new Map<string, number>();
+  private pendingSelfDamage = new Map<string, readonly [number, "fall" | "drowning" | "lava"]>();
   private pendingInventory = new Map<string, PendingInventory>();
   private pendingRespawn: PendingRespawn | null = null;
   private appearanceSupported = false;
@@ -707,13 +707,13 @@ export class RealtimeMultiplayerClient {
     this.send({ v: REALTIME_PROTOCOL_VERSION, type: "mob_attack", operationId, mobId });
   }
 
-  submitSelfDamage(operationId: string, damage: number): void {
+  submitSelfDamage(operationId: string, damage: number, cause: "fall" | "drowning" | "lava" = "fall"): void {
     if (!this.joined || this.socket?.readyState !== WebSocket.OPEN
       || !/^[A-Za-z0-9:_-]{8,96}$/.test(operationId)
       || !Number.isInteger(damage) || damage < 1 || damage > 20) return;
-    this.pendingSelfDamage.set(operationId, damage);
+    this.pendingSelfDamage.set(operationId, [damage, cause]);
     if (this.pendingSelfDamage.size > 8) this.pendingSelfDamage.delete(this.pendingSelfDamage.keys().next().value!);
-    this.send({ v: REALTIME_PROTOCOL_VERSION, type: "self_damage", operationId, damage, cause: "fall" });
+    this.send({ v: REALTIME_PROTOCOL_VERSION, type: "self_damage", operationId, damage, cause });
   }
 
   submitRespawn(): Promise<PlayerPose> {
@@ -1075,8 +1075,8 @@ export class RealtimeMultiplayerClient {
       for (const [operationId, message] of this.pendingChat) {
         this.send({ v: REALTIME_PROTOCOL_VERSION, type: "chat_send", operationId, message });
       }
-      for (const [operationId, damage] of this.pendingSelfDamage) {
-        this.send({ v: REALTIME_PROTOCOL_VERSION, type: "self_damage", operationId, damage, cause: "fall" });
+      for (const [operationId, [damage, cause]] of this.pendingSelfDamage) {
+        this.send({ v: REALTIME_PROTOCOL_VERSION, type: "self_damage", operationId, damage, cause });
       }
       for (const pending of this.pendingInventory.values()) {
         this.send({ v: REALTIME_PROTOCOL_VERSION, type: "inventory_action", ["requestJson"]: pending.requestJson });
@@ -1324,9 +1324,10 @@ export class RealtimeMultiplayerClient {
       const operationId = boundedText(message.operationId, 96);
       const damage = finiteNumber(message.damage);
       const health = finiteNumber(message.health);
-      if (!this.pendingSelfDamage.has(operationId) || damage === null || !Number.isInteger(damage)
+      const pendingDamage = this.pendingSelfDamage.get(operationId);
+      if (!pendingDamage || damage === null || !Number.isInteger(damage)
         || damage < 1 || damage > 20 || health === null || !Number.isInteger(health) || health < 0 || health > 20
-        || message.cause !== "fall" || typeof message.killed !== "boolean") return;
+        || message.cause !== pendingDamage[1] || typeof message.killed !== "boolean") return;
       this.pendingSelfDamage.delete(operationId);
       this.options.onSelfHealth(health);
       return;
@@ -1417,7 +1418,7 @@ export class RealtimeMultiplayerClient {
       if (operationId) {
         if (operationId.startsWith("attack:")) return;
         if (operationId.startsWith("mob_attack:")) return;
-        if (operationId.startsWith("fall:")) {
+        if (this.pendingSelfDamage.has(operationId)) {
           this.pendingSelfDamage.delete(operationId);
           return;
         }

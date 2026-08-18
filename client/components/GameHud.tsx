@@ -35,6 +35,8 @@ export type GameHudProps = {
   maxHealth?: number;
   hunger?: number;
   maxHunger?: number;
+  air?: number;
+  maxAir?: number;
   showSurvivalStatus?: boolean;
   mobileUnsupported?: boolean;
   pauseOpen?: boolean;
@@ -102,6 +104,8 @@ export function GameHud({
   maxHealth = 20,
   hunger = 20,
   maxHunger = 20,
+  air = 10,
+  maxAir = 10,
   showSurvivalStatus = true,
   mobileUnsupported = false,
   pauseOpen = false,
@@ -156,7 +160,7 @@ export function GameHud({
         {!deathScreenOpen && !pauseOpen && !inventoryOpen && !modalOpen ? <Crosshair /> : null}
         {!deathScreenOpen && !inventoryOpen && !modalOpen && !pauseOpen ? (
           <div className="lc-survival-wrap">
-            {showSurvivalStatus ? <SurvivalHud armor={armor} health={health} hunger={hunger} maxHealth={maxHealth} maxHunger={maxHunger} /> : null}
+            {showSurvivalStatus ? <SurvivalHud air={air} armor={armor} health={health} hunger={hunger} maxAir={maxAir} maxHealth={maxHealth} maxHunger={maxHunger} /> : null}
             <Hotbar armorVisible={armor > 0} inventory={inventory} selectedIndex={selectedIndex} onSelect={onSelectHotbar} />
           </div>
         ) : null}

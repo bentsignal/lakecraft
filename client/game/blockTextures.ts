@@ -8,7 +8,7 @@ import {
   TEXTURE_TILE_SIZE,
   type TextureAtlasName,
 } from "./generated/textureAtlas.ts";
-import { BLOCK, blockStateName, type BlockId } from "./types.ts";
+import { BLOCK, blockStateName, isLavaBlock, isWaterBlock, type BlockId } from "./types.ts";
 import * as BS from "../../shared/bundleStrings.ts";
 import { STONE_SHAPE_TEXTURES } from "../../shared/expandedBuildingCatalog.ts";
 
@@ -102,7 +102,8 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
 
 /** Resolve the material tile for one exposed cube face. Special geometry returns null. */
 export function blockTextureForFace(block: BlockId, face: BlockFace): TextureAtlasName | null {
-  if (block === BLOCK.WATER) return "water";
+  if (isWaterBlock(block)) return "water";
+  if (isLavaBlock(block)) return "lava";
   if (block === BLOCK.CACTUS) return "cactus";
   if (block === BLOCK.GRASS) {
     if (face === "top") return "grass_top";

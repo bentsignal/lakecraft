@@ -98,6 +98,18 @@ client.submitSelfDamage("fall:transport", 6);
 assert.deepEqual(socket.sent.at(-1), { v:1,type:"self_damage",operationId:"fall:transport",damage:6,cause:"fall" });
 socket.receive({ type:"self_damage_result",operationId:"fall:transport",damage:6,health:14,killed:false,cause:"fall" });
 assert.equal(selfHealth, 14, "fall damage health only changes after Railway acknowledges and persists it");
+client.submitSelfDamage("drowning:transport", 2, "drowning");
+assert.deepEqual(socket.sent.at(-1), {
+  v:1,type:"self_damage",operationId:"drowning:transport",damage:2,cause:"drowning",
+});
+socket.receive({ type:"self_damage_result",operationId:"drowning:transport",damage:2,health:12,killed:false,cause:"drowning" });
+assert.equal(selfHealth, 12, "drowning uses the same exact-once Railway health authority");
+client.submitSelfDamage("lava:transport", 4, "lava");
+assert.deepEqual(socket.sent.at(-1), {
+  v:1,type:"self_damage",operationId:"lava:transport",damage:4,cause:"lava",
+});
+socket.receive({ type:"self_damage_result",operationId:"lava:transport",damage:4,health:8,killed:false,cause:"lava" });
+assert.equal(selfHealth, 8, "lava uses the same exact-once Railway health authority");
 const respawnPromise = client.submitRespawn();
 const respawnRequest = socket.sent.at(-1)!;
 assert.equal(respawnRequest.type, "respawn");

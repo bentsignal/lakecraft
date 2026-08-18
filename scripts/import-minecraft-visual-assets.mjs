@@ -119,6 +119,7 @@ const BLOCK_PATHS = Object.freeze({
   bedrock: "assets/minecraft/textures/block/bedrock.png",
   torch: "assets/minecraft/textures/block/torch.png",
   water: "assets/minecraft/textures/block/water_still.png",
+  lava: "assets/minecraft/textures/block/lava_still.png",
   cactus: "assets/minecraft/textures/block/cactus_side.png",
   short_grass: "assets/minecraft/textures/block/short_grass.png",
   dandelion: "assets/minecraft/textures/block/dandelion.png",

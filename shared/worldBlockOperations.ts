@@ -6,6 +6,7 @@ import {
   applyConfirmedDurableItemUse,
   applyConfirmedToolUse,
   cloneInventory,
+  exchangeSelectedItem,
   getDeterministicMiningDrop,
   maxItemDurability,
   type BlockId,
@@ -475,6 +476,17 @@ export function resolveWorldBlockOperation(
     if (placedBlock !== request.placedBlock && !isPlacedVariant(request.expectedHeldItem, request.placedBlock)) {
       return { ok: false, reason: "placed_block_mismatch" };
     }
+    if (request.expectedHeldItem === "water_bucket" || request.expectedHeldItem === "lava_bucket") {
+      const fluid = request.expectedHeldItem === "water_bucket" ? "water" : "lava";
+      if (request.placedBlock !== fluid) return { ok: false, reason: "placed_block_mismatch" };
+      const exchanged = exchangeSelectedItem(state.inventory, request.selectedHotbar, request.expectedHeldItem, "bucket");
+      if (!exchanged.ok) return { ok: false, reason: "inventory_full" };
+      const inventoryRevision = nextWorldBlockRevision(state.inventoryRevision);
+      if (inventoryRevision === null) return { ok: false, reason: "revision_overflow" };
+      return { ok: true, effect: { kind: "place", previousBlock: "air", nextBlock: fluid,
+        inventory: exchanged.inventory, inventoryRevision, chunkRevision, inventoryChanged: true,
+        drop: null, consumed: request.expectedHeldItem, toolUse: null } };
+    }
     const inventory = cloneInventory(state.inventory);
     const placedStack = inventory[request.selectedHotbar];
     if (!placedStack) return { ok: false, reason: "held_item_mismatch" };
@@ -499,6 +511,16 @@ export function resolveWorldBlockOperation(
     };
   }
 
+  if (request.expectedHeldItem === "bucket" && (request.expectedBlock === "water" || request.expectedBlock === "lava")) {
+    const filled = request.expectedBlock === "water" ? "water_bucket" : "lava_bucket";
+    const exchanged = exchangeSelectedItem(state.inventory, request.selectedHotbar, "bucket", filled);
+    if (!exchanged.ok) return { ok: false, reason: "inventory_full" };
+    const inventoryRevision = nextWorldBlockRevision(state.inventoryRevision);
+    if (inventoryRevision === null) return { ok: false, reason: "revision_overflow" };
+    return { ok: true, effect: { kind: "mine", previousBlock: request.expectedBlock, nextBlock: "air",
+      inventory: exchanged.inventory, inventoryRevision, chunkRevision, inventoryChanged: true,
+      drop: null, consumed: null, toolUse: null } };
+  }
   const gameBlock = gameBlockForWorldBlock(request.expectedBlock);
   if (!gameBlock) return { ok: false, reason: BS.invalidState };
   // Shears are a durable utility, not an axe-shaped tool. Spend their one

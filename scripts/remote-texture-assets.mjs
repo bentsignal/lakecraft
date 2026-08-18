@@ -4,6 +4,7 @@ const BLOCK_SOURCE_SHA256 = "86634345db872108492c3ce63cca8419ca85c972765cc207eb6
 const BLOCK_PNG_SHA256 = "0f3a9517c9850c970514a2a88873eee2bed205272cc318b484dde0bfbb7973e1";
 const MOB_SOURCE_SHA256 = "3c4ccc1ca87a3d5c8a261ee8f05ac426b3881ce82b31a3a4d4144fda47e535da";
 const ARMOR_SOURCE_SHA256 = "e77cba5f4fa363d9c0978c9bf244fda9154aae234a5a1ff8239814e9e7bc9a62";
+const TITLE_SOURCE_SHA256 = "522d9f1c0b8a8819adb02cc82a76608ca52f12e5954ca4da0542dba6d0f77c09";
 const ASSET_ORIGINS = [
   "https://lakecraft-production.up.railway.app",
   "https://lakecraft-creative-production.up.railway.app",
@@ -67,4 +68,13 @@ export function remotePlayerArmorTextureModule(source) {
   const sha = exact(source, /export const PLAYER_ARMOR_ATLAS_PNG_SHA256="([0-9a-f]{64})";/g, "player armor atlas hash");
   const url = `https://raw.githubusercontent.com/bentsignal/lakecraft/main/client/game/generated/player-armor-atlas-${sha.slice(0, 8)}.png`;
   return `export const PLAYER_ARMOR_ATLAS_RGBA=${JSON.stringify(url)},PLAYER_ARMOR_ATLAS_PNG_SHA256=${JSON.stringify(sha)};`;
+}
+
+/** Keep the generated title in source while the sealed capsule uses its immutable Railway copy. */
+export function remoteTitleLogoModule(source) {
+  const digest = sha256(source);
+  if (digest !== TITLE_SOURCE_SHA256) {
+    throw new Error(`Title logo source changed (expected ${TITLE_SOURCE_SHA256}, found ${digest}).`);
+  }
+  return `export const LAKE_BED_EDITION_TITLE_WEBP_BASE64=${JSON.stringify(`${ASSET_ORIGINS[0]}/assets/lake-bed-edition-title-f3a68a4c.webp`)};`;
 }

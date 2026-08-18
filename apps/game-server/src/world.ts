@@ -1753,12 +1753,12 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
     now: number,
   ): void {
     const player = state.player!;
-    const durableReplay=this.store.replayAuthoritativePlayerDamage(player.id,message.operationId,"fall",message.damage,false);
+    const durableReplay=this.store.replayAuthoritativePlayerDamage(player.id,message.operationId,message.cause,message.damage,false);
     if(durableReplay){
       if(!durableReplay.ok){this.fail(state,"bad_message",`Fall damage rejected: ${durableReplay.reason}`,false,false,message.operationId);return;}
       const health=player.health??durableReplay.health;
       this.send(state.peer,{v:PROTOCOL_VERSION,type:"self_damage_result",operationId:message.operationId,
-        damage:durableReplay.damage,health,killed:health===0,cause:"fall"});
+        damage:durableReplay.damage,health,killed:health===0,cause:message.cause});
       return;
     }
     if (player.gameMode === "creative" || (player.health ?? 20) <= 0) {
@@ -1770,12 +1770,12 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       return;
     }
     state.lastSelfDamageAt = now;
-    const committed=this.store.applyAuthoritativePlayerDamage(player.id,message.operationId,"fall",message.damage,false,now);
+    const committed=this.store.applyAuthoritativePlayerDamage(player.id,message.operationId,message.cause,message.damage,false,now);
     if(!committed.ok){this.fail(state,"bad_message",`Fall damage rejected: ${committed.reason}`,false,false,message.operationId);return;}
     if(committed.replayed){
       const currentHealth=player.health??committed.health;
       this.send(state.peer,{v:PROTOCOL_VERSION,type:"self_damage_result",operationId:message.operationId,
-        damage:committed.damage,health:currentHealth,killed:currentHealth===0,cause:"fall"});
+        damage:committed.damage,health:currentHealth,killed:currentHealth===0,cause:message.cause});
       return;
     }
     const {damage,health}=committed;
@@ -1785,7 +1785,7 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       damage,
       health,
       killed: health === 0,
-      cause: "fall",
+      cause: message.cause,
     };
     if (result.killed) {
       state.controls = { moveX: 0, moveY: 0, moveZ: 0, jump: false, sprint: false };

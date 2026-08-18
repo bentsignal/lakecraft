@@ -10,7 +10,7 @@ export const COMPACT_CLIENT_JSX_PROP_SHAPE_COUNTS = Object.freeze({
   "className,aria-hidden": 9,
   "className,aria-hidden,children": 3,
   "className,aria-label,children": 11,
-  "className,children": 57,
+  "className,children": 58,
   "className,id,children": 4,
   "className,onClick,type,children": 7,
   "className,role,aria-label,children": 9,
@@ -25,7 +25,7 @@ export const COMPACT_CLIENT_JSX_PROP_SHAPE_COUNTS = Object.freeze({
 // before JSX shape reconstruction. Do not sample it from the staged client:
 // string pooling and the following minify pass intentionally change the AST
 // value kinds that this fail-closed boundary records.
-export const COMPACT_CLIENT_JSX_PROP_SHAPE_SOURCE_FINGERPRINT = "0af18e8d8e44d333237956d872f7f068bfae75793406814b9cc33791efc5e21a";
+export const COMPACT_CLIENT_JSX_PROP_SHAPE_SOURCE_FINGERPRINT = "7856d0b8c17399feb19f732e4ce35eb9693e4c37f8ea01cfc25312bff882b355";
 export const COMPACT_CLIENT_JSX_PROP_SHAPE_INPUT_BOUNDARY = "raw-pre-jsx-v1";
 
 let typescriptPromise;

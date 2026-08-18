@@ -157,10 +157,10 @@ export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3
 // Derivation is deterministic, but the exact reviewed live set is hash-pinned
 // so source drift fails closed instead of silently broadening the transform.
 export const COMPACT_SERVER_EXTENDED_KEY_MINIMUM_GAIN = 10;
-export const COMPACT_SERVER_EXTENDED_KEY_COUNT = 97;
+export const COMPACT_SERVER_EXTENDED_KEY_COUNT = 98;
 // The positional clientBootstrap query reorders existing high-gain server keys
 // without adding a new compact wire property.
-export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "ccd516ffdda3c6ba908a1ed70a36a31a2b510cedc90596b591e1994da773d53a";
+export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "dd9bbda3598499efd102fb658f5eb7bfa7da6967f156cb5f6d8b9f5bcda1e96e";
 // Keep the post-shared-gameplay checkpoint reconstructable. The only reviewed
 // source drift here removes owner-specific pickup filtering while leaving the
 // serialized Railway/Lakebed property spellings unchanged.

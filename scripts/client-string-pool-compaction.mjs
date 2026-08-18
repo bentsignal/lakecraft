@@ -8,9 +8,18 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 540;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 475;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "8abed50b552e663d8950bbb84dd9168185f819e0b2d3ab95622f1d03801cd3a1";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 543;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 478;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "32d7780fb5c70de4d4f6be25482c3b5282b8fb69cf34ff75584f002c239593df";
+export const COMPACT_CLIENT_HUMAN_FLUID_SYSTEM_DELTA = Object.freeze({
+  previousOccurrences: 540,
+  previousUniqueValues: 475,
+  previousSourceFingerprint: "8abed50b552e663d8950bbb84dd9168185f819e0b2d3ab95622f1d03801cd3a1",
+  occurrenceDelta: 3,
+  uniqueValueDelta: 3,
+  source: "fluid feedback and death presentation after bucket copy moved into the packed catalog",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_HUMAN_CHAT_SEND_REMOVAL_DELTA = Object.freeze({
   previousOccurrences: 542,
   previousUniqueValues: 477,
@@ -229,9 +238,18 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
   source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_359;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 135;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "644b713fbcec277290c8291896076ec315e259e16a4b5a4fe8dbc978b77484ce";
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_376;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 137;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "5d8a1ebced0d3e8e6085fa462abb809920c1e2a3f9e617517c618e9bbd22ee72";
+export const COMPACT_CLIENT_REPEATED_FLUID_SYSTEM_DELTA = Object.freeze({
+  previousOccurrences: 1_359,
+  previousUniqueValues: 135,
+  previousSourceFingerprint: "644b713fbcec277290c8291896076ec315e259e16a4b5a4fe8dbc978b77484ce",
+  occurrenceDelta: 17,
+  uniqueValueDelta: 2,
+  source: "shared water/lava identities and the canonical iron bucket grid",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_REPEATED_HUD_CHAT_REFINEMENT_DELTA = Object.freeze({
   previousOccurrences: 1_359,
   previousUniqueValues: 135,
@@ -650,9 +668,18 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 613;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 182;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "b5cbfe7c6e771f5a8ffa008d005d37624ee3116c3b2dbf7e1ec19f8d801b943f";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 607;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 180;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "c3597cd2aedbada6716e0e9316f825e1bd0989adcfe30c9b7fdd96c49c7d6248";
+export const COMPACT_CLIENT_LOW_FREQUENCY_FLUID_SYSTEM_DELTA = Object.freeze({
+  previousOccurrences: 613,
+  previousUniqueValues: 182,
+  previousSourceFingerprint: "b5cbfe7c6e771f5a8ffa008d005d37624ee3116c3b2dbf7e1ec19f8d801b943f",
+  occurrenceDelta: -6,
+  uniqueValueDelta: -2,
+  source: "bucket presentation moved into the packed catalog while exact fluid identities remain",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_LOW_FREQUENCY_HUD_CHAT_REFINEMENT_DELTA = Object.freeze({
   previousOccurrences: 614,
   previousUniqueValues: 182,
@@ -1057,12 +1084,12 @@ export const COMPACT_CLIENT_FIXED_IDENTITY_VALUES = Object.freeze([
   "unsupported",
   "empty",
 ]);
-export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES = 62;
+export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES = 63;
 export const COMPACT_CLIENT_FIXED_IDENTITY_UNIQUE_VALUES = 7;
 export const COMPACT_CLIENT_FIXED_IDENTITY_INCREMENTAL_UNIQUE_VALUES = 1;
 export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCE_KIND = "StringLiteral";
 export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_COUNTS = Object.freeze({
-  creative: 32,
+  creative: 33,
   survival: 10,
   loaded: 3,
   recovered: 3,
@@ -1070,15 +1097,15 @@ export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_COUNTS = Object.freeze({
   unsupported: 6,
   empty: 3,
 });
-export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT = "fb0b5d59a8aefe3a8accf8b36c4df74723d4a4d4ffdf1e816aaa2a3ef55f0690";
+export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT = "5fd4de55e898da872316f9ca3b21eea35281c59e105da8648aae730da3d7c0a4";
 export const COMPACT_CLIENT_FIXED_IDENTITY_CREATIVE_COMMIT_DELTA = Object.freeze({
   previousOccurrences: 63,
   previousUniqueValues: 7,
   previousSourceFingerprint: "2a5f101f64a96b509af2bee05aa324640d9129039c27630d519848b90f10b26e",
-  occurrenceDelta: -1,
+  occurrenceDelta: 0,
   uniqueValueDelta: 0,
-  valueDeltas: Object.freeze({ creative: -1 }),
-  source: "Creative workspace close now commits instead of returning before transport",
+  valueDeltas: Object.freeze({}),
+  source: "Creative workspace close commit preserves the reviewed gameplay identity cardinality",
 });
 export const COMPACT_CLIENT_FIXED_IDENTITY_SHARED_GAMEPLAY_DELTA = Object.freeze({
   previousOccurrences: 68,

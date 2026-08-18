@@ -82,6 +82,9 @@ export type ItemId = BlockId
   | "cooked_mutton"
   | "cooked_chicken"
   | "rotten_flesh"
+  | "bucket"
+  | "water_bucket"
+  | "lava_bucket"
   | ToolId
   | ArmorId;
 export type ToolKind = "hand" | "pickaxe" | "axe" | "shovel" | "sword";
@@ -112,7 +115,7 @@ export type ItemDefinition = {
   maxStack: number;
   glyph: string;
   color: string;
-  placesBlock?: BlockId;
+  placesBlock?: BlockId | "water" | "lava";
   tool?: { kind: Exclude<ToolKind, "hand">; tier: Exclude<ToolTier, "none">; attackDamage: number; maxDurability: number };
   armor?: { slot: ArmorSlot; protection: number; maxDurability: number };
   ranged?: { maxDurability: number; maxChargeMs: number };
@@ -765,6 +768,12 @@ const BASIC_ITEM_SPECS: readonly BasicItemSpec[] = [
   ["brick", "Brick", "BRK", "A fired clay brick used to build masonry blocks.", "▰", "#a65342"],
 ];
 
+const CONTAINER_ITEM_SPECS = [
+  ["bucket", "Bucket", "BKT", "An iron bucket for carrying a source block of water or lava.", "#aeb3b3", 16],
+  ["water_bucket", "Water Bucket", "W·BK", "A bucket filled from a water source.", "#3f76e4", 1],
+  ["lava_bucket", "Lava Bucket", "L·BK", "A bucket filled from a lava source.", "#e26716", 1],
+] as const;
+
 const UTILITY_ITEM_SPECS: readonly UtilityItemSpec[] = [
   ["flint_and_steel", "Flint and Steel", "F&S", "A steel striker for lighting TNT. It lasts for 64 ignitions.", "⌁", "#b9bfbc", 64],
   ["shears", "Shears", "SHR", "Iron shears that preserve leaf blocks when clipping them.", "✂", "#c8cfcc", 238],
@@ -817,6 +826,11 @@ const ITEM_ENTRIES: Array<readonly [ItemId, ItemDefinition]> = [
   ...BLOCK_ITEM_SPECS.map(([id, shortLabel, glyph]) => [id, blockItem(id, shortLabel, glyph)] as const),
   ...BASIC_ITEM_SPECS.map(([id, label, shortLabel, description, glyph, color]) => [id, {
     id, label, shortLabel, description, category: "material", maxStack: 64, glyph, color,
+  }] as const),
+  ...CONTAINER_ITEM_SPECS.map(([id, label, shortLabel, description, color, maxStack]) => [id, {
+    id, label, shortLabel, description, category: "material", maxStack, glyph: "▣", color,
+    ...(id === "water_bucket" ? { placesBlock: "water" as const }
+      : id === "lava_bucket" ? { placesBlock: "lava" as const } : {}),
   }] as const),
   ...UTILITY_ITEM_SPECS.map(([id, label, shortLabel, description, glyph, color, maxDurability]) => [id, {
     id, label, shortLabel, description, category: "tool", maxStack: 1, glyph, color,
@@ -995,6 +1009,7 @@ export const RECIPES: readonly Recipe[] = [
   {"id":"resin_brick_stairs","label":"Resin Brick Stairs","note":"Six resin bricks blocks make four stairs.","craftingContext":"crafting_table","ingredients":[{"itemId":"resin_bricks","count":6}],"output":{"itemId":"resin_brick_stairs","count":4}},
   { id: "flint_and_steel", label: "Flint and steel", note: "Strike flint against iron to make a reusable igniter.", craftingContext: "field", ingredients: [{ itemId: "iron_ingot", count: 1 }, { itemId: "flint", count: 1 }], output: { itemId: "flint_and_steel", count: 1 } },
   { id: "shears", label: "Shears", note: "Two iron ingots make durable clipping shears.", craftingContext: "field", ingredients: [{ itemId: "iron_ingot", count: 2 }], output: { itemId: "shears", count: 1 } },
+  { id: "bucket", label: "Bucket", note: "Three iron ingots make a bucket for carrying fluids.", craftingContext: "crafting_table", ingredients: [{ itemId: "iron_ingot", count: 3 }], output: { itemId: "bucket", count: 1 } },
   { id: "bow", label: "Bow", note: "Three sticks and three string make a ranged weapon.", craftingContext: "crafting_table", ingredients: [{ itemId: "stick", count: 3 }, { itemId: "string", count: 3 }], output: { itemId: "bow", count: 1 } },
   { id: "arrows", label: "Arrows", note: "Flint, a stick, and a feather make four arrows.", craftingContext: "crafting_table", ingredients: [{ itemId: "flint", count: 1 }, { itemId: "stick", count: 1 }, { itemId: "feather", count: 1 }], output: { itemId: "arrow", count: 4 } },
   ...GENERATED_TOOL_RECIPES,
@@ -1354,6 +1369,21 @@ export function hasItems(inventory: readonly (ItemStack | null)[], quantities: r
 
 export function addItem(inventory: readonly (ItemStack | null)[], itemId: ItemId, count = 1): { inventory: Inventory; remainder: number } {
   return addItemStack(inventory, createItemStack(itemId, count), count);
+}
+
+/** Atomically exchanges one selected container item without losing it when the inventory is full. */
+export function exchangeSelectedItem(
+  inventory: readonly (ItemStack | null)[], selected: number, expected: ItemId, replacement: ItemId,
+): { ok: boolean; inventory: Inventory } {
+  const next = cloneInventory(inventory), stack = next[selected];
+  if (!stack || stack.itemId !== expected || stack.count < 1) return { ok: false, inventory: next };
+  if (stack.count === 1) {
+    next[selected] = createItemStack(replacement, 1);
+    return { ok: true, inventory: next };
+  }
+  stack.count -= 1;
+  const added = addItem(next, replacement, 1);
+  return added.remainder ? { ok: false, inventory: cloneInventory(inventory) } : { ok: true, inventory: added.inventory };
 }
 
 /** Adds an exact metadata-bearing stack without repairing or merging worn tools. */

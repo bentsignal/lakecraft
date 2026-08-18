@@ -101,11 +101,12 @@ for (const path of runtimeFiles) {
 // installed-font bitmap ascent/descender geometry, and compact-safe numeric
 // stair-state resolution, persisted three-size HUD presentation, and
 // server-authoritative Creative equipment commits, coordinated HUD scaling,
-// enter-only full-width chat, and async armor-preview repainting; none adds another Lakebed
+// enter-only full-width chat, async armor-preview repainting, and the shared
+// derived fluid runtime with authoritative source buckets; none adds another Lakebed
 // authority or multiplayer transport.
-assert.equal(runtimeFiles.length, 198, "reviewed main runtime file set changed");
+assert.equal(runtimeFiles.length, 199, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "e67926cf53cc28f7b1ed5189d974fd10d5ab12814246e4bc53939f5f48a71e22",
+  "b7e39805569633a9f7d63e22097029ba451e4f534cf6408a6378e243502ff2e4",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

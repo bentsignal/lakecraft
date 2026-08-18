@@ -35,8 +35,9 @@ const HUD_CSS = `
 .lc-survival-wrap { bottom: max(6px, env(safe-area-inset-bottom)); left: 50%; pointer-events: auto; position: absolute; transform: translateX(-50%) scale(var(--lc-hotbar-scale)); transform-origin:bottom center; width: 364px; z-index: 2; }
 .lc-survival { display: grid; grid-template-columns: 1fr 1fr; height: 18px; margin: 0 2px 2px; position: relative; }
 .lc-survival__armor { bottom: 18px; left: 0; position: absolute; width: 180px; }
+.lc-survival__air { bottom: 18px; position: absolute; right: 0; width: 180px; }
 .lc-meter { align-items: center; display: flex; height: 18px; }
-.lc-meter--health, .lc-meter--armor { justify-content: flex-start; }.lc-meter--hunger { flex-direction: row-reverse; justify-content: flex-start; }
+.lc-meter--health, .lc-meter--armor { justify-content: flex-start; }.lc-meter--hunger,.lc-meter--air { flex-direction: row-reverse; justify-content: flex-start; }
 .lc-meter__icon { display: block; flex: 0 0 16px; height: 18px; position: relative; width: 18px; }
 .lc-meter__sprite { display: block; height: 18px; image-rendering: pixelated; inset: 0; position: absolute; user-select: none; width: 18px; }
 .lc-meter__sprite--empty { z-index: 0; }.lc-meter__sprite--fill { z-index: 1; }

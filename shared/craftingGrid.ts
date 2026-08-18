@@ -124,6 +124,7 @@ export const INITIAL_RECIPE_PATTERNS: Readonly<Record<string, RecipeShape>> = {
   tnt: { kind: "shaped", pattern: [[BS.gunpowder, "sand", BS.gunpowder], ["sand", BS.gunpowder, "sand"], [BS.gunpowder, "sand", BS.gunpowder]] },
   flint_and_steel: { kind: "shaped", pattern: [[BS.ironIngot, null], [null, "flint"]], allowHorizontalMirror: true },
   shears: { kind: "shaped", pattern: [[BS.ironIngot, null], [null, BS.ironIngot]], allowHorizontalMirror: true },
+  bucket: { kind: "shaped", pattern: [[BS.ironIngot, null, BS.ironIngot], [null, BS.ironIngot, null]] },
   bow: { kind: "shaped", pattern: [[null, S, "string"], [S, null, "string"], [null, S, "string"]], allowHorizontalMirror: true },
   arrows: { kind: "shaped", pattern: [["flint"], [S], ["feather"]] },
   ...GENERATED_EQUIPMENT_PATTERNS,

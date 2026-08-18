@@ -73,7 +73,7 @@ xoptions-dialog|3 xoptions__done|3 xoptions__grid|3 xc__inventory|3 xr-status-ro
 xsection-rule|3 xsingleplayer|3 xv-workspace|4 ysleep-layer|1 xc__station|3 xdurability|3
 xingredient|3 xlocal-perf|0 xp-panorama|3 xc__status|3 xp-content|5 xc__flame|3
 xr-status|3 xc-layer|3 xl__icon|2 xp-hills|2 xr-layer|3 xs__body|3 xlocal-world-feedback|3
-xv-panel|5 xu-wrap|3 xv-slot|4 xw-link|3 yperf|0
+xv-panel|5 xu-wrap|3 xu__air|2 xv-slot|4 xw-link|3 yperf|0
 xc-inventory-grid--hotbar|2 xgameplay-diagnostics|2 xlocal-world-delete-copy|3
 xh__autosave-status|2 xunsupported__stamp|2 xc-inventory-title|2 xh__last-autosaved|2
 xh-autosave-status|2 xk-screen__buttons|2 xlocal-world-empty|3 xlocal-world-retry|2
@@ -126,7 +126,7 @@ export const COMPACT_CLIENT_PRIVATE_IDENTIFIERS = Object.freeze([
 export const COMPACT_CLIENT_PRIVATE_IDENTIFIER_PREFIXES = Object.freeze([
   Object.freeze(["xc-slot--", "Yq0", 1]),
   Object.freeze(["xj-glyph--", "Yq1", 4]),
-  Object.freeze(["xl--", "Yq2", 4]),
+  Object.freeze(["xl--", "Yq2", 5]),
   Object.freeze(["xt--", "Yq3", 3]),
 ]);
 

@@ -13,7 +13,7 @@ const EXPECTED_BLOCK_IDS = [
 const EXPECTED_ITEM_IDS = [
   ...EXPECTED_BLOCK_IDS,
   "stick", "string", "bone", "bone_meal", "feather", "arrow", "leather", "coal", "charcoal", "raw_iron",
-  "iron_ingot", "raw_gold", "gold_ingot", "diamond", "gunpowder", "flint", "clay_ball", "brick", "flint_and_steel", "shears", "bow",
+  "iron_ingot", "raw_gold", "gold_ingot", "diamond", "gunpowder", "flint", "clay_ball", "brick", "flint_and_steel", "shears", "bucket", "water_bucket", "lava_bucket", "bow",
   "apple", "pork", "beef", "mutton", "raw_chicken", "cooked_pork", "cooked_beef", "cooked_mutton", "cooked_chicken", "rotten_flesh",
   "wooden_pickaxe", "wooden_axe", "wooden_shovel", "wooden_sword", "stone_pickaxe", "stone_axe", "stone_shovel", "stone_sword",
   "iron_pickaxe", "iron_axe", "iron_shovel", "iron_sword", "golden_pickaxe", "golden_axe", "golden_shovel", "golden_sword",

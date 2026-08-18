@@ -172,7 +172,7 @@ assert.ok(app.includes('(gameModeRef.current === "creative" || countItem(invento
 assert.ok(app.includes('const nextInventory = creative ? inventoryRef.current : inventoryRef.current.map'),
   "Creative bone meal grows trees without consuming the selected stack");
 assert.ok(chat.includes("senderForMessage"), "shared chat rendering supports local command labels without changing defaults");
-assert.equal((engine.match(/options\.canTakePlayerDamage\?\.\(\) !== false/g) ?? []).length, 5,
-  "mob, creeper, fall, TNT, and confirmed knockback all honor creative invulnerability before mutating state");
+assert.equal((engine.match(/options\.canTakePlayerDamage\?\.\(\) !== false/g) ?? []).length, 7,
+  "mob, creeper, fall, TNT, knockback, drowning, and lava all honor creative invulnerability before mutating state");
 
 console.log("local command console tests passed");

@@ -20,6 +20,7 @@ export const MOBS_CAPABILITY = "mobs-v1" as const;
 
 export type ProtocolVersion = typeof PROTOCOL_VERSION;
 export type ServerGameMode = "survival" | "creative";
+export type SelfDamageCause = "fall" | "drowning" | "lava";
 export interface WorldRuntimeSettings {
   spawn: { x: number; y: number; z: number; yaw: number };
   daylightCycle: boolean;
@@ -72,7 +73,7 @@ export interface SelfDamageResult {
   damage: number;
   health: number;
   killed: boolean;
-  cause: "fall";
+  cause: SelfDamageCause;
 }
 
 export interface BlockEdit {
@@ -180,7 +181,7 @@ export type ClientMessage =
   | { v: ProtocolVersion; type: "pickup_item"; operationId: string; dropId: string }
   | { v: ProtocolVersion; type: "player_attack"; operationId: string; targetId: string }
   | { v: ProtocolVersion; type: "mob_attack"; operationId: string; mobId: string }
-  | { v: ProtocolVersion; type: "self_damage"; operationId: string; damage: number; cause: "fall" }
+  | { v: ProtocolVersion; type: "self_damage"; operationId: string; damage: number; cause: SelfDamageCause }
   | { v: ProtocolVersion; type: "respawn"; operationId: string }
   | {
       v: ProtocolVersion;
@@ -562,11 +563,11 @@ export function decodeClientMessage(raw: string): DecodeResult {
 
   if (value.type === "self_damage") {
     if (!shortString(value.operationId, 96) || !/^[A-Za-z0-9:_-]{8,96}$/.test(value.operationId)
-      || value.cause !== "fall" || !integer(value.damage) || value.damage < 1 || value.damage > 20) {
+      || !["fall", "drowning", "lava"].includes(value.cause) || !integer(value.damage) || value.damage < 1 || value.damage > 20) {
       return invalid("self damage is invalid");
     }
     return { ok: true, message: {
-      v: PROTOCOL_VERSION, type: "self_damage", operationId: value.operationId, damage: value.damage, cause: "fall",
+      v: PROTOCOL_VERSION, type: "self_damage", operationId: value.operationId, damage: value.damage, cause: value.cause,
     } };
   }
 

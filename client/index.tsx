@@ -440,6 +440,7 @@ function RailwayMultiplayerSession({
     (latest, message) => Math.max(latest, message.sequence), 0,
   );
   const [playerHealth, setPlayerHealth] = useState(20);
+  const [playerAir, setPlayerAir] = useState(10);
   const playerHealthRef = useRef(20);
   const [deathScreenOpen, setDeathScreenOpen] = useState(false);
   const [respawning, setRespawning] = useState(false);
@@ -1238,11 +1239,12 @@ function RailwayMultiplayerSession({
         onPlayerDamage: (amount, cause) => {
           audioRef.current?.play("mobAttack", { seed: `mob:${amount}:${performance.now().toFixed(0)}`, intensity: 0.7 });
           audioRef.current?.play("playerHurt", { seed: `${amount}:${performance.now().toFixed(0)}`, intensity: 0.78 });
-          if (cause === "fall") {
-            realtimeSelfDamageSinkRef.current?.(`fall:${crypto.randomUUID()}`, amount);
+          if (cause === "fall" || cause === "drowning" || cause === "lava") {
+            realtimeSelfDamageSinkRef.current?.(`${cause}:${crypto.randomUUID()}`, amount, cause);
             return false;
           }
         },
+        onBreathChange: (air) => setPlayerAir(air),
         onPlayerHealthChange: (health) => {
           playerHealthRef.current = health;
           setPlayerHealth(health);
@@ -1980,6 +1982,7 @@ function RailwayMultiplayerSession({
         deathCause="You died"
         deathScreenOpen={deathScreenOpen}
         health={playerHealth}
+        air={playerAir}
         hudVisible={hudVisible}
         hunger={hunger}
         maxHunger={MAX_HUNGER}

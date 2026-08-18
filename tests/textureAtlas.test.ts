@@ -129,10 +129,10 @@ assert.equal(TEXTURE_ATLAS_COLUMNS, 16);
 assert.equal(TEXTURE_ATLAS_ROWS, 16);
 assert.deepEqual(TEXTURE_ATLAS_NAMES.slice(0, BASE_NAMES.length), BASE_NAMES,
   "the deployed tile prefix stays append-only while the creative catalog expands");
-assert.equal(TEXTURE_ATLAS_NAMES.length, 237);
-assert.deepEqual(TEXTURE_ATLAS_NAMES.slice(-8), ["polished_tuff", "tuff_bricks", "resin_bricks", "water", "cactus", "short_grass", "dandelion", "poppy"],
-  "the reviewed water and natural-decoration textures append without moving deployed cells");
-assert.equal(new Set(TEXTURE_ATLAS_CELLS).size, 237, "every ordinary material owns one cell");
+assert.equal(TEXTURE_ATLAS_NAMES.length, 238);
+assert.deepEqual(TEXTURE_ATLAS_NAMES.slice(-9), ["polished_tuff", "tuff_bricks", "resin_bricks", "water", "cactus", "short_grass", "dandelion", "poppy", "lava"],
+  "the reviewed fluid and natural-decoration textures append without moving deployed cells");
+assert.equal(new Set(TEXTURE_ATLAS_CELLS).size, 238, "every ordinary material owns one cell");
 assert.deepEqual([CHEST_ATLAS_COLUMN, CHEST_ATLAS_ROW], [12, 12]);
 
 const atlasWidth = TEXTURE_ATLAS_COLUMNS * TEXTURE_TILE_SIZE;
@@ -147,7 +147,7 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
     colors.add(`${tile[offset]},${tile[offset + 1]},${tile[offset + 2]},${tile[offset + 3]}`);
   }
   assert.ok(colors.size >= 3, `${TEXTURE_ATLAS_NAMES[index]} must retain readable pixel variation`);
-  if (!new Set(["glass", "sapling", "torch", "water", "cactus", "short_grass", "dandelion", "poppy"]).has(TEXTURE_ATLAS_NAMES[index])
+  if (!new Set(["glass", "sapling", "torch", "water", "lava", "cactus", "short_grass", "dandelion", "poppy"]).has(TEXTURE_ATLAS_NAMES[index])
     && !TEXTURE_ATLAS_NAMES[index].endsWith("_stained_glass")
     && !TEXTURE_ATLAS_NAMES[index].includes("_door_")
     && !TEXTURE_ATLAS_NAMES[index].endsWith("_leaves")
@@ -158,7 +158,7 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
   }
   tileFingerprints.add(fnv1a32(tile));
 }
-assert.equal(tileFingerprints.size, 236,
+assert.equal(tileFingerprints.size, 237,
   "the exact installed atlas is distinct except for Minecraft's identical quartz side/top pixels");
 
 assert.equal(new Set(["coal_ore", "iron_ore", "gold_ore", "diamond_ore"]
@@ -188,6 +188,12 @@ assert.equal(new Set(Array.from({ length: 256 }, (_, pixel) => waterTile[pixel *
   "the reviewed still-water frame has continuous, even alpha without glass-like holes");
 assert.ok(new Set(Array.from({ length: 256 }, (_, pixel) => waterTile.slice(pixel * 4, pixel * 4 + 3).join(","))).size >= 8,
   "the imported first animation frame retains soft Minecraft ripple variation");
+
+const lavaTile = atlasTile(TEXTURE_ATLAS_NAMES.indexOf("lava"));
+assert.equal(new Set(Array.from({ length: 256 }, (_, pixel) => lavaTile[pixel * 4 + 3])).size, 1,
+  "the reviewed still-lava frame is continuously opaque");
+assert.ok(new Set(Array.from({ length: 256 }, (_, pixel) => lavaTile.slice(pixel * 4, pixel * 4 + 3).join(","))).size >= 16,
+  "the exact installed lava frame retains its orange molten variation");
 
 const saplingTile = atlasTile(TEXTURE_ATLAS_NAMES.indexOf("sapling"));
 const saplingAlphaCounts = new Map<number, number>();
@@ -282,7 +288,7 @@ try {
 }
 const tileColorCounts = compactIndexes.subarray(0, TEXTURE_ATLAS_NAMES.length);
 const localPaletteColors = tileColorCounts.reduce((sum, count) => sum + count, 0);
-assert.ok(localPaletteColors > 3_400 && localPaletteColors < 3_500,
+assert.ok(localPaletteColors > 3_500 && localPaletteColors < 3_600,
   "the expanded ordinary local palettes remain bounded after exact material import");
 assert.ok(Math.max(...tileColorCounts) <= 255,
   "local palette color counts stay inside the one-byte format");

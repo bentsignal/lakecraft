@@ -3,5 +3,7 @@
 !apps/game-server/
 !apps/game-server/src/
 !apps/game-server/src/**
+!apps/game-server/assets/
+!apps/game-server/assets/**
 !shared/
 !shared/**

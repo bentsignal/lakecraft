@@ -158,6 +158,8 @@ import {
   BLOCK,
   blockStateName,
   isGlassBlock,
+  isFluidBlock,
+  isLavaBlock,
   isLightEmittingBlock,
   isLuminousBlock,
   isPlantBlock,
@@ -185,6 +187,20 @@ import {
   validateVoxelRuntimeSnapshot,
   VOXEL_RUNTIME_SNAPSHOT_VERSION,
 } from "./types.ts";
+import {
+  LAVA_MOVE_SCALE,
+  LAVA_DAMAGE_INTERVAL_SECONDS,
+  PLAYER_MAX_AIR,
+  WATER_MOVE_SCALE,
+  advanceBreath,
+  createBreathState,
+  fluidKind,
+  fluidNeighborCells,
+  fluidTickDelay,
+  planFluidCell,
+  raycastFluidSource,
+  type FluidKind,
+} from "./fluids.ts";
 import type { MobMotionPose } from "../../shared/mobMotionAuthority.ts";
 import {
   CREEPER_EXPLOSION_RADIUS,
@@ -814,7 +830,9 @@ export function blockOccludesFaces(block: BlockId): boolean {
 
 /** Glass keeps neighboring opaque faces, but adjacent glass cells share no internal seam. */
 export function blockFaceIsOccluded(block: BlockId, neighbor: BlockId): boolean {
-  return ((isGlassBlock(block) || isWaterBlock(block)) && neighbor === block) || blockOccludesFaces(neighbor);
+  return (isGlassBlock(block) && neighbor === block)
+    || (isFluidBlock(block) && fluidKind(block) === fluidKind(neighbor))
+    || blockOccludesFaces(neighbor);
 }
 
 /** Stable far-to-near key order for the bounded per-chunk transparent pass. */
@@ -837,7 +855,7 @@ export function sortTransparentChunkKeysBackToFront(
 export function blockHasCollision(block: BlockId): boolean {
   const door = doorStateForBlock(block);
   return block !== BLOCK.AIR
-    && !isWaterBlock(block)
+    && !isFluidBlock(block)
     && !isPlantBlock(block)
     && !isTorchBlock(block)
     && door?.open !== true
@@ -1993,6 +2011,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     pitch: -0.08,
   };
   const blocks = new Map<string, BlockId>();
+  const fluidQueues: Record<FluidKind, Set<string>> = { water: new Set(), lava: new Set() };
+  const derivedFluidKeys = new Set<string>();
+  const nextFluidStepAt: Record<FluidKind, number> = { water: 0, lava: 0 };
   const skyOccluderColumns: SkyOccluderColumns = new Map();
   const primedTnt = new Set<string>();
   const torchLights = new Map<string, TorchLightPosition>();
@@ -2139,6 +2160,62 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   function getBlock(x: number, y: number, z: number): BlockId {
     if (y < TERRAIN_MIN_Y) return BLOCK.AIR;
     return blocks.get(blockKey(x, y, z)) ?? BLOCK.AIR;
+  }
+
+  function enqueueFluidNeighborhood(kind: FluidKind, x: number, y: number, z: number): void {
+    for (const cell of fluidNeighborCells(x, y, z)) {
+      const block = getBlock(cell.x, cell.y, cell.z);
+      if (loadedChunkKeys.has(chunkKeyForBlock(cell.x, cell.z))
+        && (block === BLOCK.AIR || fluidKind(block) === kind && block !== (kind === "water" ? BLOCK.WATER : BLOCK.LAVA))) {
+        fluidQueues[kind].add(blockKey(cell.x, cell.y, cell.z));
+      }
+    }
+  }
+
+  function queueFluidChange(x: number, y: number, z: number, previous: BlockId, next: BlockId): void {
+    const kinds = new Set<FluidKind>();
+    const previousKind = fluidKind(previous), nextKind = fluidKind(next);
+    if (previousKind) kinds.add(previousKind);
+    if (nextKind) kinds.add(nextKind);
+    for (const [dx, dy, dz] of [[0, 1, 0], [0, -1, 0], [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]] as const) {
+      const neighborKind = fluidKind(getBlock(x + dx, y + dy, z + dz));
+      if (neighborKind) kinds.add(neighborKind);
+    }
+    for (const kind of kinds) enqueueFluidNeighborhood(kind, x, y, z);
+  }
+
+  function processFluidKind(kind: FluidKind, now: number): void {
+    if (now < nextFluidStepAt[kind] || !fluidQueues[kind].size) return;
+    nextFluidStepAt[kind] = now + fluidTickDelay(kind === "water" ? BLOCK.WATER : BLOCK.LAVA);
+    const edits: WorldEdit[] = [];
+    const batch = [...fluidQueues[kind]].slice(0, 64);
+    for (const key of batch) {
+      fluidQueues[kind].delete(key);
+      const [x, y, z] = key.split(",").map(Number);
+      if (!loadedChunkKeys.has(chunkKeyForBlock(x, z))) continue;
+      const planned = planFluidCell(kind, x, y, z, getBlock);
+      if (!planned) continue;
+      const previous = getBlock(x, y, z);
+      if (planned.block === BLOCK.AIR && !derivedFluidKeys.has(key)) continue;
+      if (planned.block === BLOCK.AIR) derivedFluidKeys.delete(key);
+      else derivedFluidKeys.add(key);
+      setBlock(x, y, z, planned.block);
+      edits.push(planned);
+      enqueueFluidNeighborhood(kind, x, y, z);
+    }
+    if (edits.length) rebuildEditedWorldChunks(edits, []);
+  }
+
+  function processFluids(now: number): void {
+    processFluidKind("water", now);
+    processFluidKind("lava", now);
+  }
+
+  for (const [key, block] of blocks) {
+    const kind = fluidKind(block);
+    if (!kind || block !== (kind === "water" ? BLOCK.WATER : BLOCK.LAVA)) continue;
+    const [x, y, z] = key.split(",").map(Number);
+    enqueueFluidNeighborhood(kind, x, y, z);
   }
 
   function caveSpawnY(kind: keyof typeof MOB_DEFINITIONS, x: number, surfaceY: number, z: number): number | null {
@@ -2362,6 +2439,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let localMobHabitatRefreshSeconds = 0;
   const mobStepSeconds = 0.1;
   let playerHealth = PLAYER_MAX_HEALTH;
+  let breath = createBreathState();
+  let lastBreathLevel = PLAYER_MAX_AIR;
+  let lavaContactSeconds = 0;
+  let fluidExitSlowSeconds = 0;
   let lastPerformanceSent = 0;
   let lastUpdateMs = 0;
   let lastRenderMs = 0;
@@ -2509,7 +2590,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     for (const next of batch) {
       rememberWorldEdit(next);
       if (loadedOnly && !loadedChunkKeys.has(chunkKeyForBlock(next.x, next.z))) continue;
+      const previous = getBlock(next.x, next.y, next.z);
       if (setBlock(next.x, next.y, next.z, next.block)) skyEdits.push(next);
+      derivedFluidKeys.delete(blockKey(next.x, next.y, next.z));
+      queueFluidChange(next.x, next.y, next.z, previous, next.block);
       loadedEdits.push(next);
     }
     for (const bed of removedBeds) unregisterBedStructure(bed);
@@ -2550,6 +2634,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
     chunkBlocks.set(owner, owned);
     loadedChunkKeys.add(owner);
+    for (const [key, block] of materialized) {
+      const kind = fluidKind(block);
+      if (!kind || block !== (kind === "water" ? BLOCK.WATER : BLOCK.LAVA)) continue;
+      const [x, y, z] = key.split(",").map(Number);
+      enqueueFluidNeighborhood(kind, x, y, z);
+    }
   }
 
   function unloadTerrainChunk(chunkX: number, chunkZ: number, retainMesh = false): void {
@@ -2565,6 +2655,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       chunkMeshes.delete(owner);
     }
     for (const key of chunkBlocks.get(owner) ?? []) {
+      derivedFluidKeys.delete(key);
+      fluidQueues.water.delete(key);
+      fluidQueues.lava.delete(key);
       blocks.delete(key);
       removeTorchLight(key);
     }
@@ -2843,7 +2936,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         if (blockFaceIsOccluded(block, neighbor)) continue;
         const textureName = blockTextureForFace(block, face[0]);
         if (textureName) {
-          const destination = isWaterBlock(block) ? waterVertices
+          const destination = isFluidBlock(block) ? waterVertices
             : isGlassBlock(block) ? transparentVertices : textureVertices;
           const exposure = skyExposureLevel(skyOccluderColumns, x + face[1], y + face[2], z + face[3]);
           if (isGlassBlock(block)) {
@@ -2858,7 +2951,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
               destination, x, y, z, face, getBlock, face[4] * variation, exposure, block,
             );
           } else appendTexturedBlockFace(destination, x, y, z, face, textureName,
-            face[4] * variation, exposure, isLuminousBlock(block) || textureName === "furnace_front");
+            face[4] * variation, exposure, isLavaBlock(block) || isLuminousBlock(block) || textureName === "furnace_front");
           continue;
         }
         const color = tint(base, face[4], variation);
@@ -3367,6 +3460,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (stepVisualOffsetY > 0) stepVisualOffsetY = 0;
     }
     const processedTerrain = processPendingTerrainChunks();
+    processFluids(now);
     if (playerHealth <= 0) {
       if (!playerViewSuspended) {
         resetMovementView();
@@ -3393,11 +3487,36 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       fallPeakY = pose.y;
     }
     const flying = creativeFlight.flying && options.canCreativeFly?.() === true;
-    const waterAtFeet = !flying
-      && isWaterBlock(getBlock(Math.floor(pose.x), Math.floor(pose.y + 0.15), Math.floor(pose.z)));
-    const waterAtBody = !flying
-      && isWaterBlock(getBlock(Math.floor(pose.x), Math.floor(pose.y + cameraPosture.bodyHeight * 0.55), Math.floor(pose.z)));
+    const feetFluid = !flying ? getBlock(Math.floor(pose.x), Math.floor(pose.y + 0.15), Math.floor(pose.z)) : BLOCK.AIR;
+    const bodyFluid = !flying ? getBlock(Math.floor(pose.x), Math.floor(pose.y + cameraPosture.bodyHeight * 0.55), Math.floor(pose.z)) : BLOCK.AIR;
+    const headFluid = getBlock(Math.floor(pose.x), Math.floor(pose.y + cameraPosture.eyeHeight), Math.floor(pose.z));
+    const waterAtFeet = isWaterBlock(feetFluid), waterAtBody = isWaterBlock(bodyFluid);
     const inWater = waterAtFeet || waterAtBody;
+    const inLava = isLavaBlock(feetFluid) || isLavaBlock(bodyFluid);
+    fluidExitSlowSeconds = inWater || inLava ? 0.45 : Math.max(0, fluidExitSlowSeconds - dt);
+    const breathStep = advanceBreath(breath, isWaterBlock(headFluid), dt);
+    breath = breathStep;
+    const breathLevel = Math.ceil(breath.air);
+    if (breathLevel !== lastBreathLevel) {
+      lastBreathLevel = breathLevel;
+      options.onBreathChange?.(breathLevel, PLAYER_MAX_AIR);
+    }
+    if (breathStep.damageTaken > 0 && playerHealth > 0 && options.canTakePlayerDamage?.() !== false) {
+      const appliedDamage = Math.min(playerHealth, breathStep.damageTaken);
+      if (options.onPlayerDamage?.(appliedDamage, "drowning") !== false) {
+        playerHealth -= appliedDamage;
+        options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
+      }
+    }
+    lavaContactSeconds = inLava ? lavaContactSeconds + dt : 0;
+    if (lavaContactSeconds >= LAVA_DAMAGE_INTERVAL_SECONDS && playerHealth > 0 && options.canTakePlayerDamage?.() !== false) {
+      lavaContactSeconds %= LAVA_DAMAGE_INTERVAL_SECONDS;
+      const appliedDamage = Math.min(playerHealth, 4);
+      if (options.onPlayerDamage?.(appliedDamage, "lava") !== false) {
+        playerHealth -= appliedDamage;
+        options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
+      }
+    }
     const forwardInput = (controlHeld("moveForward") ? 1 : 0) - (controlHeld("moveBackward") ? 1 : 0);
     const strafe = (controlHeld("strafeRight") ? 1 : 0) - (controlHeld("strafeLeft") ? 1 : 0);
     const ladderAtFrameStart = !flying && playerTouchesLadder(pose.x, pose.y, pose.z, getBlock);
@@ -3435,8 +3554,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     cameraPostureTarget.fovRadians = movementFovRadians(movementMode, options.getFieldOfViewRadians?.());
     smoothPlayerPosture(cameraPosture, cameraPostureTarget, dt, cameraPosture);
     writeHorizontalMovementDelta(pose.yaw, movement, dt, horizontalMovementDelta);
-    const dx = horizontalMovementDelta.x * (inWater ? 0.46 : 1);
-    const dz = horizontalMovementDelta.z * (inWater ? 0.46 : 1);
+    const fluidMoveScale = inLava ? LAVA_MOVE_SCALE : inWater || fluidExitSlowSeconds > 0 ? WATER_MOVE_SCALE : 1;
+    const dx = horizontalMovementDelta.x * fluidMoveScale;
+    const dz = horizontalMovementDelta.z * fluidMoveScale;
     const movementStartX = pose.x;
     const movementStartZ = pose.z;
     const protectLedge = !flying && movementMode === "sneak" && grounded;
@@ -3449,7 +3569,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const verticalStartY = pose.y;
     velocity[1] = flying
       ? creativeFlightVerticalVelocity(controlHeld("jump"), shiftHeld)
-      : inWater ? waterVerticalVelocity(velocity[1], controlHeld("jump"), shiftHeld, dt, waterAtFeet && !waterAtBody)
+      : inWater || inLava ? waterVerticalVelocity(velocity[1], controlHeld("jump"), shiftHeld, dt, waterAtFeet && !waterAtBody)
+        * (inLava ? 0.45 : 1)
       : ladderVerticalVelocity(
         velocity[1],
         touchingLadder,
@@ -3466,7 +3587,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (flying) {
       fallAirborne = false;
       fallPeakY = pose.y;
-    } else if (touchingLadder || inWater) {
+    } else if (touchingLadder || inWater || inLava) {
       fallAirborne = false;
       fallPeakY = pose.y;
     } else if (!grounded) {
@@ -3783,7 +3904,16 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     renderCenter[0] = eye[0] + facing[0];
     renderCenter[1] = eye[1] + facing[1];
     renderCenter[2] = eye[2] + facing[2];
+    sampleDayNight(worldTimeMs, dayNightConfig, dayNightState);
     writeRenderDistanceFogRange(fogRange, streamingChunkRadius);
+    const cameraFluid = fluidKind(getBlock(Math.floor(eye[0]), Math.floor(eye[1]), Math.floor(eye[2])));
+    if (cameraFluid) {
+      fogRange[0] = cameraFluid === "water" ? 4 : 0.2;
+      fogRange[1] = cameraFluid === "water" ? 22 : 4;
+    }
+    const fogR = cameraFluid === "water" ? 0.08 : cameraFluid === "lava" ? 0.72 : dayNightState.fogR;
+    const fogG = cameraFluid === "water" ? 0.25 : cameraFluid === "lava" ? 0.16 : dayNightState.fogG;
+    const fogB = cameraFluid === "water" ? 0.48 : cameraFluid === "lava" ? 0.02 : dayNightState.fogB;
     const aspect = canvas.width / canvas.height;
     writePerspectiveMatrix(projectionMatrix,
       cameraPosture.fovRadians,
@@ -3802,7 +3932,6 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     writeLookAtMatrix(viewMatrix, eye, renderCenter);
     const mvp = writeMatrixProduct(mvpMatrix, projectionMatrix, viewMatrix);
     writeFrustumPlanes(frustumPlanes, mvp);
-    sampleDayNight(worldTimeMs, dayNightConfig, dayNightState);
     writeCelestialDirection(dayNightState.sunAngle, atmosphereSunDirection);
     writeCelestialDirection(dayNightState.moonAngle, atmosphereMoonDirection);
     updateActiveTorchLights(now, eye);
@@ -3830,7 +3959,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       primedTntVisibleCount = mobStats.visiblePrimedTntCount;
       primedTntUploadBytes = mobStats.primedTntVertexCount * MOB_VERTEX_STRIDE * Float32Array.BYTES_PER_ELEMENT;
     }
-    gl.clearColor(dayNightState.skyR, dayNightState.skyG, dayNightState.skyB, 1);
+    gl.clearColor(cameraFluid ? fogR : dayNightState.skyR, cameraFluid ? fogG : dayNightState.skyG, cameraFluid ? fogB : dayNightState.skyB, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     visibleChunkCount = 0;
     drawCalls = 1;
@@ -3854,13 +3983,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     gl.uniform3fv(atmosphereForwardLocation, facing);
     gl.uniform3f(atmosphereRightLocation, rightX, 0, rightZ);
     gl.uniform3f(atmosphereUpLocation, upX, upY, upZ);
-    gl.uniform3f(atmosphereSkyColorLocation, dayNightState.skyR, dayNightState.skyG, dayNightState.skyB);
-    gl.uniform3f(atmosphereFogColorLocation, dayNightState.fogR, dayNightState.fogG, dayNightState.fogB);
+    gl.uniform3f(atmosphereSkyColorLocation, cameraFluid ? fogR : dayNightState.skyR, cameraFluid ? fogG : dayNightState.skyG, cameraFluid ? fogB : dayNightState.skyB);
+    gl.uniform3f(atmosphereFogColorLocation, fogR, fogG, fogB);
     gl.uniform3fv(atmosphereSunDirectionLocation, atmosphereSunDirection);
     gl.uniform3fv(atmosphereMoonDirectionLocation, atmosphereMoonDirection);
-    gl.uniform1f(atmosphereSunIntensityLocation, dayNightState.sunIntensity);
-    gl.uniform1f(atmosphereMoonIntensityLocation, dayNightState.moonIntensity);
-    gl.uniform1f(atmosphereStarIntensityLocation, dayNightState.starIntensity);
+    gl.uniform1f(atmosphereSunIntensityLocation, cameraFluid ? 0 : dayNightState.sunIntensity);
+    gl.uniform1f(atmosphereMoonIntensityLocation, cameraFluid ? 0 : dayNightState.moonIntensity);
+    gl.uniform1f(atmosphereStarIntensityLocation, cameraFluid ? 0 : dayNightState.starIntensity);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.disableVertexAttribArray(atmospherePositionLocation);
     gl.enable(gl.DEPTH_TEST);
@@ -3869,7 +3998,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     gl.uniformMatrix4fv(terrainMvpLocation, false, mvp);
     gl.uniform3fv(terrainCameraLocation, eye);
     gl.uniform2fv(terrainFogRangeLocation, fogRange);
-    gl.uniform3f(terrainFogColorLocation, dayNightState.fogR, dayNightState.fogG, dayNightState.fogB);
+    gl.uniform3f(terrainFogColorLocation, fogR, fogG, fogB);
     gl.uniform3f(
       terrainAmbientColorLocation,
       dayNightState.ambientR,
@@ -3916,7 +4045,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     gl.uniformMatrix4fv(mvpLocation, false, mvp);
     gl.uniform3fv(cameraLocation, eye);
     gl.uniform2fv(fogRangeLocation, fogRange);
-    gl.uniform3f(fogColorLocation, dayNightState.fogR, dayNightState.fogG, dayNightState.fogB);
+    gl.uniform3f(fogColorLocation, fogR, fogG, fogB);
     gl.uniform3f(
       ambientColorLocation,
       dayNightState.ambientR,
@@ -3983,7 +4112,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.uniformMatrix4fv(mobMvpLocation, false, mvp);
       gl.uniform3fv(mobCameraLocation, eye);
       gl.uniform2fv(mobFogRangeLocation, fogRange);
-      gl.uniform3f(mobFogColorLocation, dayNightState.fogR, dayNightState.fogG, dayNightState.fogB);
+      gl.uniform3f(mobFogColorLocation, fogR, fogG, fogB);
       gl.uniform3f(mobAmbientColorLocation, dayNightState.ambientR, dayNightState.ambientG, dayNightState.ambientB);
       gl.uniform3f(mobDirectionalColorLocation, dayNightState.directionalR, dayNightState.directionalG, dayNightState.directionalB);
       gl.uniform1f(mobAmbientIntensityLocation, dayNightState.ambientIntensity);
@@ -4001,7 +4130,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.uniformMatrix4fv(mvpLocation, false, mvp);
       gl.uniform3fv(cameraLocation, eye);
       gl.uniform2fv(fogRangeLocation, fogRange);
-      gl.uniform3f(fogColorLocation, dayNightState.fogR, dayNightState.fogG, dayNightState.fogB);
+      gl.uniform3f(fogColorLocation, fogR, fogG, fogB);
     }
     if (particleVertexCount) {
       bindBuffer(particleBuffer);
@@ -4092,9 +4221,24 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (waterMeshes.length || transparentMeshes.length) {
       gl.useProgram(terrainProgram);
       gl.uniform1f(terrainAlphaCutoffLocation, 0);
+      // Establish the nearest fluid surface in depth without tinting color.
+      // The following LEQUAL blend can then never flicker between coplanar
+      // faces or disappear as chunk ordering changes around the camera.
+      gl.colorMask(false, false, false, false);
+      gl.depthMask(true);
+      const waterDrawCount = Math.min(waterMeshes.length, MAX_TRANSPARENT_CHUNK_DRAWS);
+      for (let index = 0; index < waterDrawCount; index += 1) {
+        const mesh = waterMeshes[index];
+        if (!mesh.waterBuffer || !mesh.waterVertexCount) continue;
+        gl.uniform4fv(terrainTorchLightsLocation, chunkTorchLights(mesh));
+        bindTerrainBuffer(mesh.waterBuffer);
+        gl.drawArrays(gl.TRIANGLES, 0, mesh.waterVertexCount);
+      }
+      gl.colorMask(true, true, true, true);
+      gl.depthFunc(gl.LEQUAL);
+      gl.depthMask(false);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-      const waterDrawCount = Math.min(waterMeshes.length, MAX_TRANSPARENT_CHUNK_DRAWS);
       for (let index = 0; index < waterDrawCount; index += 1) {
         const mesh = waterMeshes[index];
         if (!mesh.waterBuffer || !mesh.waterVertexCount) continue;
@@ -4103,7 +4247,6 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         gl.drawArrays(gl.TRIANGLES, 0, mesh.waterVertexCount);
         drawCalls += 1;
       }
-      gl.depthMask(false);
       const transparentDrawCount = Math.min(transparentMeshes.length, MAX_TRANSPARENT_CHUNK_DRAWS);
       for (let index = 0; index < transparentDrawCount; index += 1) {
         const mesh = transparentMeshes[index];
@@ -4114,6 +4257,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         drawCalls += 1;
       }
       gl.depthMask(true);
+      gl.depthFunc(gl.LESS);
       gl.disable(gl.BLEND);
       gl.uniform1f(terrainAlphaCutoffLocation, 0.5);
       gl.useProgram(program);
@@ -4457,6 +4601,15 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     );
   }
 
+  function tryCollectFluid(): boolean {
+    if (selectedItem !== "bucket" || options.canEditBlock?.() === false) return false;
+    const source = raycastFluidSource(interactionEye(), direction(), getBlock, options.reach ?? 6);
+    if (!source || options.canCollectFluid?.(source.block) === false
+      || !emitEdit({ x: source.x, y: source.y, z: source.z, block: BLOCK.AIR })) return false;
+    emitHandAction("use");
+    return true;
+  }
+
   function tryPlaceSelectedBlock(): boolean {
     if (!target || selectedBlock === BLOCK.AIR || options.canEditBlock?.() === false
       || options.canPlaceSelectedBlock?.(selectedBlock) === false) return false;
@@ -4608,6 +4761,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (secondaryButtonHeld) return;
       secondaryButtonHeld = true;
       if (useMobUnderCrosshair()) return;
+      if (tryCollectFluid()) return;
       const bypassBlockInteraction = bypassBlockInteractionForPlacement(
         controlHeld("sneak"),
         selectedBlock,
@@ -4724,6 +4878,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       canvas.addEventListener("contextmenu", onContextMenu);
       options.onPoseChange?.({ ...pose });
       options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
+      options.onBreathChange?.(lastBreathLevel, PLAYER_MAX_AIR);
       options.onMovementModeChange?.("idle", 0.5);
       // Seed a complete frozen frame for a paused HMR remount. The RAF heartbeat
       // then refreshes that retained geometry at a bounded cadence so a menu or
@@ -5219,11 +5374,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       fallAirborne = false;
       fallPeakY = pose.y;
       playerHealth = PLAYER_MAX_HEALTH;
+      breath = createBreathState();
+      lastBreathLevel = PLAYER_MAX_AIR;
       target = null;
       updateStreamingWindow(true, true);
       poseDirty = true;
       options.onPoseChange?.({ ...pose });
       options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
+      options.onBreathChange?.(lastBreathLevel, PLAYER_MAX_AIR);
     },
     getPose() { return { ...pose }; },
     getRespawnPoint() { return { ...respawnPoint }; },

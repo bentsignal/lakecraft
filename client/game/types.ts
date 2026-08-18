@@ -109,7 +109,15 @@ export function isGlassBlock(block: BlockId): boolean {
 }
 
 export function isWaterBlock(block: BlockId): boolean {
-  return block === BLOCK.WATER;
+  return block === BLOCK.WATER || blockStateName(block).startsWith("water_flow_");
+}
+
+export function isLavaBlock(block: BlockId): boolean {
+  return block === BLOCK.LAVA || blockStateName(block).startsWith("lava_flow_");
+}
+
+export function isFluidBlock(block: BlockId): boolean {
+  return isWaterBlock(block) || isLavaBlock(block);
 }
 
 export function isPlantBlock(block: BlockId): boolean {
@@ -210,7 +218,7 @@ export interface WorldEdit {
   block: BlockId;
 }
 
-export type PlayerDamageCause = "mob" | "creeper" | "tnt" | "fall";
+export type PlayerDamageCause = "mob" | "creeper" | "tnt" | "fall" | "drowning" | "lava";
 
 /** One locally resolved blast edit. `previousBlock` is evidence for particles/save state, not a mining drop. */
 export interface LocalExplosionEdit extends WorldEdit {
@@ -531,6 +539,7 @@ export interface VoxelEngineOptions {
   canEditBlock?: () => boolean;
   /** Local inventory preflight proving the selected stack can pay for one placement. */
   canPlaceSelectedBlock?: (block: BlockId) => boolean;
+  canCollectFluid?: (block: BlockId) => boolean;
   /** Explicit offline-only opt-in for bounded held secondary-button block placement. */
   continuousBlockPlacement?: boolean;
   /** Local preflight for a completed mining edit, such as bounded drop capacity. */
@@ -601,6 +610,8 @@ export interface VoxelEngineOptions {
   /** Return false when an external authority will commit the health change. */
   onPlayerDamage?: (amount: number, cause: PlayerDamageCause) => boolean | void;
   onPlayerHealthChange?: (health: number, maximumHealth: number) => void;
+  /** Integer air supply for the bubble meter; full air is hidden by the HUD. */
+  onBreathChange?: (air: number, maximumAir: number) => void;
   /** Return true when the held non-block item handled secondary use (for example, eating food). */
   onUseSelectedItem?: () => boolean;
   /** Return true after handling a chest or bed interaction to suppress block placement. */

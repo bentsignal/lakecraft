@@ -88,7 +88,7 @@ assert.match(catalog, /clay:\s*BLOCK\.CLAY/);
 assert.match(catalog, /bricks:\s*BLOCK\.BRICKS/);
 const rendererSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 assert.match(rendererSource,
-  /const destination = isWaterBlock\(block\) \? waterVertices\s+: isGlassBlock\(block\) \? transparentVertices : textureVertices/,
-  "water and glass own dedicated translucent VBOs; clay and bricks remain in the opaque batch");
+  /const destination = isFluidBlock\(block\) \? waterVertices\s+: isGlassBlock\(block\) \? transparentVertices : textureVertices/,
+  "water, lava, and glass own dedicated translucent VBOs; clay and bricks remain in the opaque batch");
 
 console.log("lakecraft clay and brick client visuals tests: ok");

@@ -28,7 +28,7 @@ function setPackedCode(packed: Uint8Array, index: number, code: number, bitsPerC
 assert.equal(WORLD_CHUNK_CODEC_VERSION, 7);
 assert.equal(WORLD_CHUNK_CODEC_BITS_PER_CELL, 10);
 assert.equal(WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES, 1023, "ten-bit snapshots reserve zero and expose 1,023 block codes");
-assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 757, "the ten-bit palette appends five natural biome states");
+assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 768, "the ten-bit palette appends natural terrain and derived fluid states");
 assert.ok(WORLD_CHUNK_BLOCK_TYPES.length <= WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES);
 assert.deepEqual(
   WORLD_CHUNK_BLOCK_TYPES.slice(247, 253),

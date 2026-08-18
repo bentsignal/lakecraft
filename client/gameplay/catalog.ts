@@ -63,6 +63,7 @@ const BASE_ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
   oak_slab: BLOCK.OAK_SLAB, cobblestone_slab: BLOCK.COBBLESTONE_SLAB, brick_slab: BLOCK.BRICK_SLAB,
   oak_stairs: BLOCK.OAK_STAIRS_NORTH, cobblestone_stairs: BLOCK.COBBLESTONE_STAIRS_NORTH,
   stone_brick_stairs: BLOCK.STONE_BRICK_STAIRS_NORTH, brick_stairs: BLOCK.BRICK_STAIRS_NORTH,
+  water_bucket: BLOCK.WATER, lava_bucket: BLOCK.LAVA,
 };
 export const ITEM_TO_ENGINE: Readonly<Partial<Record<ItemId, EngineBlockId>>> = Object.freeze({
   ...BASE_ITEM_TO_ENGINE,

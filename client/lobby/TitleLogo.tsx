@@ -1,6 +1,7 @@
 import { LAKE_BED_EDITION_TITLE_WEBP_BASE64 } from "./generated/lakeBedEditionTitle.ts";
 
-const TITLE_SRC = `data:image/webp;base64,${LAKE_BED_EDITION_TITLE_WEBP_BASE64}`;
+const TITLE_SRC = LAKE_BED_EDITION_TITLE_WEBP_BASE64.includes(":")
+  ? LAKE_BED_EDITION_TITLE_WEBP_BASE64 : `data:image/webp;base64,${LAKE_BED_EDITION_TITLE_WEBP_BASE64}`;
 
 export function TitleLogo() {
   return (

@@ -33,6 +33,7 @@ import {
   consumeFood,
   createSurvivalTickState,
   equippedArmorProtection,
+  exchangeSelectedItem,
   getDeterministicMiningDrop,
   miningSeconds,
   removeItem,
@@ -302,6 +303,7 @@ function LocalGameplaySession({
   const [selected, setSelected] = useState(initialSnapshot.player.selectedHotbar);
   const [hunger, setHunger] = useState(initialGameMode === "creative" ? MAX_HUNGER : initialSnapshot.player.hunger);
   const [health, setHealth] = useState(initialPlayerHealth);
+  const [air, setAir] = useState(10);
   const [gameMode, setGameMode] = useState<LocalGameMode>(initialGameMode);
   const [deathScreenOpen, setDeathScreenOpen] = useState(() => singlePlayerStartsDead(initialSnapshot.runtime?.playerHealth));
   const [deathCause, setDeathCause] = useState(() => singlePlayerDeathMessage("unknown"));
@@ -1334,6 +1336,13 @@ function LocalGameplaySession({
         const stack = inventoryRef.current[selectedRef.current];
         return Boolean(stack && stack.count > 0 && ITEM_TO_ENGINE[stack.itemId] === block);
       },
+      canCollectFluid: (block) => {
+        if (gameModeRef.current === "creative") return true;
+        const replacement = block === BLOCK.WATER ? "water_bucket" : block === BLOCK.LAVA ? "lava_bucket" : null;
+        return replacement !== null && exchangeSelectedItem(
+          inventoryRef.current, selectedRef.current, "bucket", replacement,
+        ).ok;
+      },
       canMineBlock: (block) => {
         if (gameModeRef.current === "creative") return true;
         pruneLocalDrops();
@@ -1371,7 +1380,18 @@ function LocalGameplaySession({
           || (previousBlock === BLOCK.OAK_FENCE_GATE_CLOSED && edit.block === BLOCK.OAK_FENCE_GATE_OPEN)
           || (previousBlock === BLOCK.OAK_FENCE_GATE_OPEN && edit.block === BLOCK.OAK_FENCE_GATE_CLOSED);
         const creative = gameModeRef.current === "creative";
-        if (!creative && !toggledBlock && edit.block === BLOCK.AIR && previousBlock !== BLOCK.AIR) {
+        const collectedFluid = !creative && held === "bucket" && edit.block === BLOCK.AIR
+          && (previousBlock === BLOCK.WATER || previousBlock === BLOCK.LAVA);
+        const placedFluid = !creative && previousBlock === BLOCK.AIR
+          && (held === "water_bucket" && edit.block === BLOCK.WATER || held === "lava_bucket" && edit.block === BLOCK.LAVA);
+        if (collectedFluid || placedFluid) {
+          const exchanged = exchangeSelectedItem(next, selectedRef.current, held!, collectedFluid
+            ? previousBlock === BLOCK.WATER ? "water_bucket" : "lava_bucket" : "bucket");
+          if (!exchanged.ok) throw new Error("Accepted local bucket action could not exchange its selected stack.");
+          next = exchanged.inventory;
+          const selectedStack = next[selectedRef.current];
+          engine.setSelectedBlock(selectedStack ? ITEM_TO_ENGINE[selectedStack.itemId] ?? BLOCK.AIR : BLOCK.AIR);
+        } else if (!creative && !toggledBlock && edit.block === BLOCK.AIR && previousBlock !== BLOCK.AIR) {
           const gameBlock = ENGINE_TO_GAME[previousBlock];
           const drop = gameBlock ? getDeterministicMiningDrop(gameBlock, held, edit.x, edit.y, edit.z) : null;
           const wear = held === "shears" && gameBlock === "leaves"
@@ -1526,6 +1546,7 @@ function LocalGameplaySession({
           intensity: Math.min(1, 0.45 + amount / 12),
         });
       },
+      onBreathChange: (nextAir) => setAir(nextAir),
       onHandAction: (action) => {
         if (action === "attack") audio.play("playerAttack", {
           seed: `local-mob-hit:${performance.now().toFixed(0)}`,
@@ -2075,6 +2096,7 @@ function LocalGameplaySession({
         equipment={equipment}
         creativeInventory={gameMode === "creative"}
         health={health}
+        air={air}
         hudVisible={hudVisible}
         hunger={hunger}
         showSurvivalStatus={gameMode === "survival"}

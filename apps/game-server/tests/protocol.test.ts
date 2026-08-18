@@ -80,6 +80,11 @@ describe("protocol v1", () => {
     expect(decodeClientMessage(JSON.stringify({
       v:1, type:"self_damage", operationId:"fall:12345678", damage:7, cause:"fall",
     })).ok).toBe(true);
+    for (const cause of ["drowning", "lava"] as const) {
+      expect(decodeClientMessage(JSON.stringify({
+        v:1, type:"self_damage", operationId:`${cause}:12345678`, damage:2, cause,
+      }))).toMatchObject({ ok:true, message:{ type:"self_damage", damage:2, cause } });
+    }
     expect(decodeClientMessage(JSON.stringify({
       v:1, type:"self_damage", operationId:"fall:12345678", damage:21, cause:"mob",
     })).ok).toBe(false);
