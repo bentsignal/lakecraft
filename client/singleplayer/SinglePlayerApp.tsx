@@ -2139,8 +2139,6 @@ function LocalGameplaySession({
         open={commandOpen}
         placeholder="/help"
         playerSender="[Command]"
-        submitLabel="Run local command"
-        submitText="Run"
         surfaceLabel="Local command console"
         systemSender="[Game]"
         warningSender="[Error]"

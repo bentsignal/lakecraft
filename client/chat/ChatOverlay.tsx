@@ -28,8 +28,6 @@ export interface ChatOverlayProps {
   surfaceLabel?: string;
   historyLabel?: string;
   inputLabel?: string;
-  submitLabel?: string;
-  submitText?: string;
   playerSender?: string;
   systemSender?: string;
   warningSender?: string;
@@ -87,8 +85,6 @@ export function ChatOverlay({
   surfaceLabel = "Multiplayer chat",
   historyLabel = "Chat messages",
   inputLabel = "Chat message",
-  submitLabel = "Send chat message",
-  submitText = "Send",
   playerSender,
   systemSender = "[Server]",
   warningSender = "[Warning]",
@@ -187,7 +183,6 @@ export function ChatOverlay({
             value={draft}
           />
           <small className={draft.length >= maxLength ? "is-limit" : ""}>{draft.length > maxLength - 24 ? `${draft.length}/${maxLength}` : ""}</small>
-          <button aria-label={submitLabel} disabled={!draft.trim() || sending || !connected} type="submit">{submitText}</button>
         </div>
         {error ? <p role="alert">{error}</p> : null}
       </form>

@@ -43,7 +43,7 @@ assert.match(drawer, /<PlayerSkinPreview equipment=\{workspace\.equipment\} open
   "the canonical selected skin remains live and cursor-aware inside the exact panel");
 const preview = source("../client/components/PlayerSkinPreview.tsx");
 assert.ok(preview.includes('height={210}') && preview.includes('width={147}')
-  && preview.includes("createPlayerSkinRenderer(gl)")
+  && preview.includes("createPlayerSkinRenderer(gl,")
   && preview.includes("inventoryPreviewViewProjection(canvas.width / canvas.height)"),
 "the official portrait viewport renders the shared third-person 3D skin without stretching it");
 assert.ok(preview.includes('getExtension("WEBGL_lose_context")?.loseContext()'),

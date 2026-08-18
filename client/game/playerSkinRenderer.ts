@@ -41,7 +41,7 @@ export type PlayerSkinRenderer = Readonly<{
   destroy(): void;
 }>;
 
-export function uploadPlayerArmorTexture(gl: WebGLRenderingContext, texture: WebGLTexture): () => void {
+export function uploadPlayerArmorTexture(gl: WebGLRenderingContext, texture: WebGLTexture, onReady?: () => void): () => void {
   let destroyed = false;
   gl.bindTexture(gl.TEXTURE_2D, texture);
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
@@ -56,14 +56,18 @@ export function uploadPlayerArmorTexture(gl: WebGLRenderingContext, texture: Web
       const buffer = await response.arrayBuffer();
       if (await visualAssetSha256(buffer) !== PLAYER_ARMOR_ATLAS_PNG_SHA256) return;
       const image = await createImageBitmap(new Blob([buffer], { type: "image/png" }));
-      if (!destroyed) { gl.bindTexture(gl.TEXTURE_2D, texture); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image); }
+      if (!destroyed) {
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+        onReady?.();
+      }
       image.close();
     })().catch(() => {});
   } else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 64, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, atlas);
   return () => { destroyed = true; gl.deleteTexture(texture); };
 }
 
-export function createPlayerSkinRenderer(gl: WebGLRenderingContext): PlayerSkinRenderer {
+export function createPlayerSkinRenderer(gl: WebGLRenderingContext, onArmorTextureReady?: () => void): PlayerSkinRenderer {
   const program = createVisualProgram(gl, SKIN_VERTEX_SHADER, SKIN_FRAGMENT_SHADER);
   const itemProgram = createVisualProgram(gl, COLOR_VERTEX_SHADER, COLOR_FRAGMENT_SHADER);
   const buffer = gl.createBuffer(); const itemBuffer = gl.createBuffer(); const armorBuffer = gl.createBuffer(); const texture = gl.createTexture(); const armorTexture = gl.createTexture();
@@ -81,7 +85,7 @@ export function createPlayerSkinRenderer(gl: WebGLRenderingContext): PlayerSkinR
     gl.deleteBuffer(buffer); gl.deleteBuffer(itemBuffer); gl.deleteBuffer(armorBuffer); gl.deleteTexture(texture); gl.deleteTexture(armorTexture); gl.deleteProgram(program); gl.deleteProgram(itemProgram);
     throw new Error("Player skin shader bindings are incomplete.");
   }
-  const destroyArmorTexture = uploadPlayerArmorTexture(gl, armorTexture);
+  const destroyArmorTexture = uploadPlayerArmorTexture(gl, armorTexture, onArmorTextureReady);
   let model: PlayerSkinModel = "wide";
   let geometry = buildPlayerSkinGeometry(model);
   let vertexCount = geometry.length / PLAYER_SKIN_VERTEX_STRIDE;

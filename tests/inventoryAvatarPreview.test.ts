@@ -13,7 +13,7 @@ assert.ok(drawer.includes("<PlayerSkinPreview equipment={workspace.equipment} op
 assert.ok(preview.includes("loadPersistedPlayerSkin(window.localStorage)"), "portrait loads the user's selected skin");
 assert.ok(preview.includes("equipment.head?.itemId") && preview.includes("renderer.setArmor({"),
   "the portrait uses the shared F5 armor renderer for the currently equipped set");
-assert.ok(preview.includes('canvas?.getContext("webgl"') && preview.includes("createPlayerSkinRenderer(gl)"),
+assert.ok(preview.includes('canvas?.getContext("webgl"') && preview.includes("createPlayerSkinRenderer(gl,"),
   "portrait is a real WebGL player render using the shared F5 renderer");
 assert.ok(preview.includes("renderer.draw(viewProjection") && preview.includes("renderer.setSkin(selected, persisted.model)"),
   "both the default and selected skin render through the shared 3D geometry");
@@ -38,10 +38,13 @@ assert.ok(multiplayer.includes("onInventoryWorkspacePreview={(snapshot) => {")
   && multiplayer.includes("updateEquipment(snapshot.equipment);")
   && !multiplayer.includes('if (realtimeGameModeRef.current === "creative") return true;'),
 "each multiplayer equipment interaction updates local/remote appearance immediately and Creative still commits on close");
-assert.ok(gameHud.includes('document.documentElement.style.setProperty("--lc-hud-scale"')
-  && gameHud.includes('settings.hudSize === "small" ? ".67" : settings.hudSize === "medium" ? ".83" : "1"')
+assert.ok(gameHud.includes('root.setProperty("--lc-hotbar-scale", small ? ".83" : medium ? "1" : "1.18")')
+  && gameHud.includes('root.setProperty("--lc-inventory-scale", small ? ".67" : medium ? ".83" : ".94")')
   && styles.includes("height:42px;transform:translate(-3px,-3px);width:42px"),
-"the three shared HUD scales retain centered Minecraft-like padding inside the survival inventory slots");
+"independent hotbar and inventory scales retain centered Minecraft-like padding inside survival slots");
+assert.ok(preview.includes("onArmorTextureReady") === false
+  && preview.includes("() => repaint(canvas, previewRef.current, pointerRef.current)"),
+"the inventory portrait repaints as soon as the compact production armor atlas finishes loading");
 
 const compactMedia = styles.slice(styles.indexOf("@media (max-width: 560px)"));
 assert.ok(compactMedia.includes(".lc-equipment-panel { display: none; }"), "compact inventory still hides the portrait");

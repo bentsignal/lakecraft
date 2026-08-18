@@ -593,6 +593,12 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       }
       for (const other of this.userConnections.values()) {
         this.send(other.peer, { v: PROTOCOL_VERSION, type: "appearance_remove", userId: state.player.id });
+        this.send(other.peer, {
+          v: PROTOCOL_VERSION,
+          type: "private_notice",
+          message: `${state.player.name} has left the server.`,
+          sentAt: Date.now(),
+        });
       }
     }
   }

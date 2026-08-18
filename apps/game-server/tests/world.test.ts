@@ -117,6 +117,23 @@ function authoritativeBlockEdit(input: {
 }
 
 describe("authoritative world", () => {
+  test("announces a joined player's departure to every remaining player", async () => {
+    const store = new WorldStore(":memory:");
+    const world = new GameWorld(config(), store, authenticator);
+    const alex = new FakePeer("leave-alex");
+    const steve = new FakePeer("leave-steve");
+    world.open(alex, 1_000);
+    world.open(steve, 1_000);
+    await world.message(alex, JSON.stringify(join("alex", "Alex")), 1_000);
+    await world.message(steve, JSON.stringify(join("steve", "Steve")), 1_000);
+    steve.sent.length = 0;
+    world.close(alex);
+    expect(steve.ofType("appearance_remove")).toEqual([{ v: 1, type: "appearance_remove", userId: "alex" }]);
+    expect(steve.ofType("private_notice")).toHaveLength(1);
+    expect(steve.ofType("private_notice")[0]).toMatchObject({ message: "Alex has left the server." });
+    store.close();
+  });
+
   test("matches the browser's deterministic terrain surface across the playable region", () => {
     for (let x = -128; x <= 128; x += 7) {
       for (let z = -128; z <= 128; z += 11) {

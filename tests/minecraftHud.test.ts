@@ -26,7 +26,8 @@ assert.ok(gameHud.includes("<SurvivalHud"), "health, hunger, and armor are group
 assert.ok(hotbar.includes("length: HOTBAR_SIZE"), "hotbar is backed by the canonical nine-slot size");
 assert.equal(hotbar.includes("lc-hotbar-label"), false, "normal play has no hotbar labels");
 assert.equal(hotbar.includes("lc-slot__key"), false, "normal play has no slot-number chrome");
-assert.ok(hotbar.includes("className=\"lc-selected-item-name\""), "one selected-item caption shares the canonical hotbar");
+assert.ok(hotbar.includes('className={`lc-selected-item-name${armorVisible ? " has-armor" : ""}`}'),
+  "one armor-aware selected-item caption shares the canonical hotbar");
 assert.ok(hotbar.includes("{selectedItem.label}</span>"), "the caption uses the canonical item catalog label");
 assert.ok(hotbar.includes('key={`${selectedIndex}:${selectedStack!.itemId}`}'), "slot and item identity restart the caption");
 assert.equal(hotbar.includes("selectedStack!.count"), false, "stack consumption cannot restart the caption");

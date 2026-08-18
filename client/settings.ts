@@ -32,7 +32,7 @@ export interface ClientSettings {
   renderDistance: number;
   /** Vertical camera field of view in degrees. */
   fovDegrees: number;
-  /** One shared scale for the hotbar, chat, and both inventory screens. */
+  /** One coordinated size preset with surface-specific hotbar, chat, and inventory scales. */
   hudSize: HudSize;
   keyBindings: GameplayControlBindings;
 }

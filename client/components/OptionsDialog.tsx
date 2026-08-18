@@ -97,7 +97,7 @@ export function OptionsDialog({ open, settings, onSettingsChange, onBack, return
             <span>Render Distance: {renderDistance} chunks</span>
             <input aria-label="Render distance" aria-valuetext={`${renderDistance} chunks`} max={RENDER_DISTANCE_MAX} min={RENDER_DISTANCE_MIN} onInput={(event) => change({ renderDistance: Number(event.currentTarget.value) })} step="1" type="range" value={renderDistance} />
           </label>
-          <button onClick={() => change({ hudSize: hudSize === "large" ? "medium" : hudSize === "medium" ? "small" : "large" })} style="grid-column:1/-1" type="button">HUD Size: {hudSize}</button>
+          <button onClick={() => change({ hudSize: hudSize === "small" ? "medium" : hudSize === "medium" ? "large" : "small" })} style="grid-column:1/-1" type="button">HUD Size: {hudSize}</button>
           </> : null}
           {panel === "sound" ? <>
             <button aria-pressed={soundMuted} onClick={() => change({ soundMuted: !soundMuted })} type="button">Sound: {soundMuted ? "OFF" : "ON"}</button>

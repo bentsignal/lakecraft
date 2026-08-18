@@ -7,14 +7,15 @@ export type HotbarProps = {
   selectedIndex: number;
   onSelect: (index: number) => void;
   disabled?: boolean;
+  armorVisible?: boolean;
 };
 
-export function Hotbar({ inventory, selectedIndex, onSelect, disabled = false }: HotbarProps) {
+export function Hotbar({ inventory, selectedIndex, onSelect, disabled = false, armorVisible = false }: HotbarProps) {
   const selectedStack = inventory[selectedIndex] ?? null;
   const selectedItem = selectedStack ? ITEMS[selectedStack.itemId] : null;
   return (
     <>
-      <span aria-atomic="true" aria-live="polite" className="lc-selected-item-name">
+      <span aria-atomic="true" aria-live="polite" className={`lc-selected-item-name${armorVisible ? " has-armor" : ""}`}>
         {selectedItem ? <span key={`${selectedIndex}:${selectedStack!.itemId}`}>{selectedItem.label}</span> : null}
       </span>
       <section className="lc-hotbar" role="toolbar" aria-label="Hotbar">

@@ -139,7 +139,13 @@ export function GameHud({
   onContinueMobile,
 }: GameHudProps) {
   useEffect(() => {
-    document.documentElement.style.setProperty("--lc-hud-scale", settings.hudSize === "small" ? ".67" : settings.hudSize === "medium" ? ".83" : "1");
+    const root = document.documentElement.style;
+    const small = settings.hudSize === "small";
+    const medium = settings.hudSize === "medium";
+    root.setProperty("--lc-hotbar-scale", small ? ".83" : medium ? "1" : "1.18");
+    root.setProperty("--lc-inventory-scale", small ? ".67" : medium ? ".83" : ".94");
+    root.setProperty("--lc-chat-font-size", small ? "12px" : medium ? "15px" : "18px");
+    root.setProperty("--lc-chat-input-font-size", small ? "13px" : medium ? "16px" : "19px");
   }, [settings.hudSize]);
   const armor = equippedArmorProtection(equipment);
   return (
@@ -151,7 +157,7 @@ export function GameHud({
         {!deathScreenOpen && !inventoryOpen && !modalOpen && !pauseOpen ? (
           <div className="lc-survival-wrap">
             {showSurvivalStatus ? <SurvivalHud armor={armor} health={health} hunger={hunger} maxHealth={maxHealth} maxHunger={maxHunger} /> : null}
-            <Hotbar inventory={inventory} selectedIndex={selectedIndex} onSelect={onSelectHotbar} />
+            <Hotbar armorVisible={armor > 0} inventory={inventory} selectedIndex={selectedIndex} onSelect={onSelectHotbar} />
           </div>
         ) : null}
         <PlayerList players={players} visible={showPlayerList && !pauseOpen && !modalOpen && !deathScreenOpen} />

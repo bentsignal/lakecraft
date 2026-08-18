@@ -1697,6 +1697,7 @@ function RailwayMultiplayerSession({
     body: message.message,
     sentAt: message.sentAt,
     own: message.userId === (realtimeSession?.demo?.userId ?? auth.userId),
+    tone: message.userId === "server" ? "system" : undefined,
     delivery: message.delivery,
   }));
   const unreadChat = chatOpen ? 0 : countUnreadRealtimeChat(realtimeChatMessages, lastSeenChatSequence);

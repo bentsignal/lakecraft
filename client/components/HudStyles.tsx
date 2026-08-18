@@ -19,7 +19,10 @@ const HUD_CSS = `
   --lc-shadow: rgba(10, 12, 9, .45);
   --lc-display: var(--lc-pixel-font);
   --lc-note: var(--lc-pixel-font);
-  --lc-hud-scale: 1;
+  --lc-hotbar-scale: 1.18;
+  --lc-inventory-scale: .94;
+  --lc-chat-font-size: 18px;
+  --lc-chat-input-font-size: 19px;
 }
 .lc-game-menu{font-synthesis:none;font-weight:400}
 .lc-hud, .lc-drawer-layer, .lc-unsupported, .lc-menu-layer, .lc-death-layer { color: var(--lc-paper); font-family: var(--lc-pixel-font); font-synthesis:none; image-rendering: pixelated; }
@@ -29,7 +32,7 @@ const HUD_CSS = `
 .lc-crosshair { height: 16px; left: 50%; pointer-events: none; position: absolute; top: 50%; transform: translate(-50%,-50%); width: 16px; z-index: 3; }
 .lc-crosshair::before,.lc-crosshair::after { content: ""; inset: 0; position: absolute; }
 .lc-crosshair::before { background: #111; clip-path: polygon(6px 0,10px 0,10px 6px,16px 6px,16px 10px,10px 10px,10px 16px,6px 16px,6px 10px,0 10px,0 6px,6px 6px); }.lc-crosshair::after { background: #fff; clip-path: polygon(7px 1px,9px 1px,9px 7px,15px 7px,15px 9px,9px 9px,9px 15px,7px 15px,7px 9px,1px 9px,1px 7px,7px 7px); }
-.lc-survival-wrap { bottom: max(6px, env(safe-area-inset-bottom)); left: 50%; pointer-events: auto; position: absolute; transform: translateX(-50%) scale(var(--lc-hud-scale)); transform-origin:bottom center; width: 364px; z-index: 2; }
+.lc-survival-wrap { bottom: max(6px, env(safe-area-inset-bottom)); left: 50%; pointer-events: auto; position: absolute; transform: translateX(-50%) scale(var(--lc-hotbar-scale)); transform-origin:bottom center; width: 364px; z-index: 2; }
 .lc-survival { display: grid; grid-template-columns: 1fr 1fr; height: 18px; margin: 0 2px 2px; position: relative; }
 .lc-survival__armor { bottom: 18px; left: 0; position: absolute; width: 180px; }
 .lc-meter { align-items: center; display: flex; height: 18px; }
@@ -38,6 +41,7 @@ const HUD_CSS = `
 .lc-meter__sprite { display: block; height: 18px; image-rendering: pixelated; inset: 0; position: absolute; user-select: none; width: 18px; }
 .lc-meter__sprite--empty { z-index: 0; }.lc-meter__sprite--fill { z-index: 1; }
 .lc-selected-item-name { bottom: calc(100% + 2px); color: #fff; font: 16px/1.2 var(--lc-pixel-font); left: 50%; max-width: min(330px,calc(100vw - 20px)); pointer-events: none; position: absolute; text-align: center; text-shadow: 2px 2px #202020; transform: translateX(-50%); width: 100%; }
+.lc-selected-item-name.has-armor { bottom: calc(100% + 20px); }
 .lc-selected-item-name > span { animation: lc-selected-item-name 2s linear both; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @keyframes lc-selected-item-name { 0%,70% { opacity: 1; } 100% { opacity: 0; } }
 .lc-hotbar { background-color: transparent; background-image: url("data:image/png;base64,${MINECRAFT_HOTBAR_PNG_BASE64}"); background-position: 0 0; background-repeat: no-repeat; background-size: 100% 100%; border: 0; box-sizing: border-box; display: grid; gap: 0; grid-template-columns: repeat(9, 40px); height: 44px; overflow: visible; padding: 2px; position: relative; width: 100%; }
@@ -66,7 +70,7 @@ const HUD_CSS = `
 .lc-toast--success { --lc-toast-edge: #55c653; }.lc-toast--warning { --lc-toast-edge: #f5c542; }
 .lc-toast strong { display: block; font-size: 12px; line-height: 1.2; }.lc-toast small { color: #fff; display: block; font: 10px/1.35 var(--lc-note); margin-top: 2px; }
 @keyframes lc-toast-in { from { opacity: 0; transform: translateX(18px); } }
-.lc-drawer-layer { align-items: center; background: rgba(8,10,8,.67); backdrop-filter: blur(4px); display: flex; inset: 0; justify-content: center; padding: 28px; position: fixed; z-index: 60; }.lc-drawer-layer>.lc-inventory-window{zoom:var(--lc-hud-scale)}
+.lc-drawer-layer { align-items: center; background: rgba(8,10,8,.67); backdrop-filter: blur(4px); display: flex; inset: 0; justify-content: center; padding: 28px; position: fixed; z-index: 60; }.lc-drawer-layer>.lc-inventory-window{zoom:var(--lc-inventory-scale)}
 .lc-drawer { background-color: #d9cfb3; background-image: linear-gradient(rgba(74,81,59,.075) 1px, transparent 1px), linear-gradient(90deg, rgba(74,81,59,.045) 1px, transparent 1px); background-size: 100% 24px, 24px 100%; border: 1px solid #eee5ce; box-shadow: 0 24px 80px rgba(0,0,0,.55), inset 0 0 0 5px rgba(87,77,49,.13); color: var(--lc-ink); max-height: calc(100vh - 56px); max-height: calc(100dvh - 56px); max-width: 1040px; overflow: auto; position: relative; width: 100%; }
 .lc-drawer::before { background: var(--lc-moss); content: ""; height: 7px; left: 0; position: absolute; right: 0; top: 0; }
 .lc-drawer__heading { align-items: flex-end; border-bottom: 2px solid rgba(36,38,31,.7); display: flex; justify-content: space-between; margin: 30px 32px 0; padding-bottom: 14px; }.lc-drawer__heading h2 { font-size: clamp(24px, 4vw, 38px); letter-spacing: -.04em; line-height: 1; margin: 5px 0 0; text-transform: uppercase; }.lc-drawer__heading .lc-kicker { color: var(--lc-rust); }

@@ -44,7 +44,7 @@ export function PlayerSkinPreview({ open, pointer, equipment }: {
     const canvas = canvasRef.current;
     const gl = canvas?.getContext("webgl", { alpha: false, antialias: false, depth: true });
     if (!canvas || !gl) return;
-    const renderer = createPlayerSkinRenderer(gl);
+    const renderer = createPlayerSkinRenderer(gl, () => repaint(canvas, previewRef.current, pointerRef.current));
     applyEquipment(renderer, equipment);
     previewRef.current = [gl, renderer, inventoryPreviewViewProjection(canvas.width / canvas.height)];
     repaint(canvas, previewRef.current, pointerRef.current);

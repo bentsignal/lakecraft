@@ -25,7 +25,7 @@ assert.ok(source.includes("gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 64, 256")
   && source.includes("setPartMvp(draw.part, true, mvpLocation)"),
 "local, remote, and inventory players use the exact nearest-neighbor armor atlas on the articulated skin rig");
 assert.ok(source.includes("visualAssetSha256(buffer) !== PLAYER_ARMOR_ATLAS_PNG_SHA256")
-  && source.includes("if (!destroyed)") && source.includes("image.close()"),
+  && source.includes("if (!destroyed)") && source.includes("onReady?.()") && source.includes("image.close()"),
 "the compact remote atlas is hash-checked and cannot upload after renderer teardown");
 for (const itemId of ["dirt", "glass", "diamond_pickaxe", "apple", "bow"] as const) {
   const presentation = thirdPersonHeldItemPresentation(itemId);

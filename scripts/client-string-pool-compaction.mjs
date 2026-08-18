@@ -8,9 +8,18 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 542;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 477;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "f778e68ed5c90797a3ad5186cb11b113431da5b0ac5996eba73db8693bf2f1f5";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 540;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 475;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "8abed50b552e663d8950bbb84dd9168185f819e0b2d3ab95622f1d03801cd3a1";
+export const COMPACT_CLIENT_HUMAN_CHAT_SEND_REMOVAL_DELTA = Object.freeze({
+  previousOccurrences: 542,
+  previousUniqueValues: 477,
+  previousSourceFingerprint: "f778e68ed5c90797a3ad5186cb11b113431da5b0ac5996eba73db8693bf2f1f5",
+  occurrenceDelta: -2,
+  uniqueValueDelta: -2,
+  source: "client/chat/ChatOverlay.tsx#enter-only-chat-submit",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_HUMAN_HUD_SIZE_DELTA = Object.freeze({
   previousOccurrences: 541,
   previousUniqueValues: 476,
@@ -222,7 +231,16 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
 });
 export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_359;
 export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 135;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "61ba63877f1a9506ab561ed258f089aac5606cfb084ca5f312c266a97b9ab664";
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "644b713fbcec277290c8291896076ec315e259e16a4b5a4fe8dbc978b77484ce";
+export const COMPACT_CLIENT_REPEATED_HUD_CHAT_REFINEMENT_DELTA = Object.freeze({
+  previousOccurrences: 1_359,
+  previousUniqueValues: 135,
+  previousSourceFingerprint: "61ba63877f1a9506ab561ed258f089aac5606cfb084ca5f312c266a97b9ab664",
+  occurrenceDelta: 0,
+  uniqueValueDelta: 0,
+  source: "surface-specific HUD scales and enter-only chat composition",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_REPEATED_HUD_SIZE_DELTA = Object.freeze({
   previousOccurrences: 1_356,
   previousUniqueValues: 135,
@@ -632,9 +650,18 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 614;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 613;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 182;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "7b4d287d26cdff20b4cc507ddc6b4213c917454dd4d924dc441521e87e99de7c";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "b5cbfe7c6e771f5a8ffa008d005d37624ee3116c3b2dbf7e1ec19f8d801b943f";
+export const COMPACT_CLIENT_LOW_FREQUENCY_HUD_CHAT_REFINEMENT_DELTA = Object.freeze({
+  previousOccurrences: 614,
+  previousUniqueValues: 182,
+  previousSourceFingerprint: "7b4d287d26cdff20b4cc507ddc6b4213c917454dd4d924dc441521e87e99de7c",
+  occurrenceDelta: -1,
+  uniqueValueDelta: 0,
+  source: "surface-specific HUD scales and enter-only chat composition",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_LOW_FREQUENCY_HUD_SIZE_DELTA = Object.freeze({
   previousOccurrences: 617,
   previousUniqueValues: 183,

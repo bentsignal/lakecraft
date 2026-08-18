@@ -34,8 +34,9 @@ assert.ok(dialog.includes('aria-label="Field of view"') && dialog.includes('min=
   "the shared Options screen exposes the full accessible FOV range");
 assert.ok(dialog.includes('aria-label="Render distance"') && dialog.includes("RENDER_DISTANCE_MIN"),
   "the shared Options screen exposes the accessible render-distance slider");
-assert.ok(dialog.includes("HUD Size:") && dialog.includes('hudSize === "large" ? "medium"'),
-  "Video Options cycles the shared large, medium, and small HUD setting");
+assert.ok(dialog.includes("HUD Size:") && dialog.includes('hudSize === "small" ? "medium"')
+  && dialog.includes('hudSize === "medium" ? "large" : "small"'),
+  "Video Options cycles the shared small, medium, and large HUD setting in ascending order");
 assert.ok(dialog.includes("RENDER_DISTANCE_MAX"), "the slider uses the shared tested chunk ceiling");
 assert.ok(dialog.includes('["musicVolume", "Music", musicVolume]'), "Music & Sounds exposes a dedicated persistent ambient-music channel");
 assert.ok(dialog.includes('event.key !== "Tab"') && dialog.includes("event.shiftKey"), "keyboard focus is trapped in either tab direction");
