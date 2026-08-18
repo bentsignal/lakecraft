@@ -5,6 +5,8 @@ import { inventoryPreviewLook, inventoryPreviewViewProjection } from "../client/
 const drawer = readFileSync(new URL("../client/components/InventoryDrawer.tsx", import.meta.url), "utf8");
 const preview = readFileSync(new URL("../client/components/PlayerSkinPreview.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../client/components/HudStyles.tsx", import.meta.url), "utf8");
+const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
+const gameHud = readFileSync(new URL("../client/components/GameHud.tsx", import.meta.url), "utf8");
 
 assert.ok(drawer.includes("<PlayerSkinPreview equipment={workspace.equipment} open={open} pointer={[pointer.x, pointer.y]} />"),
   "inventory sends live pointer coordinates to the canonical skin portrait");
@@ -32,6 +34,14 @@ assert.ok([...projection].every(Number.isFinite) && projection[0] > projection[5
 assert.match(styles, /\.lc-player-preview \{[^}]*image-rendering:pixelated;[^}]*min-height:192px;/);
 assert.equal(styles.includes(".lc-player-preview__head"), false, "obsolete hardcoded CSS Steve is removed");
 assert.equal(drawer.includes("lc-armor-score"), false, "preview should not overlay debug-style armor text");
+assert.ok(multiplayer.includes("onInventoryWorkspacePreview={(snapshot) => {")
+  && multiplayer.includes("updateEquipment(snapshot.equipment);")
+  && !multiplayer.includes('if (realtimeGameModeRef.current === "creative") return true;'),
+"each multiplayer equipment interaction updates local/remote appearance immediately and Creative still commits on close");
+assert.ok(gameHud.includes('document.documentElement.style.setProperty("--lc-hud-scale"')
+  && gameHud.includes('settings.hudSize === "small" ? ".67" : settings.hudSize === "medium" ? ".83" : "1"')
+  && styles.includes("height:42px;transform:translate(-3px,-3px);width:42px"),
+"the three shared HUD scales retain centered Minecraft-like padding inside the survival inventory slots");
 
 const compactMedia = styles.slice(styles.indexOf("@media (max-width: 560px)"));
 assert.ok(compactMedia.includes(".lc-equipment-panel { display: none; }"), "compact inventory still hides the portrait");

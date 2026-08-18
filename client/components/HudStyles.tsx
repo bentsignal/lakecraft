@@ -19,6 +19,7 @@ const HUD_CSS = `
   --lc-shadow: rgba(10, 12, 9, .45);
   --lc-display: var(--lc-pixel-font);
   --lc-note: var(--lc-pixel-font);
+  --lc-hud-scale: 1;
 }
 .lc-game-menu{font-synthesis:none;font-weight:400}
 .lc-hud, .lc-drawer-layer, .lc-unsupported, .lc-menu-layer, .lc-death-layer { color: var(--lc-paper); font-family: var(--lc-pixel-font); font-synthesis:none; image-rendering: pixelated; }
@@ -28,7 +29,7 @@ const HUD_CSS = `
 .lc-crosshair { height: 16px; left: 50%; pointer-events: none; position: absolute; top: 50%; transform: translate(-50%,-50%); width: 16px; z-index: 3; }
 .lc-crosshair::before,.lc-crosshair::after { content: ""; inset: 0; position: absolute; }
 .lc-crosshair::before { background: #111; clip-path: polygon(6px 0,10px 0,10px 6px,16px 6px,16px 10px,10px 10px,10px 16px,6px 16px,6px 10px,0 10px,0 6px,6px 6px); }.lc-crosshair::after { background: #fff; clip-path: polygon(7px 1px,9px 1px,9px 7px,15px 7px,15px 9px,9px 9px,9px 15px,7px 15px,7px 9px,1px 9px,1px 7px,7px 7px); }
-.lc-survival-wrap { bottom: max(6px, env(safe-area-inset-bottom)); left: 50%; pointer-events: auto; position: absolute; transform: translateX(-50%); width: 364px; z-index: 2; }
+.lc-survival-wrap { bottom: max(6px, env(safe-area-inset-bottom)); left: 50%; pointer-events: auto; position: absolute; transform: translateX(-50%) scale(var(--lc-hud-scale)); transform-origin:bottom center; width: 364px; z-index: 2; }
 .lc-survival { display: grid; grid-template-columns: 1fr 1fr; height: 18px; margin: 0 2px 2px; position: relative; }
 .lc-survival__armor { bottom: 18px; left: 0; position: absolute; width: 180px; }
 .lc-meter { align-items: center; display: flex; height: 18px; }
@@ -65,7 +66,7 @@ const HUD_CSS = `
 .lc-toast--success { --lc-toast-edge: #55c653; }.lc-toast--warning { --lc-toast-edge: #f5c542; }
 .lc-toast strong { display: block; font-size: 12px; line-height: 1.2; }.lc-toast small { color: #fff; display: block; font: 10px/1.35 var(--lc-note); margin-top: 2px; }
 @keyframes lc-toast-in { from { opacity: 0; transform: translateX(18px); } }
-.lc-drawer-layer { align-items: center; background: rgba(8,10,8,.67); backdrop-filter: blur(4px); display: flex; inset: 0; justify-content: center; padding: 28px; position: fixed; z-index: 60; }
+.lc-drawer-layer { align-items: center; background: rgba(8,10,8,.67); backdrop-filter: blur(4px); display: flex; inset: 0; justify-content: center; padding: 28px; position: fixed; z-index: 60; }.lc-drawer-layer>.lc-inventory-window{zoom:var(--lc-hud-scale)}
 .lc-drawer { background-color: #d9cfb3; background-image: linear-gradient(rgba(74,81,59,.075) 1px, transparent 1px), linear-gradient(90deg, rgba(74,81,59,.045) 1px, transparent 1px); background-size: 100% 24px, 24px 100%; border: 1px solid #eee5ce; box-shadow: 0 24px 80px rgba(0,0,0,.55), inset 0 0 0 5px rgba(87,77,49,.13); color: var(--lc-ink); max-height: calc(100vh - 56px); max-height: calc(100dvh - 56px); max-width: 1040px; overflow: auto; position: relative; width: 100%; }
 .lc-drawer::before { background: var(--lc-moss); content: ""; height: 7px; left: 0; position: absolute; right: 0; top: 0; }
 .lc-drawer__heading { align-items: flex-end; border-bottom: 2px solid rgba(36,38,31,.7); display: flex; justify-content: space-between; margin: 30px 32px 0; padding-bottom: 14px; }.lc-drawer__heading h2 { font-size: clamp(24px, 4vw, 38px); letter-spacing: -.04em; line-height: 1; margin: 5px 0 0; text-transform: uppercase; }.lc-drawer__heading .lc-kicker { color: var(--lc-rust); }
@@ -119,7 +120,7 @@ const HUD_CSS = `
 .lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table) .lc-inventory-grid__slot{background:transparent;border:0;height:54px;width:54px}
 .lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table) .lc-inventory-grid__slot.is-selected{background:rgba(255,255,255,.28);box-shadow:inset 0 0 0 2px rgba(255,255,255,.65)}
 .lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table) .lc-inventory-grid__slot.is-hotbar{margin-top:12px}
-.lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table) .lc-item-icon__svg{height:48px;transform:translate(-3px,-3px);width:48px}
+.lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table) .lc-item-icon__svg{height:42px;transform:translate(-3px,-3px);width:42px}
 .lc-inventory-window:not(.lc-creative-window):not(.is-crafting-table)>.lc-inventory-error{bottom:-23px;color:#fff;left:0;position:absolute;text-shadow:2px 2px #202020}
 .lc-unsupported { align-items: center; background: var(--lc-charcoal); display: flex; inset: 0; justify-content: center; overflow: hidden; padding: 24px; position: fixed; z-index: 100; }.lc-unsupported__topo { background: repeating-radial-gradient(ellipse at 80% 20%, transparent 0 26px, rgba(168,182,107,.08) 27px 28px, transparent 29px 42px); inset: -30%; position: absolute; transform: rotate(-10deg); }.lc-unsupported__card { background: var(--lc-paper); box-shadow: 12px 14px 0 rgba(102,117,65,.48); color: var(--lc-ink); max-width: 390px; padding: 34px 31px; position: relative; transform: rotate(-1deg); }.lc-unsupported__stamp { border: 1px solid var(--lc-rust); color: var(--lc-rust); font: 9px var(--lc-note); letter-spacing: .12em; padding: 5px 7px; }.lc-unsupported__icon { color: var(--lc-moss); font: 900 44px/1 var(--lc-display); margin-top: 27px; }.lc-unsupported h2 { font-size: 35px; letter-spacing: -.045em; line-height: .95; margin: 13px 0 16px; text-transform: uppercase; }.lc-unsupported p { font: 13px/1.6 var(--lc-note); }.lc-unsupported button { align-items: center; background: var(--lc-ink); border: 0; color: var(--lc-paper); cursor: pointer; display: flex; justify-content: space-between; margin-top: 22px; padding: 13px 16px; width: 100%; }.lc-unsupported small { color: rgba(36,38,31,.55); display: block; font: 9px var(--lc-note); margin-top: 13px; }
 @media (max-width: 900px){.lc-creative-window{max-width:520px}.lc-creative-switch{display:flex}.lc-creative-workspace{display:block}.lc-creative-pane{display:none}.lc-creative-pane.is-active{display:block}.lc-creative-pane--player{border-left:0;padding-left:0}.lc-creative-grid{grid-template-columns:repeat(9,minmax(0,var(--lc-creative-slot)))}.lc-creative-window .lc-inventory-grid{margin-inline:auto}}

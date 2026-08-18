@@ -70,23 +70,23 @@ const PROPERTY_ALIAS_COUNT_OVERRIDES = Object.freeze({
   active: 21, addEventListener: 38, ARRAY_BUFFER: 89, behavior: 30, bindBuffer: 50, bindTexture: 21,
   block: 178, bottom: 26, bufferData: 27, bufferSubData: 12, byteLength: 16, BYTES_PER_ELEMENT: 16,
   center: 34, charCodeAt: 24, chunkRevisions: 11, CLAMP_TO_EDGE: 14, clear: 43, clearTimeout: 26, count: 182,
-  createBuffer: 24, current: 867, currentTarget: 19, cycleLengthMs: 20, dayNight: 9, delete: 67, deleteBuffer: 42,
-  deleteProgram: 18, deleteTexture: 13, documentElement: 8, drawArrays: 23, dropId: 18, endsWith: 27,
-  drops: 25, DYNAMIC_DRAW: 16, enableVertexAttribArray: 27, equipment: 40,
+  createBuffer: 24, current: 850, currentTarget: 19, cycleLengthMs: 20, dayNight: 9, delete: 67, deleteBuffer: 42,
+  deleteProgram: 18, deleteTexture: 13, documentElement: 9, drawArrays: 23, dropId: 18, endsWith: 27,
+  drops: 25, DYNAMIC_DRAW: 16, enableVertexAttribArray: 27, equipment: 41,
   every: 50, filter: 50, flatMap: 24, fromEntries: 10, getAttribLocation: 24,
   // Embedding the block atlas replaces the remote response dimensions/status
   // with the generated decoder's byte-array length checks.
-  getUniformLocation: 69, health: 55, height: 34, includes: 51, inventory: 102, itemId: 180, length: 464,
+  getUniformLocation: 69, health: 55, height: 34, includes: 51, inventory: 103, itemId: 180, length: 464,
   indexOf: 28, maxHealth: 13, maxStack: 23, operationId: 43, options: 69, pixelStorei: 12, preventDefault: 54,
   ONE_MINUS_SRC_ALPHA: 6, pendingBlocks: 11, pitch: 43, pointerLockElement: 24, position: 16,
   previousBlock: 18, previousX: 19, previousY: 16, previousYaw: 10, previousZ: 19,
   prototype: 17, randomUUID: 10, readyState: 10, reject: 24, removeEventListener: 40,
-  renderDistance: 8, repeat: 32, resolve: 19, revision: 32, rotationDegrees: 22, selectedHotbar: 15,
+  mouseSensitivity: 4, renderDistance: 11, repeat: 32, resolve: 19, revision: 32, rotationDegrees: 22, selectedHotbar: 15,
   sequence: 47, setTimeout: 22, sheared: 16, slice: 110, sourceSlot: 10, startsWith: 32,
   state: 70, STATIC_DRAW: 11, status: 20, stopImmediatePropagation: 8, subarray: 18, terrain: 22, texImage2D: 14,
   texParameteri: 28, TEXTURE_2D: 64, TEXTURE_MAG_FILTER: 7, TEXTURE_MIN_FILTER: 7,
   TRIANGLES: 20, uniform1f: 39, uniform3fv: 9, uniformMatrix4fv: 10,
-  toUpperCase: 10, UNPACK_FLIP_Y_WEBGL: 10, UNSIGNED_BYTE: 15, useProgram: 19, userId: 35, value: 37, values: 34,
+  soundMuted: 12, toUpperCase: 10, UNPACK_FLIP_Y_WEBGL: 10, UNSIGNED_BYTE: 15, useProgram: 19, userId: 35, value: 37, values: 34,
   vertexAttribPointer: 30, world: 70, worldTimeMs: 7,
 });
 export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_SPEC.split(",").map((entry) => {
@@ -94,10 +94,11 @@ export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_
   const name = entry.slice(0, separator);
   return Object.freeze([name, PROPERTY_ALIAS_COUNT_OVERRIDES[name] ?? Number(entry.slice(separator + 1))]);
 }));
-// Cursor-directed inventory refs, transparent held blocks, and the compact-safe
-// stair palette resolver account for this reviewed exact-property boundary.
-export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_289;
-export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "e935aaee07f606e60d35c8eaef07197ef5e482bc148cee107ce938b5474e62b9";
+// Cursor-directed inventory refs, transparent held blocks, the compact-safe
+// stair palette resolver, and consolidated settings props account for this
+// reviewed exact-property boundary.
+export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_269;
+export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "7927e63510e7ca0d3468e95398df225bc56aceff6f1cec7f90108882bee3234c";
 const PROPERTY_ALIAS_INDEX = new Map(COMPACT_CLIENT_PROPERTY_KEY_ALIASES.map(([name], index) => [name, index]));
 const PROPERTY_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_PROPERTY_KEY_ALIASES)),
@@ -106,13 +107,13 @@ const PROPERTY_BOUNDARY = Object.freeze({
 });
 // The embedded atlas decoder no longer needs the remote-loader Uint8Array copy
 // or its document-backed image decode branch.
-const GLOBAL_ALIAS_SPEC = "Float32Array:83,Map:74,Set:60,Uint8Array:21,document:98,performance:76,window:126";
+const GLOBAL_ALIAS_SPEC = "Float32Array:83,Map:74,Set:60,Uint8Array:21,document:99,performance:76,window:126";
 export const COMPACT_CLIENT_GLOBAL_ALIASES = Object.freeze(GLOBAL_ALIAS_SPEC.split(",").map((entry) => {
   const separator = entry.lastIndexOf(":");
   return Object.freeze([entry.slice(0, separator), Number(entry.slice(separator + 1))]);
 }));
-export const COMPACT_CLIENT_GLOBAL_OCCURRENCES = 538;
-export const COMPACT_CLIENT_GLOBAL_FINGERPRINT = "e426af73792e3f214172a08e8e387aa36bb19ace62dca17ff0816d446455af4a";
+export const COMPACT_CLIENT_GLOBAL_OCCURRENCES = 539;
+export const COMPACT_CLIENT_GLOBAL_FINGERPRINT = "f98b52f4252250abdfde9184cec616065bdaa4d433294ed542f2d5d87ee1ecc0";
 const GLOBAL_ALIAS_INDEX = new Map(COMPACT_CLIENT_GLOBAL_ALIASES.map(([name], index) => [name, index]));
 const GLOBAL_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_GLOBAL_ALIASES)),

@@ -18,7 +18,9 @@ assert.match(client, /getGameMode: \(\) => realtimeGameModeRef\.current/);
 assert.match(presentation, /canTakePlayerDamage: \(\) => context\.getGameMode\(\) === "survival"/);
 assert.match(client, /creativeInventory=\{Boolean\(realtimeSession\) && realtimeGameMode === "creative"\}/);
 assert.match(client, /showSurvivalStatus=\{realtimeGameMode !== "creative"\}/);
-assert.match(client, /if \(realtimeGameModeRef\.current === "creative"\) return true;/,
-  "Creative catalog changes stay local instead of forging Lakebed survival inventory actions");
+assert.doesNotMatch(client, /if \(realtimeGameModeRef\.current === "creative"\) return true;/,
+  "Creative workspace changes reach the server so a later Survival switch cannot restore stale equipment");
+assert.match(client, /onInventoryWorkspacePreview=\{\(snapshot\) => \{\s*updateInventory\(snapshot\.inventory\);\s*updateEquipment\(snapshot\.equipment\);/,
+  "each Creative equipment interaction immediately updates the local and relayed appearance state");
 
 console.log("multiplayer admin/Creative client gates: ok");

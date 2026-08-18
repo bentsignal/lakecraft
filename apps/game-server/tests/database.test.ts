@@ -125,6 +125,60 @@ describe("SQLite world persistence", () => {
     store.close();
   });
 
+  test("persists creative equipment before a survival mode switch without weakening survival authority", () => {
+    const store = new WorldStore(":memory:");
+    store.ensurePlayerInventory("creative-player", undefined, 1_000);
+    const equipped = createInitializedPlayerState();
+    equipped.inventory[8] = { itemId: "diamond", count: 64 };
+    equipped.equipment.head = { itemId: "diamond_helmet", durability: 363 };
+    const equippedJson = JSON.stringify(equipped);
+    const creativeRequest = JSON.stringify({
+      operationId: "creative_equip_0001",
+      expectedRevision: "1",
+      kind: "workspace_commit",
+      playerStateJson: equippedJson,
+      recipes: [],
+      craftingContext: "field",
+      workstationCoordKey: "",
+    });
+    expect(store.applyPlayerInventoryAction("creative-player", creativeRequest, 1_010, true)).toMatchObject({
+      ok: true,
+      effect: "workspace_committed",
+      inventory: { revision: "2", inventoryJson: equippedJson },
+    });
+
+    const survivalRequest = JSON.stringify({
+      operationId: "survival_after_creative_0001",
+      expectedRevision: "2",
+      kind: "workspace_commit",
+      playerStateJson: equippedJson,
+      recipes: [],
+      craftingContext: "field",
+      workstationCoordKey: "",
+    });
+    expect(store.applyPlayerInventoryAction("creative-player", survivalRequest, 1_020, false)).toMatchObject({
+      ok: true,
+      effect: "workspace_committed",
+      inventory: { revision: "3", inventoryJson: equippedJson },
+    });
+
+    store.ensurePlayerInventory("survival-player", undefined, 1_000);
+    const forgedRequest = JSON.stringify({
+      operationId: "survival_forgery_0001",
+      expectedRevision: "1",
+      kind: "workspace_commit",
+      playerStateJson: equippedJson,
+      recipes: [],
+      craftingContext: "field",
+      workstationCoordKey: "",
+    });
+    expect(store.applyPlayerInventoryAction("survival-player", forgedRequest, 1_030, false)).toMatchObject({
+      ok: false,
+      reason: "invalid_transition",
+    });
+    store.close();
+  });
+
   test("uses WAL and recovers player state, revisions, and idempotent operations", () => {
     const path = `/tmp/lakecraft-world-${crypto.randomUUID()}.sqlite`;
     paths.push(path);

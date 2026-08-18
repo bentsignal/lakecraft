@@ -278,6 +278,10 @@ for (const [itemId, definition] of Object.entries(ITEMS)) {
   const texture = ITEM_ALIASES[itemId] ?? itemId;
   itemTextures[itemId] = png(`assets/minecraft/textures/item/${texture}.png`, 16, 16);
 }
+const itemTextureOverlays = Object.fromEntries(["helmet", "chestplate", "leggings", "boots"].map((piece) => [
+  `leather_${piece}`,
+  png(`assets/minecraft/textures/item/leather_${piece}_overlay.png`, 16, 16),
+]));
 const bowStages = [0, 1, 2].map((stage) => png(`assets/minecraft/textures/item/bow_pulling_${stage}.png`, 16, 16));
 const models = Object.fromEntries(Object.entries(MODEL_PATHS).map(([name, path]) => [name, JSON.parse(entry(path).toString("utf8"))]));
 const entities = Object.fromEntries(Object.entries(ENTITY_PATHS).map(([name, path]) => [name, png(path)]));
@@ -299,6 +303,7 @@ const manifest = {
     notice: "Imported from a locally installed, user-owned Minecraft client. Contains only visual files selected for Lakecraft compatibility.",
   },
   itemTextures,
+  itemTextureOverlays,
   bowStages,
   models,
   entities,
@@ -310,4 +315,4 @@ const manifest = {
 };
 await mkdir(dirname(outputPath), { recursive: true });
 await writeFile(outputPath, `${JSON.stringify(manifest, null, 2)}\n`);
-console.log(JSON.stringify({ outputPath, items: Object.keys(itemTextures).length, entities: Object.keys(entities).length, armorTextures: Object.keys(armorTextures).length, blocks: Object.keys(blocks).length, blockItemTextures: Object.keys(blockItemTextures).length, blockLayers: Object.keys(blockLayers).length, jarSha256: manifest.source.jarSha256 }));
+console.log(JSON.stringify({ outputPath, items: Object.keys(itemTextures).length, itemOverlays: Object.keys(itemTextureOverlays).length, entities: Object.keys(entities).length, armorTextures: Object.keys(armorTextures).length, blocks: Object.keys(blocks).length, blockItemTextures: Object.keys(blockItemTextures).length, blockLayers: Object.keys(blockLayers).length, jarSha256: manifest.source.jarSha256 }));

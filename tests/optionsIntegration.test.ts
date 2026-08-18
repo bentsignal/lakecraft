@@ -32,8 +32,10 @@ assert.ok(dialog.includes('role="dialog"') && dialog.includes('aria-modal="true"
 assert.ok(dialog.includes('aria-label="Mouse sensitivity"') && dialog.includes("aria-valuetext"), "the sensitivity range has a stable accessible value");
 assert.ok(dialog.includes('aria-label="Field of view"') && dialog.includes('min="30"') && dialog.includes('max="110"'),
   "the shared Options screen exposes the full accessible FOV range");
-assert.ok(dialog.includes('aria-label="Render distance"') && dialog.includes("renderDistance !== undefined"),
-  "either authority can opt into the shared accessible render-distance slider");
+assert.ok(dialog.includes('aria-label="Render distance"') && dialog.includes("RENDER_DISTANCE_MIN"),
+  "the shared Options screen exposes the accessible render-distance slider");
+assert.ok(dialog.includes("HUD Size:") && dialog.includes('hudSize === "large" ? "medium"'),
+  "Video Options cycles the shared large, medium, and small HUD setting");
 assert.ok(dialog.includes("RENDER_DISTANCE_MAX"), "the slider uses the shared tested chunk ceiling");
 assert.ok(dialog.includes('["musicVolume", "Music", musicVolume]'), "Music & Sounds exposes a dedicated persistent ambient-music channel");
 assert.ok(dialog.includes('event.key !== "Tab"') && dialog.includes("event.shiftKey"), "keyboard focus is trapped in either tab direction");
@@ -50,18 +52,13 @@ assert.ok(presentation.includes("mouseLookScale(context.getSettings().mouseSensi
 assert.ok(presentation.includes("fieldOfViewRadians(context.getSettings().fovDegrees)"), "both modes read FOV through the shared live context");
 assert.ok(app.includes("getSettings: () => clientSettingsRef.current"));
 assert.ok(singlePlayer.includes("getSettings: () => clientSettingsRef.current"));
-assert.ok(lobby.includes("fovDegrees={props.settings.fovDegrees}"), "title Options edits the same persisted FOV setting");
-assert.ok(lobby.includes("musicVolume={props.settings.musicVolume}")
-  && hud.includes("musicVolume={musicVolume}")
-  && app.includes("musicVolume={clientSettings.musicVolume}")
-  && singlePlayer.includes("musicVolume={clientSettings.musicVolume}"),
-"title, single-player, and multiplayer all wire the same persistent music setting through shared Options");
-assert.ok(lobby.includes("renderDistance={props.settings.renderDistance}")
-  && lobby.includes("onRenderDistanceChange={(renderDistance) => props.onSettingsChange({ ...props.settings, renderDistance })}"),
-"title Options exposes the same persisted render-distance setting as both gameplay modes");
-assert.ok(singlePlayer.includes("engineRef.current?.setRenderDistance(renderDistance)"), "single-player reconciles a changed render radius immediately");
+assert.ok(lobby.includes("settings={props.settings}") && lobby.includes("onSettingsChange={props.onSettingsChange}")
+  && hud.includes("settings={settings}") && hud.includes("onSettingsChange={onSettingsChange}")
+  && app.includes("settings={clientSettings}") && singlePlayer.includes("settings={clientSettings}"),
+"title, single-player, and multiplayer all pass the complete persisted settings object through shared Options");
+assert.ok(singlePlayer.includes("engineRef.current?.setRenderDistance(next.renderDistance)"), "single-player reconciles a changed render radius immediately");
 assert.ok(app.includes("streamingChunkRadius: clientSettingsRef.current.renderDistance")
-  && app.includes("engineRef.current?.setRenderDistance(renderDistance)"),
+  && app.includes("engineRef.current?.setRenderDistance(next.renderDistance)"),
 "multiplayer initializes and reconciles the same client-selected terrain radius");
 assert.ok(singlePlayer.includes("audioRef.current = audio"), "single-player retains its audio surface for immediate mute updates");
 

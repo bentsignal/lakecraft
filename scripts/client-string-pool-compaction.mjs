@@ -8,9 +8,18 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 541;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 476;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "0d82b6aafd9d683284c2e9640d079816847c69e9409b3525734c1b2a595800c6";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 542;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 477;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "f778e68ed5c90797a3ad5186cb11b113431da5b0ac5996eba73db8693bf2f1f5";
+export const COMPACT_CLIENT_HUMAN_HUD_SIZE_DELTA = Object.freeze({
+  previousOccurrences: 541,
+  previousUniqueValues: 476,
+  previousSourceFingerprint: "0d82b6aafd9d683284c2e9640d079816847c69e9409b3525734c1b2a595800c6",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 1,
+  source: "client/components/OptionsDialog.tsx#persisted-shared-hud-size",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_HUMAN_SHARED_ARMOR_RENDERER_DELTA = Object.freeze({
   previousOccurrences: 541,
   previousUniqueValues: 476,
@@ -211,9 +220,18 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
   source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_356;
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_359;
 export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 135;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "bc486e833beac173dc85e6b9455c2940456a37d2f38693bb9b7423f124864a78";
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "61ba63877f1a9506ab561ed258f089aac5606cfb084ca5f312c266a97b9ab664";
+export const COMPACT_CLIENT_REPEATED_HUD_SIZE_DELTA = Object.freeze({
+  previousOccurrences: 1_356,
+  previousUniqueValues: 135,
+  previousSourceFingerprint: "bc486e833beac173dc85e6b9455c2940456a37d2f38693bb9b7423f124864a78",
+  occurrenceDelta: 3,
+  uniqueValueDelta: 0,
+  source: "shared small-medium-large HUD scale wiring",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_REPEATED_REMOTE_ARMOR_UNIFICATION_DELTA = Object.freeze({
   previousOccurrences: 1_362,
   previousUniqueValues: 135,
@@ -614,9 +632,27 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 617;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 183;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "3aa23dc82630fc7f26671670be2e69d2e96eea97188b3e8779b772f729527c4e";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 614;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 182;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "7b4d287d26cdff20b4cc507ddc6b4213c917454dd4d924dc441521e87e99de7c";
+export const COMPACT_CLIENT_LOW_FREQUENCY_HUD_SIZE_DELTA = Object.freeze({
+  previousOccurrences: 617,
+  previousUniqueValues: 183,
+  previousSourceFingerprint: "3aa23dc82630fc7f26671670be2e69d2e96eea97188b3e8779b772f729527c4e",
+  occurrenceDelta: 3,
+  uniqueValueDelta: 1,
+  source: "persisted medium and small HUD scale values",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_SETTINGS_OBJECT_DELTA = Object.freeze({
+  previousOccurrences: 620,
+  previousUniqueValues: 184,
+  previousSourceFingerprint: "4f0bdba597f9f36661ccd8bb3060e40beb4fb64578aaa8a85549560a3c0a42a6",
+  occurrenceDelta: -6,
+  uniqueValueDelta: -2,
+  source: "shared ClientSettings object replaces duplicate Options callback props",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_LOW_FREQUENCY_REMOTE_ARMOR_UNIFICATION_DELTA = Object.freeze({
   previousOccurrences: 622,
   previousUniqueValues: 184,
@@ -994,12 +1030,12 @@ export const COMPACT_CLIENT_FIXED_IDENTITY_VALUES = Object.freeze([
   "unsupported",
   "empty",
 ]);
-export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES = 63;
+export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES = 62;
 export const COMPACT_CLIENT_FIXED_IDENTITY_UNIQUE_VALUES = 7;
 export const COMPACT_CLIENT_FIXED_IDENTITY_INCREMENTAL_UNIQUE_VALUES = 1;
 export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCE_KIND = "StringLiteral";
 export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_COUNTS = Object.freeze({
-  creative: 33,
+  creative: 32,
   survival: 10,
   loaded: 3,
   recovered: 3,
@@ -1007,7 +1043,16 @@ export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_COUNTS = Object.freeze({
   unsupported: 6,
   empty: 3,
 });
-export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT = "2a5f101f64a96b509af2bee05aa324640d9129039c27630d519848b90f10b26e";
+export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT = "fb0b5d59a8aefe3a8accf8b36c4df74723d4a4d4ffdf1e816aaa2a3ef55f0690";
+export const COMPACT_CLIENT_FIXED_IDENTITY_CREATIVE_COMMIT_DELTA = Object.freeze({
+  previousOccurrences: 63,
+  previousUniqueValues: 7,
+  previousSourceFingerprint: "2a5f101f64a96b509af2bee05aa324640d9129039c27630d519848b90f10b26e",
+  occurrenceDelta: -1,
+  uniqueValueDelta: 0,
+  valueDeltas: Object.freeze({ creative: -1 }),
+  source: "Creative workspace close now commits instead of returning before transport",
+});
 export const COMPACT_CLIENT_FIXED_IDENTITY_SHARED_GAMEPLAY_DELTA = Object.freeze({
   previousOccurrences: 68,
   previousUniqueValues: 7,

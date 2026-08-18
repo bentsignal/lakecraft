@@ -525,7 +525,7 @@ export class WorldStore {
     return row ? toPersistedInventory(row) : null;
   }
 
-  applyPlayerInventoryAction(userId: string, requestJson: string, now = Date.now()): InventoryActionMutationResult {
+  applyPlayerInventoryAction(userId: string, requestJson: string, now = Date.now(), creative = false): InventoryActionMutationResult {
     const validation = validateInventoryActionRequestJson(requestJson);
     if (!validation.ok) return {
       ok: false,
@@ -551,7 +551,15 @@ export class WorldStore {
       }
       const previous = validatePlayerStateJson(row.inventory_json);
       if (!previous.ok) return { ok: false, reason: "invalid_state", inventory };
-      const effect = applyInventoryAction(previous.state, request.action);
+      const effect = creative && request.action.kind === "workspace_commit"
+        ? {
+            ok: true as const,
+            state: request.action.playerState,
+            playerStateJson: request.action.playerStateJson,
+            effect: "workspace_committed" as const,
+            crafted: [],
+          }
+        : applyInventoryAction(previous.state, request.action);
       if (!effect.ok) return { ok: false, reason: effect.reason, inventory };
       const revision = row.revision + 1;
       this.db.query(`

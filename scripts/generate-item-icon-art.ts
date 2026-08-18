@@ -29,6 +29,7 @@ const PLAINS_GRASS_TINT = [0x91, 0xbd, 0x59] as const;
 const DEFAULT_LEATHER_TINT = [0xa0, 0x65, 0x40] as const;
 type ImportedVisualAssets = Readonly<{
   itemTextures: Readonly<Partial<Record<ItemId, string>>>;
+  itemTextureOverlays: Readonly<Partial<Record<ItemId, string>>>;
   blockItemTextures: Readonly<Partial<Record<ItemId, string>>>;
   bowStages: readonly string[];
   entities: Readonly<Record<string, string>>;
@@ -63,7 +64,7 @@ export function getItemIconArt(itemId: ItemId): ItemIconArt {
     const art = Object.freeze({
       family: item.category,
       variant,
-      runs: Object.freeze(importedPngRuns(importedTexture, itemId)),
+      runs: Object.freeze(importedPngRuns(importedTexture, itemId, importedVisualAssets.itemTextureOverlays[itemId])),
     });
     cache.set(itemId, art);
     return art;
@@ -94,10 +95,14 @@ export function getItemIconArt(itemId: ItemId): ItemIconArt {
   return art;
 }
 
-function importedPngRuns(payload: string, label: string): ItemIconRun[] {
+function importedPngRuns(payload: string, label: string, overlayPayload?: string): ItemIconRun[] {
   const image = decodePng(Buffer.from(payload, "base64"));
   if (image.width !== ITEM_ICON_SIZE || image.height !== ITEM_ICON_SIZE) {
     throw new Error(`Imported icon ${label} must be 16x16.`);
+  }
+  const overlay = overlayPayload ? decodePng(Buffer.from(overlayPayload, "base64")) : null;
+  if (overlay && (overlay.width !== ITEM_ICON_SIZE || overlay.height !== ITEM_ICON_SIZE)) {
+    throw new Error(`Imported icon overlay ${label} must be 16x16.`);
   }
   const result: ItemIconRun[] = [];
   const tint = label === "short_grass" ? PLAINS_GRASS_TINT
@@ -105,15 +110,16 @@ function importedPngRuns(payload: string, label: string): ItemIconRun[] {
   for (let y = 0; y < ITEM_ICON_SIZE; y += 1) {
     for (let x = 0; x < ITEM_ICON_SIZE;) {
       const offset = (y * ITEM_ICON_SIZE + x) * 4;
-      if (image.rgba[offset + 3] < 128) { x += 1; continue; }
-      const channelValue = (pixelOffset: number, channel: number): number => tint
-        ? Math.round(image.rgba[pixelOffset + channel] * tint[channel] / 255) : image.rgba[pixelOffset + channel];
+      if (image.rgba[offset + 3] < 128 && (!overlay || overlay.rgba[offset + 3] < 128)) { x += 1; continue; }
+      const channelValue = (pixelOffset: number, channel: number): number => overlay?.rgba[pixelOffset + 3] === 255
+        ? overlay.rgba[pixelOffset + channel]
+        : tint ? Math.round(image.rgba[pixelOffset + channel] * tint[channel] / 255) : image.rgba[pixelOffset + channel];
       const color = `#${[0, 1, 2].map((channel) => channelValue(offset, channel).toString(16).padStart(2, "0")).join("")}`;
       let end = x + 1;
       while (end < ITEM_ICON_SIZE) {
         const next = (y * ITEM_ICON_SIZE + end) * 4;
         const nextColor = `#${[0, 1, 2].map((channel) => channelValue(next, channel).toString(16).padStart(2, "0")).join("")}`;
-        if (image.rgba[next + 3] < 128 || nextColor !== color) break;
+        if ((image.rgba[next + 3] < 128 && (!overlay || overlay.rgba[next + 3] < 128)) || nextColor !== color) break;
         end += 1;
       }
       result.push(Object.freeze({ x, y, width: end - x, color }));

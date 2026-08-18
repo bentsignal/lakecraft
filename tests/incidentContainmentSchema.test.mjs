@@ -99,11 +99,12 @@ for (const path of runtimeFiles) {
 // depth-stable glass, versioned local biomes, water/swimming, natural flora,
 // non-solid authoritative fall probes for those natural states, corrected
 // installed-font bitmap ascent/descender geometry, and compact-safe numeric
-// stair-state resolution; none adds another Lakebed
+// stair-state resolution, persisted three-size HUD presentation, and
+// server-authoritative Creative equipment commits; none adds another Lakebed
 // authority or multiplayer transport.
-assert.equal(runtimeFiles.length, 197, "reviewed main runtime file set changed");
+assert.equal(runtimeFiles.length, 198, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "bd801e5cd691157efbfcc7fafee9093c9f84e6dbac14a034124f769777cc6381",
+  "6ee31b891a4fec82e1061539420a9fcd51ac8266637bc8c41105dc0ea159369d",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

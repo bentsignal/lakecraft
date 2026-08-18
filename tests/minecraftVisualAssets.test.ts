@@ -20,6 +20,7 @@ type ImportedAssets = Readonly<{
   format: number;
   source: Readonly<{ version: string; jarSha256: string; notice: string }>;
   itemTextures: Readonly<Record<string, string>>;
+  itemTextureOverlays: Readonly<Record<string, string>>;
   bowStages: readonly string[];
   models: Readonly<Record<string, { display?: Record<string, unknown> }>>;
   entities: Readonly<Record<string, string>>;
@@ -46,6 +47,9 @@ assert.ok(importerSource.includes(`EXPECTED_JAR_SHA256 = "${assets.source.jarSha
   && importerSource.includes("jarSha256 !== EXPECTED_JAR_SHA256"),
 "the importer fails before asset extraction unless the installed JAR matches the reviewed 26.2 hash");
 assert.equal(Object.keys(assets.itemTextures).length, 67);
+assert.deepEqual(Object.keys(assets.itemTextureOverlays), [
+  "leather_helmet", "leather_chestplate", "leather_leggings", "leather_boots",
+]);
 assert.equal(assets.bowStages.length, 3);
 assert.equal(Object.keys(assets.entities).length, 12);
 assert.equal(Object.keys(assets.armorTextures).length, 10);
@@ -110,9 +114,10 @@ assert.deepEqual(assets.models.block.display?.firstperson_righthand, {
 });
 
 function assertExactPixels(
-  art: ItemIconArt, payload: string, label: string, tintChannels?: readonly [number, number, number],
+  art: ItemIconArt, payload: string, label: string, tintChannels?: readonly [number, number, number], overlayPayload?: string,
 ): void {
   const image = decodePng(Buffer.from(payload, "base64"));
+  const overlay = overlayPayload ? decodePng(Buffer.from(overlayPayload, "base64")) : null;
   assert.deepEqual([image.width, image.height], [16, 16], `${label} source remains 16x16`);
   const actual = new Map<string, string>();
   for (const run of art.runs) for (let x = run.x; x < run.x + run.width; x += 1) {
@@ -121,9 +126,10 @@ function assertExactPixels(
   const expected = new Map<string, string>();
   for (let y = 0; y < 16; y += 1) for (let x = 0; x < 16; x += 1) {
     const offset = (y * 16 + x) * 4;
-    if (image.rgba[offset + 3] < 128) continue;
+    if (image.rgba[offset + 3] < 128 && (!overlay || overlay.rgba[offset + 3] < 128)) continue;
     expected.set(`${x}:${y}`, `#${[0, 1, 2].map((channel) => (
-      tintChannels ? Math.round(image.rgba[offset + channel] * tintChannels[channel] / 255) : image.rgba[offset + channel]
+      overlay?.rgba[offset + 3] === 255 ? overlay.rgba[offset + channel]
+        : tintChannels ? Math.round(image.rgba[offset + channel] * tintChannels[channel] / 255) : image.rgba[offset + channel]
     ).toString(16).padStart(2, "0")).join("")}`);
   }
   assert.deepEqual(actual, expected, `${label} production runs exactly preserve installed RGBA pixels`);
@@ -134,7 +140,7 @@ const exactItems = Object.entries(ITEMS)
   .map(([itemId]) => itemId as ItemId);
 assert.equal(exactItems.length, 67);
 for (const itemId of exactItems) assertExactPixels(getItemIconArt(itemId), assets.itemTextures[itemId], itemId,
-  itemId.startsWith("leather_") ? [0xa0, 0x65, 0x40] : undefined);
+  itemId.startsWith("leather_") ? [0xa0, 0x65, 0x40] : undefined, assets.itemTextureOverlays[itemId]);
 for (const [itemId, payload] of Object.entries(assets.blockItemTextures)) {
   if (itemId === "cactus") continue; // Full blocks use the shared isometric atlas cube in inventory.
   assertExactPixels(getItemIconArt(itemId as ItemId), payload, itemId,

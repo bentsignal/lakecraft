@@ -304,27 +304,11 @@ export function LobbyScreen(props: LobbyScreenProps) {
       <footer className="lc-title-footer"><span /><span>craft.lakebed.app</span></footer>
       {showUsername ? <div className="lc-username-layer" role="presentation"><UsernameMenu {...props} onCancel={() => setEditingUsername(false)} /></div> : null}
       <OptionsDialog
-        blocksVolume={props.settings.blocksVolume}
-        fovDegrees={props.settings.fovDegrees}
-        hostileVolume={props.settings.hostileVolume}
-        keyBindings={props.settings.keyBindings}
-        masterVolume={props.settings.masterVolume}
-        musicVolume={props.settings.musicVolume}
-        mouseSensitivity={props.settings.mouseSensitivity}
         onBack={() => setOptionsOpen(false)}
-        onFovChange={(fovDegrees) => props.onSettingsChange({ ...props.settings, fovDegrees })}
-        onSensitivityChange={(mouseSensitivity) => props.onSettingsChange({ ...props.settings, mouseSensitivity })}
-        onKeyBindingsChange={(keyBindings) => props.onSettingsChange({ ...props.settings, keyBindings })}
-        onRenderDistanceChange={(renderDistance) => props.onSettingsChange({ ...props.settings, renderDistance })}
-        onToggleSound={() => props.onSettingsChange({ ...props.settings, soundMuted: !props.settings.soundMuted })}
-        onVolumeChange={(category, value) => props.onSettingsChange({ ...props.settings, [category]: value })}
+        onSettingsChange={props.onSettingsChange}
         open={optionsOpen}
-        passiveVolume={props.settings.passiveVolume}
-        playersVolume={props.settings.playersVolume}
-        renderDistance={props.settings.renderDistance}
         returnFocusId="lc-title-options"
-        soundMuted={props.settings.soundMuted}
-        uiVolume={props.settings.uiVolume}
+        settings={props.settings}
       />
     </main>
   );

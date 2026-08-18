@@ -14,6 +14,7 @@ export const RENDER_DISTANCE_MIN = 2;
 export const RENDER_DISTANCE_MAX = 12;
 export const FOV_DEGREES_MIN = 30;
 export const FOV_DEGREES_MAX = 110;
+export type HudSize = "small" | "medium" | "large";
 
 export interface ClientSettings {
   soundMuted: boolean;
@@ -31,6 +32,8 @@ export interface ClientSettings {
   renderDistance: number;
   /** Vertical camera field of view in degrees. */
   fovDegrees: number;
+  /** One shared scale for the hotbar, chat, and both inventory screens. */
+  hudSize: HudSize;
   keyBindings: GameplayControlBindings;
 }
 
@@ -51,6 +54,7 @@ export const DEFAULT_CLIENT_SETTINGS: Readonly<ClientSettings> = Object.freeze({
   mouseSensitivity: 100,
   renderDistance: 6,
   fovDegrees: 90,
+  hudSize: "large",
   keyBindings: { ...DEFAULT_GAMEPLAY_CONTROL_BINDINGS },
 });
 
@@ -78,6 +82,10 @@ function normalizeVolume(value: unknown): number {
   return Math.min(100, Math.max(0, Math.round(value)));
 }
 
+function normalizeHudSize(value: unknown): HudSize {
+  return value === "small" || value === "medium" || value === "large" ? value : DEFAULT_CLIENT_SETTINGS.hudSize;
+}
+
 export function normalizeClientSettings(value: unknown): ClientSettings {
   const candidate = isRecord(value) ? value : {};
   return {
@@ -92,6 +100,7 @@ export function normalizeClientSettings(value: unknown): ClientSettings {
     mouseSensitivity: normalizeSensitivity(candidate.mouseSensitivity),
     renderDistance: normalizeRenderDistance(candidate.renderDistance),
     fovDegrees: normalizeFovDegrees(candidate.fovDegrees),
+    hudSize: normalizeHudSize(candidate.hudSize),
     keyBindings: normalizeGameplayControlBindings(candidate.keyBindings),
   };
 }

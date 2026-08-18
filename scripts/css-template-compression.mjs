@@ -56,14 +56,14 @@ function parsePrivateIdentifierRows(rows) {
 // This fixed, reviewed live set contains only Lakecraft-owned CSS/DOM names.
 // Order is stable and assigns the shortest outputs to the most frequent names.
 const COMPACT_CLIENT_PRIVATE_IDENTIFIER_ROWS = parsePrivateIdentifierRows(`
-xe-window|55 xi-peek|18 xi-compose|14 xi-message|13 xw-button|17
+xe-window|56 xi-peek|19 xi-compose|14 xi-message|13 xw-button|17
 xc-inventory-slot|11 xj-glyph|15 xo-menu|11 xe-grid__slot|16 xj-icon__svg|17 xn-panel|11
 xlocal-world-dialog|9 xoptions|11 ysleep|1 xslot|14 xunsupported|8 xg__signal|8 xc-slot|8
 xm-slot|11 xp-logo|5 xq-icon|8 xr-slot|8 xclose|10 yquery-recovery|7 xq-population|7
 xworld-line|7 xc__header|7 xk-screen|7 xp-cloud|2 xe-grid|12 xlocal-world-header|6
 xlocal-world-search|6 xlocal-world-select|6 xoptions__slider|10 xgameplay-capture|0
-xe-titlebar|10 xcrosshair|6 xq-browser|6 xp-footer|7 xs-layer|7 xlocal-world-browser|5
-xlocal-world-delete|5 xq-browser__content|5 xselected-item-name|5 xi-dialog|5 xv-result|6
+xe-titlebar|10 xcrosshair|6 xq-browser|6 xp-footer|7 xs-layer|8 xlocal-world-browser|5
+xlocal-world-delete|5 xq-browser__content|5 xselected-item-name|5 xi-dialog|6 xv-result|6
 xe-upper|7 xo-layer|5 xz__slot|7 xo-help|5 xp-tree|2 xq-copy|7 xq-row|5 xlocal-world-titlebar|5
 xingredient__icon|4 xlocal-world-row|4 xcursor-stack|5 xs__heading|4 xf__output|4
 xj-tooltip|4 xq-actions|4 xc__arrow|4 xh__reset|4 xp-screen|6 xk-layer|4 xw-layer|4
@@ -98,7 +98,7 @@ xoptions__control|7 xoptions__controls|2 xoptions__tabs|3 xlocal-world-create|2
 
 const COMPACT_CLIENT_PRIVATE_CUSTOM_PROPERTY_ROWS = parsePrivateIdentifierRows(`
 xpixel-font|68 xnote|16 xy-slot|13 xc-slot|10 xe-height-scale|8 xinput-vpad|6 xr-slot|6 xpaper|6 xmoss|6 xink|6 xamber|5
-xrust|5 xt-edge|4 xe-width-scale|4 xcharcoal|2 xdisplay|2 xmoss-bright|1 xpaper-deep|1 xshadow|1 xline|1
+xrust|5 xt-edge|4 xe-width-scale|4 xcharcoal|2 xdisplay|2 xmoss-bright|1 xpaper-deep|1 xshadow|1 xline|1 xhud-scale|5
 `);
 
 function privateIdentifierCode(index) {

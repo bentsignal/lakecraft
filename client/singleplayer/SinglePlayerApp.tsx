@@ -495,11 +495,13 @@ function LocalGameplaySession({
   function updateClientSettings(value: ClientSettings): void {
     const next = normalizeClientSettings(value);
     const soundChanged = clientSettingsRef.current.soundMuted !== next.soundMuted;
+    const renderDistanceChanged = clientSettingsRef.current.renderDistance !== next.renderDistance;
     clientSettingsRef.current = next;
     setClientSettings(next);
     saveClientSettings(storage, next);
     if (soundChanged) audioRef.current?.setMuted(next.soundMuted);
     audioRef.current?.setLevels(clientAudioLevels(next));
+    if (renderDistanceChanged) engineRef.current?.setRenderDistance(next.renderDistance);
   }
 
   function markWorldDirty(): void {
@@ -2102,18 +2104,11 @@ function LocalGameplaySession({
           equipmentRef.current = snapshot.equipment;
           markWorldDirty();
         }}
-        fovDegrees={clientSettings.fovDegrees}
-        mouseSensitivity={clientSettings.mouseSensitivity}
-        renderDistance={clientSettings.renderDistance}
         onCloseOptions={() => setOptionsOpen(false)}
         onOptions={() => setOptionsOpen(true)}
-        onFovChange={(fovDegrees) => updateClientSettings({ ...clientSettingsRef.current, fovDegrees })}
-        onSensitivityChange={(mouseSensitivity) => updateClientSettings({ ...clientSettingsRef.current, mouseSensitivity })}
-        onRenderDistanceChange={(renderDistance) => {
-          updateClientSettings({ ...clientSettingsRef.current, renderDistance });
-          engineRef.current?.setRenderDistance(renderDistance);
-        }}
         optionsOpen={optionsOpen}
+        settings={clientSettings}
+        onSettingsChange={updateClientSettings}
         onRespawn={respawnLocally}
         onResume={() => { setOptionsOpen(false); requestGameplayPointerLock(); }}
         onResetWorld={saveLockedRef.current ? resetUnreadableWorld : undefined}
@@ -2125,24 +2120,6 @@ function LocalGameplaySession({
         selectedIndex={selected}
         respawnError={deathStatus}
         respawning={respawning}
-        soundMuted={clientSettings.soundMuted}
-        masterVolume={clientSettings.masterVolume}
-        musicVolume={clientSettings.musicVolume}
-        blocksVolume={clientSettings.blocksVolume}
-        hostileVolume={clientSettings.hostileVolume}
-        passiveVolume={clientSettings.passiveVolume}
-        playersVolume={clientSettings.playersVolume}
-        uiVolume={clientSettings.uiVolume}
-        keyBindings={clientSettings.keyBindings}
-        onKeyBindingsChange={(keyBindings) => updateClientSettings({ ...clientSettingsRef.current, keyBindings })}
-        onVolumeChange={(category, value) => updateClientSettings({ ...clientSettingsRef.current, [category]: value })}
-        onToggleSound={() => {
-          const nextMuted = !clientSettingsRef.current.soundMuted;
-          updateClientSettings({ ...clientSettingsRef.current, soundMuted: nextMuted });
-          if (!nextMuted) {
-            void audioRef.current?.unlock().then(() => audioRef.current?.play("uiConfirm", { seed: "local-sound-on", intensity: 0.52 }));
-          }
-        }}
         worldName={world.name}
       />
       {hudVisible || commandOpen ? <ChatOverlay

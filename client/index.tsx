@@ -570,11 +570,13 @@ function RailwayMultiplayerSession({
   function updateClientSettings(value: ClientSettings): void {
     const next = normalizeClientSettings(value);
     const soundChanged = clientSettingsRef.current.soundMuted !== next.soundMuted;
+    const renderDistanceChanged = clientSettingsRef.current.renderDistance !== next.renderDistance;
     clientSettingsRef.current = next;
     setClientSettings(next);
     saveClientSettings(window.localStorage, next);
     if (soundChanged) audioRef.current?.setMuted(next.soundMuted);
     audioRef.current?.setLevels(clientAudioLevels(next));
+    if (renderDistanceChanged) engineRef.current?.setRenderDistance(next.renderDistance);
   }
 
   useEffect(() => {
@@ -1466,7 +1468,6 @@ function RailwayMultiplayerSession({
       || droppedItemBusyRef.current) return false;
     updateInventory(snapshot.inventory);
     updateEquipment(snapshot.equipment);
-    if (realtimeGameModeRef.current === "creative") return true;
     const workstation = activeWorkstationRef.current;
     const actionContext: CraftingContext = workstation?.kind === "crafting_table" ? "crafting_table" : "field";
     const workstationCoordKey = actionContext === "crafting_table" && workstation
@@ -2012,39 +2013,16 @@ function RailwayMultiplayerSession({
           setSegmentRemotePlayers([]);
         }}
         onInventoryWorkspaceChange={handleInventoryWorkspaceChange}
-        fovDegrees={clientSettings.fovDegrees}
-        mouseSensitivity={clientSettings.mouseSensitivity}
-        renderDistance={clientSettings.renderDistance}
+        onInventoryWorkspacePreview={(snapshot) => {
+          updateInventory(snapshot.inventory);
+          updateEquipment(snapshot.equipment);
+        }}
         onCloseOptions={() => setOptionsOpen(false)}
         onOptions={() => setOptionsOpen(true)}
-        onFovChange={(fovDegrees) => updateClientSettings({ ...clientSettingsRef.current, fovDegrees })}
-        onSensitivityChange={(mouseSensitivity) => updateClientSettings({ ...clientSettingsRef.current, mouseSensitivity })}
-        onRenderDistanceChange={(renderDistance) => {
-          updateClientSettings({ ...clientSettingsRef.current, renderDistance });
-          engineRef.current?.setRenderDistance(renderDistance);
-        }}
         optionsOpen={optionsOpen}
+        settings={clientSettings}
+        onSettingsChange={updateClientSettings}
         onRespawn={requestRailwayRespawn}
-        soundMuted={clientSettings.soundMuted}
-        masterVolume={clientSettings.masterVolume}
-        musicVolume={clientSettings.musicVolume}
-        blocksVolume={clientSettings.blocksVolume}
-        hostileVolume={clientSettings.hostileVolume}
-        passiveVolume={clientSettings.passiveVolume}
-        playersVolume={clientSettings.playersVolume}
-        uiVolume={clientSettings.uiVolume}
-        keyBindings={clientSettings.keyBindings}
-        onKeyBindingsChange={(keyBindings) => updateClientSettings({ ...clientSettingsRef.current, keyBindings })}
-        onVolumeChange={(category, value) => updateClientSettings({ ...clientSettingsRef.current, [category]: value })}
-        onToggleSound={() => {
-          const nextMuted = !clientSettingsRef.current.soundMuted;
-          updateClientSettings({ ...clientSettingsRef.current, soundMuted: nextMuted });
-          if (!nextMuted) {
-            void audioRef.current?.unlock().then(() => {
-              audioRef.current?.play("uiConfirm", { seed: "sound-on", intensity: 0.52 });
-            });
-          }
-        }}
         onResume={() => {
           setOptionsOpen(false);
           requestGameplayKeyboardCapture();

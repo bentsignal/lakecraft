@@ -1,5 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
-import { RENDER_DISTANCE_MAX, RENDER_DISTANCE_MIN } from "../settings";
+import { RENDER_DISTANCE_MAX, RENDER_DISTANCE_MIN, type ClientSettings } from "../settings";
 import { MINECRAFT_DIRT_BACKGROUND_CSS } from "../menuPresentation.ts";
 import {
   DEFAULT_GAMEPLAY_CONTROL_BINDINGS,
@@ -19,29 +19,15 @@ const OPTIONS_CSS = `
 
 export interface OptionsDialogProps {
   open: boolean;
-  soundMuted: boolean;
-  mouseSensitivity: number;
-  fovDegrees: number;
-  onToggleSound: () => void;
-  onSensitivityChange: (value: number) => void;
-  onFovChange: (value: number) => void;
-  renderDistance?: number;
-  onRenderDistanceChange?: (value: number) => void;
+  settings: ClientSettings;
+  onSettingsChange: (value: ClientSettings) => void;
   onBack: () => void;
   returnFocusId?: string;
-  masterVolume: number;
-  musicVolume: number;
-  blocksVolume: number;
-  hostileVolume: number;
-  passiveVolume: number;
-  playersVolume: number;
-  uiVolume: number;
-  onVolumeChange: (category: "masterVolume" | "musicVolume" | "blocksVolume" | "hostileVolume" | "passiveVolume" | "playersVolume" | "uiVolume", value: number) => void;
-  keyBindings: GameplayControlBindings;
-  onKeyBindingsChange: (bindings: GameplayControlBindings) => void;
 }
 
-export function OptionsDialog({ open, soundMuted, mouseSensitivity, fovDegrees, renderDistance, onToggleSound, onSensitivityChange, onFovChange, onRenderDistanceChange, onBack, returnFocusId, masterVolume, musicVolume, blocksVolume, hostileVolume, passiveVolume, playersVolume, uiVolume, onVolumeChange, keyBindings, onKeyBindingsChange }: OptionsDialogProps) {
+export function OptionsDialog({ open, settings, onSettingsChange, onBack, returnFocusId }: OptionsDialogProps) {
+  const { soundMuted, mouseSensitivity, fovDegrees, renderDistance, hudSize, masterVolume, musicVolume, blocksVolume, hostileVolume, passiveVolume, playersVolume, uiVolume, keyBindings } = settings;
+  const change = (patch: Partial<ClientSettings>) => onSettingsChange({ ...settings, ...patch });
   const [panel, setPanel] = useState<"video" | "sound" | "controls">("video");
   const [captureAction, setCaptureAction] = useState<GameplayControlAction | null>(null);
   const close = () => {
@@ -55,7 +41,7 @@ export function OptionsDialog({ open, soundMuted, mouseSensitivity, fovDegrees, 
         event.preventDefault();
         event.stopImmediatePropagation();
         if (!event.repeat) {
-          if (event.code !== "Escape") onKeyBindingsChange(assignGameplayControlBinding(keyBindings, captureAction, event.code));
+          if (event.code !== "Escape") change({ keyBindings: assignGameplayControlBinding(keyBindings, captureAction, event.code) });
           setCaptureAction(null);
         }
         return;
@@ -79,12 +65,12 @@ export function OptionsDialog({ open, soundMuted, mouseSensitivity, fovDegrees, 
     const captureMouse = (event: MouseEvent) => {
       if (captureAction !== "attack" && captureAction !== "use") return;
       event.preventDefault(); event.stopImmediatePropagation();
-      onKeyBindingsChange(assignGameplayControlBinding(keyBindings, captureAction, `Mouse${event.button}`));
+      change({ keyBindings: assignGameplayControlBinding(keyBindings, captureAction, `Mouse${event.button}`) });
       setCaptureAction(null);
     };
     window.addEventListener("mousedown", captureMouse, true);
     return () => { window.removeEventListener("keydown", closeOnEscape, true); window.removeEventListener("mousedown", captureMouse, true); };
-  }, [open, onBack, returnFocusId, captureAction, keyBindings, onKeyBindingsChange]);
+  }, [open, onBack, returnFocusId, captureAction, keyBindings, onSettingsChange]);
 
   if (!open) return null;
   return (
@@ -101,28 +87,27 @@ export function OptionsDialog({ open, soundMuted, mouseSensitivity, fovDegrees, 
           {panel === "video" ? <>
             <label className="lc-options__slider">
             <span>Sensitivity: {mouseSensitivity}%</span>
-            <input aria-label="Mouse sensitivity" aria-valuetext={`${mouseSensitivity}%`} max="200" min="10" onInput={(event) => onSensitivityChange(Number(event.currentTarget.value))} step="5" type="range" value={mouseSensitivity} />
+            <input aria-label="Mouse sensitivity" aria-valuetext={`${mouseSensitivity}%`} max="200" min="10" onInput={(event) => change({ mouseSensitivity: Number(event.currentTarget.value) })} step="5" type="range" value={mouseSensitivity} />
           </label>
           <label className="lc-options__slider">
             <span>FOV: {fovDegrees}°</span>
-            <input aria-label="Field of view" aria-valuetext={`${fovDegrees} degrees`} max="110" min="30" onInput={(event) => onFovChange(Number(event.currentTarget.value))} step="1" type="range" value={fovDegrees} />
+            <input aria-label="Field of view" aria-valuetext={`${fovDegrees} degrees`} max="110" min="30" onInput={(event) => change({ fovDegrees: Number(event.currentTarget.value) })} step="1" type="range" value={fovDegrees} />
           </label>
-          {renderDistance !== undefined && onRenderDistanceChange ? (
-            <label className="lc-options__slider">
-              <span>Render Distance: {renderDistance} chunks</span>
-              <input aria-label="Render distance" aria-valuetext={`${renderDistance} chunks`} max={RENDER_DISTANCE_MAX} min={RENDER_DISTANCE_MIN} onInput={(event) => onRenderDistanceChange(Number(event.currentTarget.value))} step="1" type="range" value={renderDistance} />
-            </label>
-          ) : null}
+          <label className="lc-options__slider">
+            <span>Render Distance: {renderDistance} chunks</span>
+            <input aria-label="Render distance" aria-valuetext={`${renderDistance} chunks`} max={RENDER_DISTANCE_MAX} min={RENDER_DISTANCE_MIN} onInput={(event) => change({ renderDistance: Number(event.currentTarget.value) })} step="1" type="range" value={renderDistance} />
+          </label>
+          <button onClick={() => change({ hudSize: hudSize === "large" ? "medium" : hudSize === "medium" ? "small" : "large" })} style="grid-column:1/-1" type="button">HUD Size: {hudSize}</button>
           </> : null}
           {panel === "sound" ? <>
-            <button aria-pressed={soundMuted} onClick={onToggleSound} type="button">Sound: {soundMuted ? "OFF" : "ON"}</button>
+            <button aria-pressed={soundMuted} onClick={() => change({ soundMuted: !soundMuted })} type="button">Sound: {soundMuted ? "OFF" : "ON"}</button>
             {([
               ["masterVolume", "Master Volume", masterVolume], ["musicVolume", "Music", musicVolume], ["blocksVolume", "Blocks", blocksVolume],
               ["hostileVolume", "Hostile Creatures", hostileVolume], ["passiveVolume", "Friendly Creatures", passiveVolume],
               ["playersVolume", "Players", playersVolume], ["uiVolume", "UI", uiVolume],
             ] as const).map(([category, label, value]) => <label className="lc-options__slider" key={category}>
               <span>{label}: {value === 0 ? "OFF" : `${value}%`}</span>
-              <input aria-label={label} max="100" min="0" onInput={(event) => onVolumeChange(category, Number(event.currentTarget.value))} step="1" type="range" value={value} />
+              <input aria-label={label} max="100" min="0" onInput={(event) => change({ [category]: Number(event.currentTarget.value) })} step="1" type="range" value={value} />
             </label>)}
           </> : null}
           {panel === "controls" ? <>
@@ -138,7 +123,7 @@ export function OptionsDialog({ open, soundMuted, mouseSensitivity, fovDegrees, 
                 </label>;
               })}
             </div>
-            <button onClick={() => onKeyBindingsChange({ ...DEFAULT_GAMEPLAY_CONTROL_BINDINGS })} type="button">Reset Keys</button>
+            <button onClick={() => change({ keyBindings: { ...DEFAULT_GAMEPLAY_CONTROL_BINDINGS } })} type="button">Reset Keys</button>
             <small className="lc-options__note">{GAMEPLAY_CONTROL_RESERVED_INPUT_NOTE}</small>
           </> : null}
           <button autoFocus className="lc-options__done" onClick={close} type="button">Done</button>

@@ -28,6 +28,7 @@ const missing = new MemoryStorage();
 assert.deepEqual(loadClientSettings(missing), DEFAULT_CLIENT_SETTINGS, "missing preferences use deterministic defaults");
 assert.equal(DEFAULT_CLIENT_SETTINGS.renderDistance, 6, "new users default to the tested six-chunk radius");
 assert.equal(DEFAULT_CLIENT_SETTINGS.fovDegrees, 90, "new users default to the requested ninety-degree camera");
+assert.equal(DEFAULT_CLIENT_SETTINGS.hudSize, "large", "new users retain the current large Minecraft GUI scale");
 assert.equal(missing.values.size, 0, "loading missing preferences never writes storage");
 
 missing.values.set(CLIENT_SETTINGS_STORAGE_KEY, "not json");
@@ -93,6 +94,10 @@ assert.equal(normalizeClientSettings({ fovDegrees: 999 }).fovDegrees, FOV_DEGREE
   "field of view uses the bounded camera maximum");
 assert.equal(normalizeClientSettings({ musicVolume: 37.6 }).musicVolume, 38,
   "the music channel persists independently using the shared bounded mixer scale");
+assert.equal(normalizeClientSettings({ hudSize: "medium" }).hudSize, "medium",
+  "the medium HUD scale persists as a first-class setting");
+assert.equal(normalizeClientSettings({ hudSize: "huge" }).hudSize, "large",
+  "unknown HUD scales fail safely to the reviewed default");
 assert.ok(Math.abs(fieldOfViewRadians(70) - 70 * Math.PI / 180) < 1e-12,
   "the renderer receives the normalized preference in radians");
 

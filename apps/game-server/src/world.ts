@@ -1301,7 +1301,12 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       }
       return;
     }
-    const result = this.store.applyPlayerInventoryAction(state.player!.id, message.requestJson, now);
+    const result = this.store.applyPlayerInventoryAction(
+      state.player!.id,
+      message.requestJson,
+      now,
+      state.player!.gameMode === "creative",
+    );
     this.send(state.peer, { v: PROTOCOL_VERSION, type: "inventory_result", operationId, result });
   }
 
