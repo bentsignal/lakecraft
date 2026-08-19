@@ -129,6 +129,12 @@ assert.equal(frames.size, 1);
 driveFrame(1_016);
 assert.ok(glCalls.clear > 0 && glCalls.drawArrays > 0 && glCalls.viewport > 0,
   "an active frame performs the real resize and WebGL render lifecycle");
+const beforeFluidSourceEdit = { ...glCalls };
+assert.equal(engine.applyWorldEdits([{ x: 2, y: 90, z: 2, block: BLOCK.LAVA }]), true);
+assert.equal(glCalls.bufferData, beforeFluidSourceEdit.bufferData,
+  "placing a fluid source does not synchronously rebuild a loaded chunk mesh on the input frame");
+assert.ok(engine.getPerformanceStats().pendingMeshRebuilds > 0,
+  "a placed fluid source is handed to the bounded frame-budgeted mesh queue");
 const settledPresentation = engine.waitForWorldPresentation();
 driveFrame(1_017);
 assert.equal(await settledPresentation, true,
@@ -150,6 +156,10 @@ for (let index = 0; index < 12 && !authoritativePresentationSettled; index += 1)
 assert.equal(await authoritativePresentation, true,
   "the readiness promise resolves only after every dirty loaded mesh reaches one rendered frame");
 const activeSnapshot = engine.exportRuntimeSnapshot();
+assert.equal(engine.importRuntimeSnapshot({ ...activeSnapshot, mobAccumulatorSeconds: 0.3 }), true);
+driveFrame(1_031);
+assert.ok(engine.exportRuntimeSnapshot().mobAccumulatorSeconds >= 0,
+  "three-step catch-up stays inside the strict Save and Quit runtime range");
 
 (document as unknown as { pointerLockElement: Element | null }).pointerLockElement = canvas;
 for (const listener of listeners.get("mousedown") ?? []) {

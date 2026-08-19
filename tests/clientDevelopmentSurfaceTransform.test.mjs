@@ -51,8 +51,9 @@ for (const developmentOnly of ["thirdPersonRigPreview", "setPoseLabRigPreview", 
 }
 assert.ok(compactVoxel.includes("pendingScreenshot") && compactVoxel.includes("captureScreenshot"),
   "production retains next-frame capture for both gameplay modes");
-assert.ok(compactVoxel.includes("playerRigInputForMovement(movementMode, now, movementActivity > 0.5)"),
-  "production movement-driven rig behavior remains after the preview override is removed");
+assert.match(compactVoxel,
+  /playerRigInputForMovement\(\s*movementMode,\s*thirdPersonRigTimeMs,\s*movementActivity > 0\.5,?\s*\)/,
+  "production retains the immersion-scaled movement rig after the preview override is removed");
 assert.throws(
   () => stripVoxelDevelopmentSurfaces(voxelSource.replace("previewMode,", '"idle",')),
   /Compact voxel development-surface rig-preview changed/,

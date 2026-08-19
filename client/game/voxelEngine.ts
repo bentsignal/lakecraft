@@ -665,9 +665,10 @@ const LOCAL_FALL_LANDING_EPSILON = 0.05;
 export const LADDER_CLIMB_SPEED = 3.2;
 export const LADDER_DESCEND_SPEED = -3.2;
 export const LADDER_IDLE_SLIDE_SPEED = -1.2;
-export const WATER_SWIM_SPEED = 0.85;
-export const WATER_SURFACE_BOB_SPEED = 2.6;
+export const WATER_SWIM_SPEED = 0.72;
+export const WATER_SURFACE_BOB_SPEED = 3.2;
 export const WATER_EXIT_SPEED = 5;
+export const WATER_SURFACE_RECOVERY_SECONDS = 1.35;
 
 export type MobTorchLightCache = Float64Array;
 
@@ -2267,7 +2268,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (now < nextFluidStepAt[kind] || !fluidQueues[kind].size) return;
     nextFluidStepAt[kind] = now + fluidTickDelay(kind === "water" ? BLOCK.WATER : BLOCK.LAVA);
     const edits: WorldEdit[] = [];
-    const batch = takeFluidQueueBatch(fluidQueues[kind], kind === "water" ? 24 : 8);
+    const batch = takeFluidQueueBatch(fluidQueues[kind], kind === "water" ? 24 : 16);
     for (const key of batch) {
       const [x, y, z] = key.split(",").map(Number);
       if (!loadedChunkKeys.has(chunkKeyForBlock(x, z))) continue;
@@ -2531,6 +2532,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let lavaContactSeconds = 0;
   let fluidExitSlowSeconds = 0;
   let waterSurfaceLiftCooldownSeconds = 0;
+  let thirdPersonRigTimeMs = 0;
   let lastPerformanceSent = 0;
   let lastUpdateMs = 0;
   let lastRenderMs = 0;
@@ -2675,10 +2677,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (batch.length && options.acceptWorldEdits?.(batch) === false) return null;
     const loadedEdits: WorldEdit[] = [];
     const skyEdits: WorldEdit[] = [];
+    let fluidOnlyMeshEdit = true;
     for (const next of batch) {
       rememberWorldEdit(next);
       if (loadedOnly && !loadedChunkKeys.has(chunkKeyForBlock(next.x, next.z))) continue;
       const previous = getBlock(next.x, next.y, next.z);
+      fluidOnlyMeshEdit &&= (previous === BLOCK.AIR || isFluidBlock(previous))
+        && (next.block === BLOCK.AIR || isFluidBlock(next.block));
       if (setBlock(next.x, next.y, next.z, next.block)) skyEdits.push(next);
       derivedFluidKeys.delete(blockKey(next.x, next.y, next.z));
       queueFluidChange(next.x, next.y, next.z, previous, next.block);
@@ -2686,7 +2691,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
     for (const bed of removedBeds) unregisterBedStructure(bed);
     afterAccepted?.();
-    if (loadedEdits.length) rebuildEditedWorldChunks(loadedEdits, skyEdits);
+    if (loadedEdits.length && fluidOnlyMeshEdit && !skyEdits.length) {
+      for (const key of dirtyChunkKeysForEdits(loadedEdits)) {
+        if (loadedChunkKeys.has(key)) pendingChunkMeshRebuilds.add(key);
+      }
+    } else if (loadedEdits.length) rebuildEditedWorldChunks(loadedEdits, skyEdits);
     return batch;
   }
 
@@ -3525,6 +3534,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         }
       }
     }
+    // 0.3 - 0.1 - 0.1 - 0.1 is a tiny negative in binary floating point.
+    // Keep the live value inside the strict persisted-runtime contract after
+    // a long frame reaches the three-step catch-up cap.
+    mobAccumulatorSeconds = Math.max(0, mobAccumulatorSeconds);
     for (const explosion of consumeDueLocalCreeperExplosions(mobSimulation, localCreeperExplosions)) {
       const blast = {
         center: { x: explosion.x, y: explosion.y, z: explosion.z },
@@ -3599,6 +3612,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const waterAtFeet = feetFluid === "water", waterAtBody = bodyFluid === "water";
     const inWater = waterAtFeet || waterAtBody;
     const inLava = feetFluid === "lava" || bodyFluid === "lava";
+    thirdPersonRigTimeMs += dt * 1_000 * (inWater || inLava ? 0.28 : 1);
     fluidExitSlowSeconds = inWater || inLava ? 0.45 : Math.max(0, fluidExitSlowSeconds - dt);
     waterSurfaceLiftCooldownSeconds = Math.max(0, waterSurfaceLiftCooldownSeconds - dt);
     const breathStep = advanceBreath(breath, headFluid === "water", dt);
@@ -3670,9 +3684,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const jumpHeld = controlHeld("jump");
     const shoreExitAhead = inWater && waterAtFeet && jumpHeld
       && waterShoreExitAhead(pose.x, pose.y, pose.z, dx, dz, getBlock);
-    const surfaceBob = inWater && waterAtFeet && !waterAtBody && jumpHeld
+    const surfaceBob = inWater && waterAtFeet && !waterAtBody && jumpHeld && !shoreExitAhead
       && waterSurfaceLiftCooldownSeconds <= 0;
-    if (surfaceBob) waterSurfaceLiftCooldownSeconds = 0.72;
+    if (surfaceBob) waterSurfaceLiftCooldownSeconds = WATER_SURFACE_RECOVERY_SECONDS;
+    const recoveringFromSurfaceBob = waterSurfaceLiftCooldownSeconds > 0 && !surfaceBob;
     const movementStartX = pose.x;
     const movementStartZ = pose.z;
     const protectLedge = !flying && movementMode === "sneak" && grounded;
@@ -3686,7 +3701,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     velocity[1] = flying
       ? creativeFlightVerticalVelocity(controlHeld("jump"), shiftHeld)
       : inWater || inLava ? waterVerticalVelocity(
-        velocity[1], jumpHeld, shiftHeld, dt,
+        velocity[1], jumpHeld && (!recoveringFromSurfaceBob || shoreExitAhead), shiftHeld, dt,
         shoreExitAhead ? WATER_EXIT_SPEED : surfaceBob ? WATER_SURFACE_BOB_SPEED : false,
       )
         * (inLava ? 0.45 : 1)
@@ -4297,7 +4312,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       thirdPersonRenderPose.z = pose.z;
       thirdPersonRenderPose.yaw = thirdPersonFacing.bodyYaw;
       thirdPersonRenderPose.pitch = pose.pitch;
-      let rigInput = playerRigInputForMovement(movementMode, now, movementActivity > 0.5);
+      let rigInput = playerRigInputForMovement(
+        movementMode,
+        thirdPersonRigTimeMs,
+        movementActivity > 0.5,
+      );
       let previewHeadYaw = thirdPersonFacing.headYaw;
       let previewHeadPitch = thirdPersonFacing.headPitch;
       let previewActionProgress = Math.min(1, Math.max(0, (now - thirdPersonActionStartedAt) / FIRST_PERSON_ACTION_MS));

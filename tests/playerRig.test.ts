@@ -133,8 +133,9 @@ const rendererSource = readFileSync(new URL("../client/game/playerSkinRenderer.t
 assert.match(rendererSource, /setPartMvp\("rightArm", true, itemMvpLocation\)/,
   "held items inherit the same anatomical right-arm joint as the hand socket");
 const engineSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
-assert.match(engineSource, /playerRigInputForMovement\(movementMode, now, movementActivity > 0\.5\)/,
-  "third-person production distinguishes actual movement from idle crouch activity");
+assert.match(engineSource,
+  /playerRigInputForMovement\(\s*movementMode,\s*thirdPersonRigTimeMs,\s*movementActivity > 0\.5,?\s*\)/,
+  "third-person production distinguishes actual movement while using the immersion-scaled rig clock");
 assert.match(engineSource, /@lakecraft-voxel-development:rig-preview:start[\s\S]*previewMode/,
   "the visual Pose Lab can override the live rig only inside its reviewed development surface");
 assert.match(engineSource, /thirdPersonRigPreview === 8\) previewActionProgress = 0\.25/,

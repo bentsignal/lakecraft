@@ -344,7 +344,8 @@ export function advanceRemoteAvatarMotion(
   const gaitFollow = 1 - Math.exp(-10 * dt);
   state.horizontalSpeed += (measuredSpeed - state.horizontalSpeed) * gaitFollow;
   const movementMode = state.crouching ? "sneak" : state.horizontalSpeed > 5 ? "sprint" : "walk";
-  state.walkPhase = (state.walkPhase + dt * 1_000 / playerRigCycleMilliseconds(movementMode)) % 1;
+  const gaitScale = Math.max(0.25, Math.min(1, state.horizontalSpeed / 4.3));
+  state.walkPhase = (state.walkPhase + dt * 1_000 * gaitScale / playerRigCycleMilliseconds(movementMode)) % 1;
   const armActionElapsed = now - state.armActionStartedAt;
   state.armActionProgress = armActionElapsed >= 0 && armActionElapsed < FIRST_PERSON_ACTION_MS
     ? armActionElapsed / FIRST_PERSON_ACTION_MS : 1;

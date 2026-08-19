@@ -158,7 +158,7 @@ export function fluidNeighborCells(x: number, y: number, z: number): WorldEdit[]
 }
 
 export function fluidTickDelay(block: BlockId): number {
-  return isLavaBlock(block) ? 700 : 180;
+  return isLavaBlock(block) ? 520 : 180;
 }
 
 export type BreathState = Readonly<{ air: number; drain: number; damage: number }>;

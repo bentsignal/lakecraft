@@ -49,6 +49,8 @@ assert.equal(shearLocalMob(original, "save-sheep", () => true).ok, true);
 assert.equal(damageMob(original, "save-skeleton", 5).remainingHealth, 15);
 
 const encoded = exportMobSimulationSnapshot(original);
+assert.ok(encoded.projectiles.length < original.projectiles.length,
+  "ordinary saves omit inactive fixed-pool projectiles that can be deterministically restored");
 const decoded = JSON.parse(JSON.stringify(encoded));
 const validated = validateMobSimulationSnapshot(decoded);
 assert.ok(validated, "JSON-roundtripped complete mob state must validate");
@@ -85,8 +87,10 @@ while (withTooManyMobs.mobs.length <= HARD_MAX_MOB_POPULATION) {
 }
 assert.equal(validateMobSimulationSnapshot(withTooManyMobs), null, "population cannot exceed the hard 64-mob bound");
 const withBadProjectilePool = structuredClone(decoded);
-withBadProjectilePool.projectiles.pop();
-assert.equal(validateMobSimulationSnapshot(withBadProjectilePool), null, "the deterministic fixed projectile pool is required");
+if (withBadProjectilePool.projectiles.length) withBadProjectilePool.projectiles[0].active = false;
+else withBadProjectilePool.projectiles.push({ ...original.projectiles[0], id: 99, active: true });
+assert.equal(validateMobSimulationSnapshot(withBadProjectilePool), null,
+  "sparse projectile saves contain only active, in-range pool entries");
 const withUnknownProjectileOwner = structuredClone(decoded);
 withUnknownProjectileOwner.projectiles[0].active = true;
 withUnknownProjectileOwner.projectiles[0].ownerId = "missing-mob";

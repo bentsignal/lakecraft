@@ -63,6 +63,15 @@ for (let frame = 0; frame < 300; frame += 1) {
 assert.ok(motion.rendered.x <= motion.target.x + PRESENCE_MAX_HORIZONTAL_SPEED * PRESENCE_MAX_EXTRAPOLATION_MS / 1_000, "stale motion stays inside the extrapolation budget");
 assert.ok(Number.isFinite(motion.bodyYaw));
 
+const slowGait = createRemoteAvatarMotion(player(), 0);
+const landGait = createRemoteAvatarMotion(player(), 0);
+slowGait.horizontalSpeed = 0.8;
+landGait.horizontalSpeed = 4.3;
+advanceRemoteAvatarMotion(slowGait, 100, 0.1);
+advanceRemoteAvatarMotion(landGait, 100, 0.1);
+assert.ok(slowGait.walkPhase < landGait.walkPhase * 0.75,
+  "a slow remote swimmer cannot cycle arms and legs at the normal land cadence");
+
 const explicit = createRemoteAvatarMotion(player({ vx: 4, vy: 2, vz: 0 }), 0);
 advanceRemoteAvatarMotion(explicit, 2_000, 0.1);
 assert.ok(explicit.rendered.x > 0, "explicit velocity extrapolates sparse Lakebed snapshots");

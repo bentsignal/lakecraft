@@ -19,6 +19,8 @@ import {
 } from "../client/game/fluids.ts";
 import {
   WATER_EXIT_SPEED,
+  WATER_SURFACE_BOB_SPEED,
+  WATER_SURFACE_RECOVERY_SECONDS,
   WATER_SWIM_SPEED,
   appendFluidBlockMesh,
   waterShoreExitAhead,
@@ -52,7 +54,7 @@ close(fluidSurfaceHeight(BLOCK.WATER_FLOW_7), 1 / 9);
 close(fluidSurfaceHeight(BLOCK.LAVA_FLOW_3), 2 / 9);
 assert.equal(fluidSurfaceHeight(BLOCK.WATER_FLOW_7, BLOCK.WATER), 1,
   "a vertical fluid column fills the cell beneath its matching fluid");
-assert.equal(fluidTickDelay(BLOCK.LAVA), 700, "lava updates materially slower than water");
+assert.equal(fluidTickDelay(BLOCK.LAVA), 520, "lava reacts within a second while remaining slower than water");
 
 cells.clear();
 cells.set(key(0, 0, 0), BLOCK.STONE);
@@ -134,6 +136,8 @@ assert.equal(waterVerticalVelocity(0, true, false, 1, false), WATER_SWIM_SPEED);
 assert.equal(waterVerticalVelocity(0, true, false, 1, true), WATER_EXIT_SPEED);
 assert.ok(WATER_SWIM_SPEED < 1.5 && WATER_EXIT_SPEED > WATER_SWIM_SPEED * 2,
   "held jump bobs slowly unless a real shore exit is detected");
+assert.ok(WATER_SURFACE_BOB_SPEED > WATER_SWIM_SPEED * 4 && WATER_SURFACE_RECOVERY_SECONDS >= 1.25,
+  "a surface jump clears the water, then has a deliberate sink/recovery interval before another rise");
 assert.equal(waterShoreExitAhead(0.5, 65.75, 0.5, 1, 0,
   (x, y, z) => x === 1 && y === 65 && z === 0 ? BLOCK.STONE : BLOCK.AIR), true,
 "a coast block at the swimmer's feet triggers the dedicated shore-clearing impulse");
@@ -208,5 +212,13 @@ assert.match(engine, /cameraFluid === "water" \? 22 : 4/,
 assert.doesNotMatch(engine.slice(engine.indexOf("function processFluidKind"), engine.indexOf("function processFluids")),
   /rebuildEditedWorldChunks|\.\.\.fluidQueues/,
   "fluid ticks stay inside the bounded deferred mesh pipeline");
+assert.match(engine, /fluidOnlyMeshEdit[\s\S]+pendingChunkMeshRebuilds\.add/,
+  "bucket source placement/removal defers chunk meshes instead of blocking the input frame");
+assert.match(engine, /mobAccumulatorSeconds = Math\.max\(0, mobAccumulatorSeconds\)/,
+  "long frames cannot leave the strict Save and Quit runtime accumulator infinitesimally negative");
+assert.match(engine, /jumpHeld && \(!recoveringFromSurfaceBob \|\| shoreExitAhead\)/,
+  "held jump is suppressed during the post-bob sink interval instead of jittering at the surface");
+assert.match(engine, /thirdPersonRigTimeMs \+= dt \* 1_000 \* \(inWater \|\| inLava \? 0\.28 : 1\)/,
+  "local third-person arm and leg cycles slow materially while immersed");
 
 console.log("fluid system tests passed");

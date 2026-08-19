@@ -391,7 +391,8 @@ export function exportMobSimulationSnapshot(simulation: Readonly<MobSimulation>)
     elapsedSeconds: simulation.elapsedSeconds,
     tick: simulation.tick,
     mobs: simulation.mobs.slice(0, HARD_MAX_MOB_POPULATION).map(cloneMobState),
-    projectiles: simulation.projectiles.slice(0, MAX_MOB_PROJECTILES).map(cloneMobProjectile),
+    projectiles: simulation.projectiles.filter((projectile) => projectile.active)
+      .slice(0, MAX_MOB_PROJECTILES).map(cloneMobProjectile),
     pendingProjectileDamage: simulation.pendingProjectileDamage,
   };
 }
@@ -409,15 +410,21 @@ export function validateMobSimulationSnapshot(value: unknown): MobSimulationSnap
     || !Array.isArray(snapshot.mobs)
     || snapshot.mobs.length > HARD_MAX_MOB_POPULATION
     || !Array.isArray(snapshot.projectiles)
-    || snapshot.projectiles.length !== MAX_MOB_PROJECTILES) return null;
+    || snapshot.projectiles.length > MAX_MOB_PROJECTILES) return null;
   const ids = new Set<string>();
   for (const mob of snapshot.mobs) {
     if (!validMobStateSnapshot(mob) || ids.has(mob.id)) return null;
     ids.add(mob.id);
   }
+  const legacyProjectilePool = snapshot.projectiles.length === MAX_MOB_PROJECTILES;
+  const projectileIds = new Set<number>();
   for (let index = 0; index < snapshot.projectiles.length; index += 1) {
     const projectile = snapshot.projectiles[index];
-    if (!validMobProjectileSnapshot(projectile, index)) return null;
+    const id = snapshotRecord(projectile)?.id;
+    if (!safeIntegerInRange(id, 0, MAX_MOB_PROJECTILES - 1)
+      || projectileIds.has(id) || !validMobProjectileSnapshot(projectile, legacyProjectilePool ? index : id)
+      || !legacyProjectilePool && !projectile.active) return null;
+    projectileIds.add(id);
     if (projectile.active && (!projectile.ownerId || !ids.has(projectile.ownerId))) return null;
   }
   return {
@@ -437,7 +444,12 @@ export function restoreMobSimulationSnapshot(simulation: MobSimulation, value: u
   simulation.elapsedSeconds = snapshot.elapsedSeconds;
   simulation.tick = snapshot.tick;
   simulation.mobs = snapshot.mobs;
-  simulation.projectiles = snapshot.projectiles;
+  if (snapshot.projectiles.length === MAX_MOB_PROJECTILES) simulation.projectiles = snapshot.projectiles;
+  else {
+    const projectiles = createMobSimulation([]).projectiles;
+    for (const projectile of snapshot.projectiles) projectiles[projectile.id] = projectile;
+    simulation.projectiles = projectiles;
+  }
   simulation.pendingProjectileDamage = snapshot.pendingProjectileDamage;
   return true;
 }
