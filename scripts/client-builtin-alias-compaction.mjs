@@ -12,27 +12,27 @@ import { pathToFileURL } from "node:url";
 export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["Math", "abs", 106]),
   // Directional doors and derived stair corners share retained transform math.
-  Object.freeze(["Math", "cos", 63]),
+  Object.freeze(["Math", "cos", 64]),
   // The embedded block-atlas decoder keeps its pixel-grid size and byte
   // addressing arithmetic inside the capsule's reviewed production boundary.
   Object.freeze(["Math", "ceil", 35]),
-  Object.freeze(["Math", "floor", 287]),
-  Object.freeze(["Math", "hypot", 36]),
+  Object.freeze(["Math", "floor", 283]),
+  Object.freeze(["Math", "hypot", 37]),
   // Remote atlas integrity now hashes the immutable PNG bytes with Web Crypto
   // instead of applying one pixel-space FNV multiplication after browser decode.
   Object.freeze(["Math", "imul", 35]),
   // Superflat generation clamps its lower materialization bound once per region.
-  Object.freeze(["Math", "max", 276]),
-  Object.freeze(["Math", "min", 221]),
+  Object.freeze(["Math", "max", 278]),
+  Object.freeze(["Math", "min", 222]),
   Object.freeze(["Math", "round", 35]),
-  Object.freeze(["Math", "sin", 76]),
+  Object.freeze(["Math", "sin", 77]),
   Object.freeze(["Math", "PI", 123]),
   // The shared, immutable default/superflat terrain descriptor joins the client bundle.
   Object.freeze(["Object", "freeze", 176]),
   Object.freeze(["Object", "keys", 33]),
   // Query bridges reject Lakebed's [] loading sentinel before publishing data.
   Object.freeze(["Array", "isArray", 94]),
-  Object.freeze(["Number", "isFinite", 269]),
+  Object.freeze(["Number", "isFinite", 270]),
   // Realtime PvP validates integral damage and health at the untrusted wire boundary.
   Object.freeze(["Number", "isInteger", 61]),
   // Terrain descriptors reject non-integral or unsafe superflat ground heights.
@@ -45,7 +45,7 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["JSON", "stringify", 20]),
   Object.freeze(["JSON", "parse", 12]),
 ]);
-export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 2_142;
+export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 2_145;
 export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "5964a98f9b6c27ec73071e337c852ad4c3c32646fa6be3bf345bb47659a0d2ee";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [

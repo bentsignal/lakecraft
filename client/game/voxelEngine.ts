@@ -196,8 +196,10 @@ import {
   createBreathState,
   fluidKind,
   fluidNeighborCells,
+  fluidSurfaceHeight,
   fluidTickDelay,
   planFluidCell,
+  pointInFluid,
   raycastFluidSource,
   type FluidKind,
 } from "./fluids.ts";
@@ -662,8 +664,8 @@ const LOCAL_FALL_LANDING_EPSILON = 0.05;
 export const LADDER_CLIMB_SPEED = 3.2;
 export const LADDER_DESCEND_SPEED = -3.2;
 export const LADDER_IDLE_SLIDE_SPEED = -1.2;
-export const WATER_SWIM_SPEED = 3;
-export const WATER_EXIT_SPEED = 6.5;
+export const WATER_SWIM_SPEED = 1.35;
+export const WATER_EXIT_SPEED = 4.2;
 
 export type MobTorchLightCache = Float64Array;
 
@@ -1335,6 +1337,58 @@ function appendTexturedBlockFace(
       uv.bottom + (uv.top - uv.bottom) * vertical,
       retainedTerrainShade(shade, exposureLevel, emissive),
     );
+  }
+}
+
+/**
+ * Builds a level-aware fluid cell instead of a full cube. Horizontal faces
+ * expose only the band above a lower neighboring flow, which gives placed
+ * water/lava their descending Minecraft silhouette without internal seams.
+ */
+export function appendFluidBlockMesh(
+  output: number[],
+  x: number,
+  y: number,
+  z: number,
+  block: BlockId,
+  getBlock: (x: number, y: number, z: number) => BlockId,
+  variation: number,
+  exposureLevel: number,
+): void {
+  const kind = fluidKind(block);
+  if (!kind) return;
+  const textureName = kind;
+  const uv = textureAtlasUv(textureName);
+  const height = fluidSurfaceHeight(block, getBlock(x, y + 1, z));
+  const emissive = kind === "lava";
+  for (const face of FACE_DEFS) {
+    const neighborX = x + face[1], neighborY = y + face[2], neighborZ = z + face[3];
+    const neighbor = getBlock(neighborX, neighborY, neighborZ);
+    const neighborKind = fluidKind(neighbor);
+    if (blockOccludesFaces(neighbor)) continue;
+    let lowerHeight = 0;
+    if (face[0] === "top") {
+      if (neighborKind === kind) continue;
+    } else if (face[0] === "bottom") {
+      if (neighborKind === kind) continue;
+    } else if (neighborKind === kind) {
+      lowerHeight = fluidSurfaceHeight(neighbor, getBlock(neighborX, neighborY + 1, neighborZ));
+      if (lowerHeight >= height - 1e-6) continue;
+    }
+    const shade = retainedTerrainShade(face[4] * variation, exposureLevel, emissive);
+    for (const point of face[5]) {
+      const horizontal = face[1] !== 0 ? point[2] : point[0];
+      const localY = face[0] === "top" ? height
+        : face[0] === "bottom" ? 0 : point[1] ? height : lowerHeight;
+      const textureV = face[2] !== 0 ? point[2] : localY;
+      pushTexturedVertex(
+        output,
+        [x + point[0], y + localY, z + point[2]],
+        uv.left + (uv.right - uv.left) * horizontal,
+        uv.bottom + (uv.top - uv.bottom) * textureV,
+        shade,
+      );
+    }
   }
 }
 
@@ -2929,6 +2983,19 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         );
         continue;
       }
+      if (isFluidBlock(block)) {
+        appendFluidBlockMesh(
+          waterVertices,
+          x,
+          y,
+          z,
+          block,
+          getBlock,
+          blockMaterialVariation(x, y, z),
+          skyExposureLevel(skyOccluderColumns, x, y + 1, z),
+        );
+        continue;
+      }
       const base = blockMaterialColor(block) as Vec3;
       const variation = blockMaterialVariation(x, y, z);
       for (const face of FACE_DEFS) {
@@ -2936,8 +3003,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         if (blockFaceIsOccluded(block, neighbor)) continue;
         const textureName = blockTextureForFace(block, face[0]);
         if (textureName) {
-          const destination = isFluidBlock(block) ? waterVertices
-            : isGlassBlock(block) ? transparentVertices : textureVertices;
+          const destination = isGlassBlock(block) ? transparentVertices : textureVertices;
           const exposure = skyExposureLevel(skyOccluderColumns, x + face[1], y + face[2], z + face[3]);
           if (isGlassBlock(block)) {
             // The ordinary alpha-tested pass writes the glass frame to depth;
@@ -3487,14 +3553,16 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       fallPeakY = pose.y;
     }
     const flying = creativeFlight.flying && options.canCreativeFly?.() === true;
-    const feetFluid = !flying ? getBlock(Math.floor(pose.x), Math.floor(pose.y + 0.15), Math.floor(pose.z)) : BLOCK.AIR;
-    const bodyFluid = !flying ? getBlock(Math.floor(pose.x), Math.floor(pose.y + cameraPosture.bodyHeight * 0.55), Math.floor(pose.z)) : BLOCK.AIR;
-    const headFluid = getBlock(Math.floor(pose.x), Math.floor(pose.y + cameraPosture.eyeHeight), Math.floor(pose.z));
-    const waterAtFeet = isWaterBlock(feetFluid), waterAtBody = isWaterBlock(bodyFluid);
+    const feetFluid = !flying ? pointInFluid(pose.x, pose.y + 0.15, pose.z, getBlock) : null;
+    const bodyFluid = !flying
+      ? pointInFluid(pose.x, pose.y + cameraPosture.bodyHeight * 0.55, pose.z, getBlock)
+      : null;
+    const headFluid = pointInFluid(pose.x, pose.y + cameraPosture.eyeHeight, pose.z, getBlock);
+    const waterAtFeet = feetFluid === "water", waterAtBody = bodyFluid === "water";
     const inWater = waterAtFeet || waterAtBody;
-    const inLava = isLavaBlock(feetFluid) || isLavaBlock(bodyFluid);
+    const inLava = feetFluid === "lava" || bodyFluid === "lava";
     fluidExitSlowSeconds = inWater || inLava ? 0.45 : Math.max(0, fluidExitSlowSeconds - dt);
-    const breathStep = advanceBreath(breath, isWaterBlock(headFluid), dt);
+    const breathStep = advanceBreath(breath, headFluid === "water", dt);
     breath = breathStep;
     const breathLevel = Math.ceil(breath.air);
     if (breathLevel !== lastBreathLevel) {
@@ -3506,6 +3574,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (options.onPlayerDamage?.(appliedDamage, "drowning") !== false) {
         playerHealth -= appliedDamage;
         options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
+        applyEnvironmentalDamageKnockback(appliedDamage, true);
       }
     }
     lavaContactSeconds = inLava ? lavaContactSeconds + dt : 0;
@@ -3515,6 +3584,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (options.onPlayerDamage?.(appliedDamage, "lava") !== false) {
         playerHealth -= appliedDamage;
         options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
+        applyEnvironmentalDamageKnockback(appliedDamage, true);
       }
     }
     const forwardInput = (controlHeld("moveForward") ? 1 : 0) - (controlHeld("moveBackward") ? 1 : 0);
@@ -3557,6 +3627,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const fluidMoveScale = inLava ? LAVA_MOVE_SCALE : inWater || fluidExitSlowSeconds > 0 ? WATER_MOVE_SCALE : 1;
     const dx = horizontalMovementDelta.x * fluidMoveScale;
     const dz = horizontalMovementDelta.z * fluidMoveScale;
+    const fluidMoveDistance = Math.hypot(dx, dz);
+    const shoreExitAhead = inWater && waterAtFeet && !waterAtBody && fluidMoveDistance > 1e-6 && (() => {
+      const sampleX = pose.x + dx / fluidMoveDistance * 0.55;
+      const sampleZ = pose.z + dz / fluidMoveDistance * 0.55;
+      const sampleY = Math.floor(pose.y + 0.15);
+      return blockHasCollision(getBlock(Math.floor(sampleX), sampleY, Math.floor(sampleZ)))
+        && !blockHasCollision(getBlock(Math.floor(sampleX), sampleY + 1, Math.floor(sampleZ)));
+    })();
     const movementStartX = pose.x;
     const movementStartZ = pose.z;
     const protectLedge = !flying && movementMode === "sneak" && grounded;
@@ -3569,7 +3647,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const verticalStartY = pose.y;
     velocity[1] = flying
       ? creativeFlightVerticalVelocity(controlHeld("jump"), shiftHeld)
-      : inWater || inLava ? waterVerticalVelocity(velocity[1], controlHeld("jump"), shiftHeld, dt, waterAtFeet && !waterAtBody)
+      : inWater || inLava ? waterVerticalVelocity(velocity[1], controlHeld("jump"), shiftHeld, dt, shoreExitAhead)
         * (inLava ? 0.45 : 1)
       : ladderVerticalVelocity(
         velocity[1],
@@ -3607,6 +3685,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         if (options.onPlayerDamage?.(appliedDamage, "fall") !== false) {
           playerHealth -= appliedDamage;
           options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
+          applyEnvironmentalDamageKnockback(appliedDamage, false);
         }
       }
     }
@@ -3697,6 +3776,28 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
     poseDirty = true;
     return true;
+  }
+
+  /** Environmental damage has no attacker, so recoil away from the view ray. */
+  function applyEnvironmentalDamageKnockback(damage: number, immersed: boolean): void {
+    const facingX = Math.sin(pose.yaw), facingZ = -Math.cos(pose.yaw);
+    const impulse = resolvePlayerKnockback(
+      pose.x + facingX,
+      pose.z + facingZ,
+      pose.x,
+      pose.z,
+      damage,
+      grounded,
+    );
+    if (!impulse) return;
+    const scale = immersed ? 0.34 : 0.5;
+    knockbackVelocity[0] = impulse.x * scale;
+    knockbackVelocity[2] = impulse.z * scale;
+    if (!creativeFlight.flying && !playerTouchesLadder(pose.x, pose.y, pose.z, getBlock)) {
+      velocity[1] = Math.max(velocity[1], immersed ? 0.8 : impulse.y * scale);
+      grounded = false;
+    }
+    poseDirty = true;
   }
 
   function bindBuffer(buffer: WebGLBuffer): void {
@@ -3906,7 +4007,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     renderCenter[2] = eye[2] + facing[2];
     sampleDayNight(worldTimeMs, dayNightConfig, dayNightState);
     writeRenderDistanceFogRange(fogRange, streamingChunkRadius);
-    const cameraFluid = fluidKind(getBlock(Math.floor(eye[0]), Math.floor(eye[1]), Math.floor(eye[2])));
+    const cameraFluid = pointInFluid(eye[0], eye[1], eye[2], getBlock);
     if (cameraFluid) {
       fogRange[0] = cameraFluid === "water" ? 4 : 0.2;
       fogRange[1] = cameraFluid === "water" ? 22 : 4;
@@ -4220,25 +4321,21 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     transparentMeshes.sort(compareTransparentChunkMeshes);
     if (waterMeshes.length || transparentMeshes.length) {
       gl.useProgram(terrainProgram);
+      // Player/mob renderers also use texture unit 0. Rebind the terrain atlas
+      // at this program boundary or fluids sample whichever skin happened to
+      // draw last, producing intermittent transparent lines instead of water.
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, terrainTexture);
+      gl.uniform1i(terrainAtlasLocation, 0);
       gl.uniform1f(terrainAlphaCutoffLocation, 0);
-      // Establish the nearest fluid surface in depth without tinting color.
-      // The following LEQUAL blend can then never flicker between coplanar
-      // faces or disappear as chunk ordering changes around the camera.
-      gl.colorMask(false, false, false, false);
+      // Fluids render once, nearest chunk first, while writing the depth they
+      // actually colored. The former colorless prepass could win depth with a
+      // different coplanar triangle and leave only thin edge fragments.
       gl.depthMask(true);
-      const waterDrawCount = Math.min(waterMeshes.length, MAX_TRANSPARENT_CHUNK_DRAWS);
-      for (let index = 0; index < waterDrawCount; index += 1) {
-        const mesh = waterMeshes[index];
-        if (!mesh.waterBuffer || !mesh.waterVertexCount) continue;
-        gl.uniform4fv(terrainTorchLightsLocation, chunkTorchLights(mesh));
-        bindTerrainBuffer(mesh.waterBuffer);
-        gl.drawArrays(gl.TRIANGLES, 0, mesh.waterVertexCount);
-      }
-      gl.colorMask(true, true, true, true);
-      gl.depthFunc(gl.LEQUAL);
-      gl.depthMask(false);
+      gl.depthFunc(gl.LESS);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      const waterDrawCount = Math.min(waterMeshes.length, MAX_TRANSPARENT_CHUNK_DRAWS);
       for (let index = 0; index < waterDrawCount; index += 1) {
         const mesh = waterMeshes[index];
         if (!mesh.waterBuffer || !mesh.waterVertexCount) continue;
@@ -4247,6 +4344,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         gl.drawArrays(gl.TRIANGLES, 0, mesh.waterVertexCount);
         drawCalls += 1;
       }
+      // Glass remains a conventional far-to-near translucent overlay.
+      gl.depthMask(false);
       const transparentDrawCount = Math.min(transparentMeshes.length, MAX_TRANSPARENT_CHUNK_DRAWS);
       for (let index = 0; index < transparentDrawCount; index += 1) {
         const mesh = transparentMeshes[index];

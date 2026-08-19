@@ -102,11 +102,12 @@ for (const path of runtimeFiles) {
 // stair-state resolution, persisted three-size HUD presentation, and
 // server-authoritative Creative equipment commits, coordinated HUD scaling,
 // enter-only full-width chat, async armor-preview repainting, and the shared
-// derived fluid runtime with authoritative source buckets; none adds another Lakebed
-// authority or multiplayer transport.
+// derived fluid runtime with authoritative source buckets, level-aware fluid
+// surfaces, stable terrain-atlas rebinding, slowed swimming, and environmental
+// damage recoil; none adds another Lakebed authority or multiplayer transport.
 assert.equal(runtimeFiles.length, 199, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "b7e39805569633a9f7d63e22097029ba451e4f534cf6408a6378e243502ff2e4",
+  "c0e562c19dce96d02d615052b02783ee7a2f4852ebe5886ca0d688d52476bfa9",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

@@ -3,8 +3,8 @@ import { BLOCK, blockStateName, isFluidBlock, isLavaBlock, isWaterBlock, type Bl
 export type FluidKind = "water" | "lava";
 export type FluidLookup = (x: number, y: number, z: number) => BlockId;
 export const PLAYER_MAX_AIR = 10;
-export const WATER_MOVE_SCALE = 0.38;
-export const LAVA_MOVE_SCALE = 0.2;
+export const WATER_MOVE_SCALE = 0.22;
+export const LAVA_MOVE_SCALE = 0.11;
 export const LAVA_DAMAGE_INTERVAL_SECONDS = 1;
 
 const WATER = [BLOCK.WATER, BLOCK.WATER_FLOW_1, BLOCK.WATER_FLOW_2, BLOCK.WATER_FLOW_3,
@@ -31,6 +31,37 @@ export function fluidBlock(kind: FluidKind, level = 0): BlockId {
 
 export function isFluidSource(block: BlockId): boolean {
   return block === BLOCK.WATER || block === BLOCK.LAVA;
+}
+
+/**
+ * Visible height of a still/flowing fluid cell. Sources sit one pixel below a
+ * full cube and every derived level descends toward the final shallow sheet.
+ * A cell with matching fluid above is a full-height vertical column.
+ */
+export function fluidSurfaceHeight(block: BlockId, above: BlockId = BLOCK.AIR): number {
+  const kind = fluidKind(block);
+  if (!kind) return 0;
+  if (fluidKind(above) === kind) return 1;
+  const maximumLevel = kind === "water" ? 7 : 3;
+  const level = Math.max(0, Math.min(maximumLevel, fluidLevel(block)));
+  return (maximumLevel + 1 - level) / (maximumLevel + 1) * (8 / 9);
+}
+
+/** Exact point-volume test so a shallow flow cannot submerge the camera/body. */
+export function pointInFluid(
+  x: number,
+  y: number,
+  z: number,
+  getBlock: FluidLookup,
+  kind?: FluidKind,
+): FluidKind | null {
+  if (![x, y, z].every(Number.isFinite)) return null;
+  const blockX = Math.floor(x), blockY = Math.floor(y), blockZ = Math.floor(z);
+  const block = getBlock(blockX, blockY, blockZ);
+  const found = fluidKind(block);
+  if (!found || kind && found !== kind) return null;
+  const height = fluidSurfaceHeight(block, getBlock(blockX, blockY + 1, blockZ));
+  return y - blockY < height - 1e-6 ? found : null;
 }
 
 /**
