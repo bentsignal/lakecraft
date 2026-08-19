@@ -9,6 +9,7 @@ import {
   BLOCK,
   MORNING_PHASE,
   createMorningDayNightConfig,
+  isFluidBlock,
   phaseAtTime,
   planLocalTntExplosion,
   type BlockId as EngineBlockId,
@@ -1382,7 +1383,7 @@ function LocalGameplaySession({
         const creative = gameModeRef.current === "creative";
         const collectedFluid = !creative && held === "bucket" && edit.block === BLOCK.AIR
           && (previousBlock === BLOCK.WATER || previousBlock === BLOCK.LAVA);
-        const placedFluid = !creative && previousBlock === BLOCK.AIR
+        const placedFluid = !creative && (previousBlock === BLOCK.AIR || isFluidBlock(previousBlock))
           && (held === "water_bucket" && edit.block === BLOCK.WATER || held === "lava_bucket" && edit.block === BLOCK.LAVA);
         if (collectedFluid || placedFluid) {
           const exchanged = exchangeSelectedItem(next, selectedRef.current, held!, collectedFluid
@@ -1413,7 +1414,8 @@ function LocalGameplaySession({
             syncLocalDropGravity(engine);
             engine.setDroppedItems(dropsRef.current);
           }
-        } else if (!creative && !toggledBlock && previousBlock === BLOCK.AIR && edit.block !== BLOCK.AIR) {
+        } else if (!creative && !toggledBlock && (previousBlock === BLOCK.AIR || isFluidBlock(previousBlock))
+          && edit.block !== BLOCK.AIR) {
           const placedItem = ENGINE_TO_GAME[edit.block];
           const selectedSlot = selectedRef.current;
           const selectedStack = next[selectedSlot];
@@ -1438,7 +1440,7 @@ function LocalGameplaySession({
         } else if (edit.block === BLOCK.AIR && previousBlock !== BLOCK.AIR) {
           audio.play("blockBreak", { seed, surface: audioSurfaceForBlock(previousBlock) });
           engine.spawnBlockParticles({ action: "break", block: previousBlock, x: edit.x, y: edit.y, z: edit.z });
-        } else if (previousBlock === BLOCK.AIR && edit.block !== BLOCK.AIR) {
+        } else if ((previousBlock === BLOCK.AIR || isFluidBlock(previousBlock)) && edit.block !== BLOCK.AIR) {
           audio.play("blockPlace", { seed, surface: audioSurfaceForBlock(edit.block) });
           engine.spawnBlockParticles({ action: "place", block: edit.block, x: edit.x, y: edit.y, z: edit.z });
         }

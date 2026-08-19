@@ -16,13 +16,15 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   // The embedded block-atlas decoder keeps its pixel-grid size and byte
   // addressing arithmetic inside the capsule's reviewed production boundary.
   Object.freeze(["Math", "ceil", 35]),
-  Object.freeze(["Math", "floor", 283]),
-  Object.freeze(["Math", "hypot", 37]),
+  // Shared fluid-corner sampling and bounded queue/shore calculations retain
+  // exact integer cell coordinates and one horizontal movement magnitude.
+  Object.freeze(["Math", "floor", 287]),
+  Object.freeze(["Math", "hypot", 38]),
   // Remote atlas integrity now hashes the immutable PNG bytes with Web Crypto
   // instead of applying one pixel-space FNV multiplication after browser decode.
   Object.freeze(["Math", "imul", 35]),
   // Superflat generation clamps its lower materialization bound once per region.
-  Object.freeze(["Math", "max", 278]),
+  Object.freeze(["Math", "max", 282]),
   Object.freeze(["Math", "min", 222]),
   Object.freeze(["Math", "round", 35]),
   Object.freeze(["Math", "sin", 77]),
@@ -45,8 +47,8 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["JSON", "stringify", 20]),
   Object.freeze(["JSON", "parse", 12]),
 ]);
-export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 2_145;
-export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "2a41f3ff313a4ecb4ccfc7905e75900e390a4b302f518712c01a60480674666a";
+export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 2_154;
+export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "7fac70d3e52395802156f0faabb78f158c71d7fbfa4ff2c1578ed43cf0733445";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [
     `${receiver}.${method}`, count,
@@ -79,10 +81,10 @@ const PROPERTY_ALIAS_COUNT_OVERRIDES = Object.freeze({
   getUniformLocation: 69, health: 55, height: 34, includes: 52, inventory: 105, itemId: 182, length: 467,
   indexOf: 28, maxHealth: 13, maxStack: 23, operationId: 43, options: 69, pixelStorei: 12, preventDefault: 54,
   ONE_MINUS_SRC_ALPHA: 6, pendingBlocks: 11, pendingSelfDamage: 10, pitch: 43, pointerLockElement: 24, position: 16,
-  previousBlock: 18, previousX: 19, previousY: 16, previousYaw: 10, previousZ: 19,
+  previousBlock: 19, previousX: 19, previousY: 16, previousYaw: 10, previousZ: 19,
   prototype: 17, randomUUID: 10, readyState: 10, reject: 24, removeEventListener: 40,
   mouseSensitivity: 4, renderDistance: 11, repeat: 32, resolve: 19, revision: 32, rotationDegrees: 22, selectedHotbar: 15,
-  remainder: 17, sequence: 47, setTimeout: 22, sheared: 16, slice: 112, sourceSlot: 10, startsWith: 33,
+  remainder: 17, sequence: 47, setTimeout: 22, sheared: 16, slice: 111, sourceSlot: 10, startsWith: 35,
   state: 70, STATIC_DRAW: 11, status: 20, stopImmediatePropagation: 8, subarray: 18, terrain: 23, texImage2D: 14,
   texParameteri: 28, TEXTURE_2D: 65, TEXTURE_MAG_FILTER: 7, TEXTURE_MIN_FILTER: 7,
   TRIANGLES: 20, uniform1f: 39, uniform3fv: 9, uniformMatrix4fv: 10,
@@ -97,8 +99,8 @@ export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_
 // Cursor-directed inventory refs, transparent held blocks, the compact-safe
 // stair palette resolver, consolidated settings props, async armor repainting,
 // and server-notice classification account for this reviewed exact-property boundary.
-export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_314;
-export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "e5725d01805bb7778c8fbf064764fa0ab215fab2fc8b1771f660f30141f99f51";
+export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_316;
+export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "30bd0eaba8483c6031916949ba20f4d8d4126240d625877becdfa308290612fb";
 const PROPERTY_ALIAS_INDEX = new Map(COMPACT_CLIENT_PROPERTY_KEY_ALIASES.map(([name], index) => [name, index]));
 const PROPERTY_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_PROPERTY_KEY_ALIASES)),

@@ -7,17 +7,21 @@ import {
   advanceBreath,
   createBreathState,
   fluidBlock,
+  fluidKind,
   fluidLevel,
+  fluidSurfaceCornerHeight,
   fluidSurfaceHeight,
   fluidTickDelay,
   planFluidCell,
   pointInFluid,
   raycastFluidSource,
+  takeFluidQueueBatch,
 } from "../client/game/fluids.ts";
 import {
   WATER_EXIT_SPEED,
   WATER_SWIM_SPEED,
   appendFluidBlockMesh,
+  waterShoreExitAhead,
   waterVerticalVelocity,
 } from "../client/game/voxelEngine.ts";
 import { BLOCK, type BlockId } from "../client/game/types.ts";
@@ -49,6 +53,36 @@ close(fluidSurfaceHeight(BLOCK.LAVA_FLOW_3), 2 / 9);
 assert.equal(fluidSurfaceHeight(BLOCK.WATER_FLOW_7, BLOCK.WATER), 1,
   "a vertical fluid column fills the cell beneath its matching fluid");
 assert.equal(fluidTickDelay(BLOCK.LAVA), 700, "lava updates materially slower than water");
+
+cells.clear();
+cells.set(key(0, 0, 0), BLOCK.STONE);
+cells.set(key(1, 0, 0), BLOCK.STONE);
+cells.set(key(1, 0, 1), BLOCK.STONE);
+cells.set(key(0, 1, 0), BLOCK.WATER);
+cells.set(key(1, 1, 1), BLOCK.WATER);
+assert.deepEqual(planFluidCell("water", 1, 1, 0, get), { x: 1, y: 1, z: 0, block: BLOCK.WATER },
+  "two neighboring sources recreate an infinite-water source over support");
+cells.set(key(1, 1, 0), BLOCK.WATER);
+cells.delete(key(1, 1, 1));
+assert.deepEqual(planFluidCell("water", 1, 1, 0, get, false),
+  { x: 1, y: 1, z: 0, block: BLOCK.WATER_FLOW_1 },
+  "a derived infinite source stops being a source when its support sources disappear");
+
+cells.clear();
+for (let x = 0; x < 10; x += 1) cells.set(key(x, 0, 0), BLOCK.STONE);
+cells.set(key(0, 1, 0), BLOCK.WATER);
+for (let x = 1; x < 8; x += 1) {
+  const edit = planFluidCell("water", x, 1, 0, get);
+  if (edit) cells.set(key(x, 1, 0), edit.block);
+}
+cells.delete(key(0, 1, 0));
+for (let pass = 0; pass < 10; pass += 1) for (let x = 1; x < 8; x += 1) {
+  const edit = planFluidCell("water", x, 1, 0, get, false);
+  if (edit?.block === BLOCK.AIR) cells.delete(key(x, 1, 0));
+  else if (edit) cells.set(key(x, 1, 0), edit.block);
+}
+assert.equal([...cells.values()].some((block) => fluidKind(block) === "water"), false,
+  "removing a lone source drains all of its unsupported derived flow");
 assert.ok(LAVA_MOVE_SCALE < WATER_MOVE_SCALE && WATER_MOVE_SCALE < 0.5,
   "both fluids prevent sprint-hopping, with lava slower than water");
 for (const [kind, maximum] of [["water", 7], ["lava", 3]] as const) {
@@ -76,17 +110,36 @@ assert.equal(pointInFluid(0.5, 4.05, 0.5, get), "water");
 assert.equal(pointInFluid(0.5, 4.2, 0.5, get), null,
   "a shallow terminal flow cannot submerge a camera floating above it");
 const sourceMesh: number[] = [];
-appendFluidBlockMesh(sourceMesh, 2, 8, 3, BLOCK.WATER, () => BLOCK.AIR, 1, 15);
+appendFluidBlockMesh(sourceMesh, 2, 8, 3, BLOCK.WATER,
+  (x, y, z) => x === 2 && y === 8 && z === 3 ? BLOCK.WATER : BLOCK.AIR, 1, 15);
 const sourceY = sourceMesh.filter((_value, index) => index % 6 === 1);
 close(Math.max(...sourceY), 8 + 8 / 9);
 const finalFlowMesh: number[] = [];
-appendFluidBlockMesh(finalFlowMesh, 2, 8, 3, BLOCK.WATER_FLOW_7, () => BLOCK.AIR, 1, 15);
+appendFluidBlockMesh(finalFlowMesh, 2, 8, 3, BLOCK.WATER_FLOW_7,
+  (x, y, z) => x === 2 && y === 8 && z === 3 ? BLOCK.WATER_FLOW_7 : BLOCK.AIR, 1, 15);
 const finalFlowY = finalFlowMesh.filter((_value, index) => index % 6 === 1);
 close(Math.max(...finalFlowY), 8 + 1 / 9);
+cells.clear();
+cells.set(key(0, 8, 0), BLOCK.WATER);
+cells.set(key(1, 8, 0), BLOCK.WATER_FLOW_3);
+const sharedCorner = fluidSurfaceCornerHeight("water", 1, 8, 0, get);
+assert.ok(sharedCorner < fluidSurfaceHeight(BLOCK.WATER) && sharedCorner > fluidSurfaceHeight(BLOCK.WATER_FLOW_3),
+  "a source and lower flow share an interpolated corner height");
+const slopedMesh: number[] = [];
+appendFluidBlockMesh(slopedMesh, 1, 8, 0, BLOCK.WATER_FLOW_3, get, 1, 15);
+const slopedSurfaceY = [...new Set(slopedMesh.filter((_value, index) => index % 6 === 1)
+  .filter((value) => value > 8.01).map((value) => value.toFixed(6)))];
+assert.ok(slopedSurfaceY.length >= 2, "flow top vertices form a slope rather than a flat Riemann-sum step");
 assert.equal(waterVerticalVelocity(0, true, false, 1, false), WATER_SWIM_SPEED);
 assert.equal(waterVerticalVelocity(0, true, false, 1, true), WATER_EXIT_SPEED);
 assert.ok(WATER_SWIM_SPEED < 1.5 && WATER_EXIT_SPEED > WATER_SWIM_SPEED * 2,
   "held jump bobs slowly unless a real shore exit is detected");
+assert.equal(waterShoreExitAhead(0.5, 65.75, 0.5, 1, 0,
+  (x, y, z) => x === 1 && y === 65 && z === 0 ? BLOCK.STONE : BLOCK.AIR), true,
+"a coast block at the swimmer's feet triggers the dedicated shore-clearing impulse");
+assert.equal(waterShoreExitAhead(0.5, 65.75, 0.5, 1, 0,
+  (x, y, z) => x === 1 && (y === 65 || y === 66) && z === 0 ? BLOCK.STONE : BLOCK.AIR), false,
+"a two-block wall is not mistaken for a traversable shore");
 
 cells.clear();
 cells.set(key(0, 1, -2), BLOCK.WATER_FLOW_2);
@@ -123,6 +176,19 @@ const placed = resolveWorldBlockOperation({
 assert.equal(placed.ok, true);
 if (placed.ok) assert.deepEqual(placed.effect.inventory[0], { itemId: "bucket", count: 1 });
 
+const blockInventory: Inventory = [{ itemId: "dirt", count: 2 }, ...inventory.slice(1)];
+const displaced = resolveWorldBlockOperation({
+  operationId: "place_over_water_1", kind: "place", x: 1, y: 64, z: 1,
+  expectedBlock: "water", placedBlock: "dirt", selectedHotbar: 0, expectedHeldItem: "dirt",
+  expectedInventoryRevision: "4", expectedChunkRevision: "2",
+}, { currentBlock: "water", inventory: blockInventory, inventoryRevision: "4", chunkRevision: "2" });
+assert.equal(displaced.ok, true, "a solid block can authoritatively displace a targeted water cell");
+if (displaced.ok) assert.equal(displaced.effect.previousBlock, "water");
+
+const queue = new Set(Array.from({ length: 10_000 }, (_value, index) => `fluid-${index}`));
+assert.deepEqual(takeFluidQueueBatch(queue, 3), ["fluid-0", "fluid-1", "fluid-2"]);
+assert.equal(queue.size, 9_997, "fluid work dequeues a bounded batch without cloning the whole backlog");
+
 assert.equal(blockTextureForFace(BLOCK.WATER_FLOW_7, "top"), "water");
 assert.equal(blockTextureForFace(BLOCK.LAVA, "top"), "lava");
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
@@ -139,5 +205,8 @@ assert.match(engine, /const cameraFluid = pointInFluid\(eye\[0\], eye\[1\], eye\
   "underwater fog respects the actual height of shallow flows");
 assert.match(engine, /cameraFluid === "water" \? 22 : 4/,
   "submerged water and lava have deliberately reduced view distance");
+assert.doesNotMatch(engine.slice(engine.indexOf("function processFluidKind"), engine.indexOf("function processFluids")),
+  /rebuildEditedWorldChunks|\.\.\.fluidQueues/,
+  "fluid ticks stay inside the bounded deferred mesh pipeline");
 
 console.log("fluid system tests passed");

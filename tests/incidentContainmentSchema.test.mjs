@@ -104,10 +104,12 @@ for (const path of runtimeFiles) {
 // enter-only full-width chat, async armor-preview repainting, and the shared
 // derived fluid runtime with authoritative source buckets, level-aware fluid
 // surfaces, stable terrain-atlas rebinding, slowed swimming, and environmental
-// damage recoil; none adds another Lakebed authority or multiplayer transport.
+// damage recoil, replaceable fluid placement targets, shared-corner flow
+// slopes, infinite-water refill/drain rules, and deferred bounded fluid mesh
+// work; none adds another Lakebed authority or multiplayer transport.
 assert.equal(runtimeFiles.length, 199, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "c0e562c19dce96d02d615052b02783ee7a2f4852ebe5886ca0d688d52476bfa9",
+  "4b4a631990bbd3726933da6b9b1cd1f37acd72785769611cd78b81caa3909a2a",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

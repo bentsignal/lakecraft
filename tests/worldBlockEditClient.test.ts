@@ -53,6 +53,25 @@ assert.deepEqual(buildWorldBlockOperationRequest({
 
 assert.deepEqual(buildWorldBlockOperationRequest({
   ...base,
+  previousBlock: "water_flow_3",
+  nextBlock: "dirt",
+  expectedHeldItem: "dirt",
+}), {
+  operationId: "block_request_0001",
+  kind: "place",
+  x: -4,
+  y: 7,
+  z: 12,
+  expectedBlock: "water_flow_3",
+  placedBlock: "dirt",
+  selectedHotbar: 2,
+  expectedHeldItem: "dirt",
+  expectedInventoryRevision: "8",
+  expectedChunkRevision: "3",
+}, "multiplayer preserves the displaced flow state for authoritative replacement");
+
+assert.deepEqual(buildWorldBlockOperationRequest({
+  ...base,
   previousBlock: "door_closed",
   nextBlock: "door_open",
 }), {

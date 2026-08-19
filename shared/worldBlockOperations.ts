@@ -52,9 +52,14 @@ export type MineWorldBlockOperation = InventoryOperationBase & {
 
 export type PlaceWorldBlockOperation = InventoryOperationBase & {
   kind: "place";
-  expectedBlock: "air";
+  expectedBlock: WorldChunkBlockType;
   placedBlock: Exclude<WorldChunkBlockType, "air">;
 };
+
+export function isReplaceableWorldBlock(block: WorldChunkBlockType): boolean {
+  return block === "air" || block === "water" || block === "lava"
+    || block.startsWith("water_flow_") || block.startsWith("lava_flow_");
+}
 
 export type ToggleableWorldBlock = Extract<WorldChunkBlockType,
   "door_closed" | "door_open" | "oak_fence_gate_closed" | "oak_fence_gate_open" | `${string}_door_${string}`>;
@@ -346,7 +351,8 @@ export function parseWorldBlockOperation(
     return { ok: true, request, fingerprint: worldBlockOperationFingerprint(request) };
   }
 
-  if (value.expectedBlock !== "air" || !isWorldBlock(value.placedBlock) || value.placedBlock === "air") {
+  if (!isWorldBlock(value.expectedBlock) || !isReplaceableWorldBlock(value.expectedBlock)
+    || !isWorldBlock(value.placedBlock) || value.placedBlock === "air") {
     return { ok: false, reason: "invalid_block" };
   }
   const request: PlaceWorldBlockOperation = {
@@ -355,7 +361,7 @@ export function parseWorldBlockOperation(
     x: value.x,
     y: value.y,
     z: value.z,
-    expectedBlock: "air",
+    expectedBlock: value.expectedBlock,
     placedBlock: value.placedBlock,
     selectedHotbar: value.selectedHotbar,
     expectedHeldItem: value.expectedHeldItem as ItemId | null,
@@ -483,7 +489,7 @@ export function resolveWorldBlockOperation(
       if (!exchanged.ok) return { ok: false, reason: "inventory_full" };
       const inventoryRevision = nextWorldBlockRevision(state.inventoryRevision);
       if (inventoryRevision === null) return { ok: false, reason: "revision_overflow" };
-      return { ok: true, effect: { kind: "place", previousBlock: "air", nextBlock: fluid,
+      return { ok: true, effect: { kind: "place", previousBlock: request.expectedBlock, nextBlock: fluid,
         inventory: exchanged.inventory, inventoryRevision, chunkRevision, inventoryChanged: true,
         drop: null, consumed: request.expectedHeldItem, toolUse: null } };
     }
@@ -498,7 +504,7 @@ export function resolveWorldBlockOperation(
       ok: true,
       effect: {
         kind: "place",
-        previousBlock: "air",
+        previousBlock: request.expectedBlock,
         nextBlock: request.placedBlock,
         inventory,
         inventoryRevision,

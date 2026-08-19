@@ -1,5 +1,6 @@
 import type { ItemId } from "../shared/game.ts";
 import {
+  isReplaceableWorldBlock,
   isToggleableWorldBlock,
   toggledWorldBlock,
   type WorldBlockOperationRequest,
@@ -88,12 +89,12 @@ export function buildWorldBlockOperationRequest(
       expectedBlock: input.previousBlock,
     };
   }
-  if (input.previousBlock === "air" && input.nextBlock !== "air") {
+  if (isReplaceableWorldBlock(input.previousBlock) && input.nextBlock !== "air") {
     return {
       ...base,
       ...inventoryFields,
       kind: "place",
-      expectedBlock: "air",
+      expectedBlock: input.previousBlock,
       placedBlock: input.nextBlock,
     };
   }

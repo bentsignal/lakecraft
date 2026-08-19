@@ -89,7 +89,7 @@ for (let frame = 0; frame < 30 && exitHeight < 1.1; frame += 1) {
   exitHeight += exitVelocity / 60;
 }
 assert.ok(exitHeight >= 1, `surface jump clears a one-block shore (${exitHeight.toFixed(3)})`);
-assert.equal(WATER_EXIT_SPEED, 4.2, "shore-only boost clears the bank without surface launch-speed bobbing");
+assert.equal(WATER_EXIT_SPEED, 5, "shore-only boost clears the bank without being reused for open-water bobbing");
 assert.ok(waterVerticalVelocity(0, false, true, 0.05) < 0, "sneaking swims downward");
 const throughWater = raycastVoxels([0.5, 65.5, 0.5], [1, 0, 0], (x) =>
   x === 1 ? BLOCK.WATER : x === 2 ? BLOCK.STONE : BLOCK.AIR, 4);

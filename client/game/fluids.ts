@@ -47,6 +47,47 @@ export function fluidSurfaceHeight(block: BlockId, above: BlockId = BLOCK.AIR): 
   return (maximumLevel + 1 - level) / (maximumLevel + 1) * (8 / 9);
 }
 
+/**
+ * Shared height at one world-space fluid corner. Every cell touching the
+ * corner asks the same question, so adjacent flowing surfaces meet without
+ * cracks while unequal levels form a continuous slope instead of steps.
+ */
+export function fluidSurfaceCornerHeight(
+  kind: FluidKind,
+  cornerX: number,
+  y: number,
+  cornerZ: number,
+  getBlock: FluidLookup,
+): number {
+  let weightedHeight = 0;
+  let weight = 0;
+  for (const [dx, dz] of [[-1, -1], [0, -1], [-1, 0], [0, 0]] as const) {
+    const x = cornerX + dx, z = cornerZ + dz;
+    const block = getBlock(x, y, z);
+    if (fluidKind(block) !== kind) continue;
+    if (fluidKind(getBlock(x, y + 1, z)) === kind) return 1;
+    const sampleWeight = isFluidSource(block) ? 10 : 1;
+    weightedHeight += fluidSurfaceHeight(block) * sampleWeight;
+    weight += sampleWeight;
+  }
+  return weight ? weightedHeight / weight : 0;
+}
+
+/** Bilinear surface height at an exact point inside its containing cell. */
+export function fluidSurfaceHeightAt(x: number, y: number, z: number, getBlock: FluidLookup): number {
+  const blockX = Math.floor(x), blockY = Math.floor(y), blockZ = Math.floor(z);
+  const kind = fluidKind(getBlock(blockX, blockY, blockZ));
+  if (!kind) return 0;
+  const localX = x - blockX, localZ = z - blockZ;
+  const northWest = fluidSurfaceCornerHeight(kind, blockX, blockY, blockZ, getBlock);
+  const northEast = fluidSurfaceCornerHeight(kind, blockX + 1, blockY, blockZ, getBlock);
+  const southWest = fluidSurfaceCornerHeight(kind, blockX, blockY, blockZ + 1, getBlock);
+  const southEast = fluidSurfaceCornerHeight(kind, blockX + 1, blockY, blockZ + 1, getBlock);
+  const north = northWest + (northEast - northWest) * localX;
+  const south = southWest + (southEast - southWest) * localX;
+  return north + (south - north) * localZ;
+}
+
 /** Exact point-volume test so a shallow flow cannot submerge the camera/body. */
 export function pointInFluid(
   x: number,
@@ -60,7 +101,7 @@ export function pointInFluid(
   const block = getBlock(blockX, blockY, blockZ);
   const found = fluidKind(block);
   if (!found || kind && found !== kind) return null;
-  const height = fluidSurfaceHeight(block, getBlock(blockX, blockY + 1, blockZ));
+  const height = fluidSurfaceHeightAt(x, y, z, getBlock);
   return y - blockY < height - 1e-6 ? found : null;
 }
 
@@ -68,9 +109,11 @@ export function pointInFluid(
  * One deterministic cellular-fluid decision. Source blocks are durable world
  * state; flowing levels are a locally derived cache rebuilt from those sources.
  */
-export function planFluidCell(kind: FluidKind, x: number, y: number, z: number, getBlock: FluidLookup): WorldEdit | null {
+export function planFluidCell(
+  kind: FluidKind, x: number, y: number, z: number, getBlock: FluidLookup, sourceIsDurable = true,
+): WorldEdit | null {
   const current = getBlock(x, y, z);
-  if (isFluidSource(current) || current !== BLOCK.AIR && !isFluidBlock(current)) return null;
+  if (isFluidSource(current) && sourceIsDurable || current !== BLOCK.AIR && !isFluidBlock(current)) return null;
   const currentKind = fluidKind(current);
   if (currentKind && currentKind !== kind) return null;
   let nextLevel = 99;
@@ -79,14 +122,31 @@ export function planFluidCell(kind: FluidKind, x: number, y: number, z: number, 
   };
   const above = getBlock(x, y + 1, z);
   if (isFluidBlock(above)) offer(above, 1);
+  let adjacentSources = 0;
   for (const [dx, dz] of HORIZONTAL) {
     const neighbor = getBlock(x + dx, y, z + dz);
+    if (kind === "water" && neighbor === BLOCK.WATER) adjacentSources += 1;
     if (fluidKind(neighbor) !== kind || getBlock(x + dx, y - 1, z + dz) === BLOCK.AIR) continue;
     const next = fluidLevel(neighbor) + 1;
     if (next <= (kind === "water" ? 7 : 3)) offer(neighbor, next);
   }
-  const next = nextLevel < 99 ? fluidBlock(kind, nextLevel) : BLOCK.AIR;
+  const supported = getBlock(x, y - 1, z) !== BLOCK.AIR;
+  const next = kind === "water" && adjacentSources >= 2 && supported
+    ? BLOCK.WATER
+    : nextLevel < 99 ? fluidBlock(kind, nextLevel) : BLOCK.AIR;
   return next === current ? null : { x, y, z, block: next };
+}
+
+/** Removes at most `limit` entries without cloning a potentially huge Set. */
+export function takeFluidQueueBatch(queue: Set<string>, limit: number): string[] {
+  const batch: string[] = [];
+  const maximum = Math.max(0, Math.floor(limit));
+  for (const key of queue) {
+    queue.delete(key);
+    batch.push(key);
+    if (batch.length >= maximum) break;
+  }
+  return batch;
 }
 
 /** Cells whose incoming support may change after one fluid/world edit. */

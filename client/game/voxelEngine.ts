@@ -196,11 +196,12 @@ import {
   createBreathState,
   fluidKind,
   fluidNeighborCells,
-  fluidSurfaceHeight,
+  fluidSurfaceCornerHeight,
   fluidTickDelay,
   planFluidCell,
   pointInFluid,
   raycastFluidSource,
+  takeFluidQueueBatch,
   type FluidKind,
 } from "./fluids.ts";
 import type { MobMotionPose } from "../../shared/mobMotionAuthority.ts";
@@ -664,8 +665,9 @@ const LOCAL_FALL_LANDING_EPSILON = 0.05;
 export const LADDER_CLIMB_SPEED = 3.2;
 export const LADDER_DESCEND_SPEED = -3.2;
 export const LADDER_IDLE_SLIDE_SPEED = -1.2;
-export const WATER_SWIM_SPEED = 1.35;
-export const WATER_EXIT_SPEED = 4.2;
+export const WATER_SWIM_SPEED = 0.85;
+export const WATER_SURFACE_BOB_SPEED = 2.6;
+export const WATER_EXIT_SPEED = 5;
 
 export type MobTorchLightCache = Float64Array;
 
@@ -971,13 +973,35 @@ export function ladderVerticalVelocity(
 
 /** Bounded buoyancy: jump rises, sneak dives, and idle players slowly sink. */
 export function waterVerticalVelocity(
-  currentVelocity: number, ascend: boolean, descend: boolean, elapsedSeconds: number, surfaceExit = false,
+  currentVelocity: number, ascend: boolean, descend: boolean, elapsedSeconds: number,
+  surfaceExit: boolean | number = false,
 ): number {
-  const target = ascend && !descend ? surfaceExit ? WATER_EXIT_SPEED : WATER_SWIM_SPEED
+  const exitSpeed = surfaceExit === true ? WATER_EXIT_SPEED
+    : typeof surfaceExit === "number" ? Math.max(0, surfaceExit) : 0;
+  if (ascend && !descend && exitSpeed > 0) return Math.max(currentVelocity, exitSpeed);
+  const target = ascend && !descend ? WATER_SWIM_SPEED
     : descend && !ascend ? -WATER_SWIM_SPEED : -0.45;
   const amount = Math.min(1, Math.max(0, Number.isFinite(elapsedSeconds) ? elapsedSeconds * 8 : 0));
   const current = Number.isFinite(currentVelocity) ? clampNumber(currentVelocity, -WATER_SWIM_SPEED, WATER_EXIT_SPEED) : 0;
   return current + (target - current) * amount;
+}
+
+/** Detects the one-block bank in the intended swim direction, at foot level. */
+export function waterShoreExitAhead(
+  poseX: number,
+  poseY: number,
+  poseZ: number,
+  dx: number,
+  dz: number,
+  getBlock: (x: number, y: number, z: number) => BlockId,
+): boolean {
+  const distance = Math.hypot(dx, dz);
+  if (distance <= 1e-6) return false;
+  const sampleX = poseX + dx / distance * 0.62;
+  const sampleZ = poseZ + dz / distance * 0.62;
+  const sampleY = Math.floor(poseY - 0.12);
+  return blockHasCollision(getBlock(Math.floor(sampleX), sampleY, Math.floor(sampleZ)))
+    && !blockHasCollision(getBlock(Math.floor(sampleX), sampleY + 1, Math.floor(sampleZ)));
 }
 
 export function isDoorBlock(block: BlockId): boolean {
@@ -1359,27 +1383,25 @@ export function appendFluidBlockMesh(
   if (!kind) return;
   const textureName = kind;
   const uv = textureAtlasUv(textureName);
-  const height = fluidSurfaceHeight(block, getBlock(x, y + 1, z));
   const emissive = kind === "lava";
   for (const face of FACE_DEFS) {
     const neighborX = x + face[1], neighborY = y + face[2], neighborZ = z + face[3];
     const neighbor = getBlock(neighborX, neighborY, neighborZ);
     const neighborKind = fluidKind(neighbor);
     if (blockOccludesFaces(neighbor)) continue;
-    let lowerHeight = 0;
     if (face[0] === "top") {
       if (neighborKind === kind) continue;
     } else if (face[0] === "bottom") {
       if (neighborKind === kind) continue;
     } else if (neighborKind === kind) {
-      lowerHeight = fluidSurfaceHeight(neighbor, getBlock(neighborX, neighborY + 1, neighborZ));
-      if (lowerHeight >= height - 1e-6) continue;
+      continue;
     }
     const shade = retainedTerrainShade(face[4] * variation, exposureLevel, emissive);
     for (const point of face[5]) {
       const horizontal = face[1] !== 0 ? point[2] : point[0];
-      const localY = face[0] === "top" ? height
-        : face[0] === "bottom" ? 0 : point[1] ? height : lowerHeight;
+      const topHeight = fluidSurfaceCornerHeight(kind, x + point[0], y, z + point[2], getBlock);
+      const localY = face[0] === "top" ? topHeight
+        : face[0] === "bottom" ? 0 : point[1] ? topHeight : 0;
       const textureV = face[2] !== 0 ? point[2] : localY;
       pushTexturedVertex(
         output,
@@ -2220,7 +2242,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     for (const cell of fluidNeighborCells(x, y, z)) {
       const block = getBlock(cell.x, cell.y, cell.z);
       if (loadedChunkKeys.has(chunkKeyForBlock(cell.x, cell.z))
-        && (block === BLOCK.AIR || fluidKind(block) === kind && block !== (kind === "water" ? BLOCK.WATER : BLOCK.LAVA))) {
+        && (block === BLOCK.AIR || fluidKind(block) === kind && (
+          block !== (kind === "water" ? BLOCK.WATER : BLOCK.LAVA)
+          || derivedFluidKeys.has(blockKey(cell.x, cell.y, cell.z))
+        ))) {
         fluidQueues[kind].add(blockKey(cell.x, cell.y, cell.z));
       }
     }
@@ -2242,12 +2267,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (now < nextFluidStepAt[kind] || !fluidQueues[kind].size) return;
     nextFluidStepAt[kind] = now + fluidTickDelay(kind === "water" ? BLOCK.WATER : BLOCK.LAVA);
     const edits: WorldEdit[] = [];
-    const batch = [...fluidQueues[kind]].slice(0, 64);
+    const batch = takeFluidQueueBatch(fluidQueues[kind], kind === "water" ? 24 : 8);
     for (const key of batch) {
-      fluidQueues[kind].delete(key);
       const [x, y, z] = key.split(",").map(Number);
       if (!loadedChunkKeys.has(chunkKeyForBlock(x, z))) continue;
-      const planned = planFluidCell(kind, x, y, z, getBlock);
+      const planned = planFluidCell(kind, x, y, z, getBlock, !derivedFluidKeys.has(key));
       if (!planned) continue;
       const previous = getBlock(x, y, z);
       if (planned.block === BLOCK.AIR && !derivedFluidKeys.has(key)) continue;
@@ -2257,7 +2281,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       edits.push(planned);
       enqueueFluidNeighborhood(kind, x, y, z);
     }
-    if (edits.length) rebuildEditedWorldChunks(edits, []);
+    // Fluid propagation is frequent and never changes sky occlusion. Queue
+    // the affected meshes so the ordinary one-chunk-per-frame budget absorbs
+    // the work instead of synchronously rebuilding several ocean chunks.
+    for (const key of dirtyChunkKeysForEdits(edits)) {
+      if (loadedChunkKeys.has(key)) pendingChunkMeshRebuilds.add(key);
+    }
   }
 
   function processFluids(now: number): void {
@@ -2267,7 +2296,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   for (const [key, block] of blocks) {
     const kind = fluidKind(block);
-    if (!kind || block !== (kind === "water" ? BLOCK.WATER : BLOCK.LAVA)) continue;
+    if (!kind) continue;
+    if (block !== (kind === "water" ? BLOCK.WATER : BLOCK.LAVA)) {
+      derivedFluidKeys.add(key);
+      continue;
+    }
     const [x, y, z] = key.split(",").map(Number);
     enqueueFluidNeighborhood(kind, x, y, z);
   }
@@ -2497,6 +2530,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let lastBreathLevel = PLAYER_MAX_AIR;
   let lavaContactSeconds = 0;
   let fluidExitSlowSeconds = 0;
+  let waterSurfaceLiftCooldownSeconds = 0;
   let lastPerformanceSent = 0;
   let lastUpdateMs = 0;
   let lastRenderMs = 0;
@@ -2690,7 +2724,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     loadedChunkKeys.add(owner);
     for (const [key, block] of materialized) {
       const kind = fluidKind(block);
-      if (!kind || block !== (kind === "water" ? BLOCK.WATER : BLOCK.LAVA)) continue;
+      if (!kind) continue;
+      if (block !== (kind === "water" ? BLOCK.WATER : BLOCK.LAVA)) {
+        derivedFluidKeys.add(key);
+        continue;
+      }
       const [x, y, z] = key.split(",").map(Number);
       enqueueFluidNeighborhood(kind, x, y, z);
     }
@@ -3562,6 +3600,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const inWater = waterAtFeet || waterAtBody;
     const inLava = feetFluid === "lava" || bodyFluid === "lava";
     fluidExitSlowSeconds = inWater || inLava ? 0.45 : Math.max(0, fluidExitSlowSeconds - dt);
+    waterSurfaceLiftCooldownSeconds = Math.max(0, waterSurfaceLiftCooldownSeconds - dt);
     const breathStep = advanceBreath(breath, headFluid === "water", dt);
     breath = breathStep;
     const breathLevel = Math.ceil(breath.air);
@@ -3628,13 +3667,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const dx = horizontalMovementDelta.x * fluidMoveScale;
     const dz = horizontalMovementDelta.z * fluidMoveScale;
     const fluidMoveDistance = Math.hypot(dx, dz);
-    const shoreExitAhead = inWater && waterAtFeet && !waterAtBody && fluidMoveDistance > 1e-6 && (() => {
-      const sampleX = pose.x + dx / fluidMoveDistance * 0.55;
-      const sampleZ = pose.z + dz / fluidMoveDistance * 0.55;
-      const sampleY = Math.floor(pose.y + 0.15);
-      return blockHasCollision(getBlock(Math.floor(sampleX), sampleY, Math.floor(sampleZ)))
-        && !blockHasCollision(getBlock(Math.floor(sampleX), sampleY + 1, Math.floor(sampleZ)));
-    })();
+    const jumpHeld = controlHeld("jump");
+    const shoreExitAhead = inWater && waterAtFeet && jumpHeld
+      && waterShoreExitAhead(pose.x, pose.y, pose.z, dx, dz, getBlock);
+    const surfaceBob = inWater && waterAtFeet && !waterAtBody && jumpHeld
+      && waterSurfaceLiftCooldownSeconds <= 0;
+    if (surfaceBob) waterSurfaceLiftCooldownSeconds = 0.72;
     const movementStartX = pose.x;
     const movementStartZ = pose.z;
     const protectLedge = !flying && movementMode === "sneak" && grounded;
@@ -3647,7 +3685,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const verticalStartY = pose.y;
     velocity[1] = flying
       ? creativeFlightVerticalVelocity(controlHeld("jump"), shiftHeld)
-      : inWater || inLava ? waterVerticalVelocity(velocity[1], controlHeld("jump"), shiftHeld, dt, shoreExitAhead)
+      : inWater || inLava ? waterVerticalVelocity(
+        velocity[1], jumpHeld, shiftHeld, dt,
+        shoreExitAhead ? WATER_EXIT_SPEED : surfaceBob ? WATER_SURFACE_BOB_SPEED : false,
+      )
         * (inLava ? 0.45 : 1)
       : ladderVerticalVelocity(
         velocity[1],
@@ -4733,9 +4774,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       : isStairBlock(selectedBlock) ? stairPlacementBlock(selectedBlock, pose.yaw, pose.pitch, target)
         : doorPlacementBlock(selectedBlock, pose.yaw);
     const supportedSapling = !saplingPlacement || canPlaceSapling(target, getBlock(x, y - 1, z));
+    const replacedBlock = getBlock(x, y, z);
+    const displacesFluid = placementBlock !== null && isFluidBlock(replacedBlock)
+      && (!isFluidBlock(placementBlock)
+        || fluidKind(replacedBlock) === fluidKind(placementBlock) && replacedBlock !== placementBlock);
     if (
       placementBlock === null
-      || getBlock(x, y, z) !== BLOCK.AIR
+      || replacedBlock !== BLOCK.AIR && !displacesFluid
       || !supportedSapling
       || (!saplingPlacement && playerIntersectsBlock(x, y, z, placementBlock))
     ) return false;

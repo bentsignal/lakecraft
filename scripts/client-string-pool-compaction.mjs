@@ -238,16 +238,16 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
   source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_376;
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_375;
 export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 137;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "5d8a1ebced0d3e8e6085fa462abb809920c1e2a3f9e617517c618e9bbd22ee72";
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "2aec06920b6bf57ea4c74de654d7c188f34b2f891e21c5b0e77fa501e608453b";
 export const COMPACT_CLIENT_REPEATED_FLUID_SYSTEM_DELTA = Object.freeze({
   previousOccurrences: 1_359,
   previousUniqueValues: 135,
   previousSourceFingerprint: "644b713fbcec277290c8291896076ec315e259e16a4b5a4fe8dbc978b77484ce",
-  occurrenceDelta: 17,
+  occurrenceDelta: 16,
   uniqueValueDelta: 2,
-  source: "shared water/lava identities and the canonical iron bucket grid",
+  source: "shared water/lava identities, canonical buckets, and consolidated corner-slope sampling",
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_REPEATED_HUD_CHAT_REFINEMENT_DELTA = Object.freeze({

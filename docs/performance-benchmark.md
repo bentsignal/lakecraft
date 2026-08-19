@@ -23,6 +23,17 @@ ratio. For a release comparison, run each distance three times and compare the
 median run. Treat idle, turn, and sprint separately: a fast idle average must
 not hide streaming stalls.
 
+Fluid changes also have a deterministic CPU regression check:
+
+```sh
+node --experimental-strip-types tests/fluidPerformance.test.ts
+```
+
+It meshes a 64×64 ocean surface and drains bounded work from a 100,000-entry
+fluid queue. Fluid propagation itself schedules dirty chunks through the
+one-chunk-per-frame mesh budget, so it cannot reintroduce synchronous
+multi-chunk rebuild spikes between the benchmark's periodic frame samples.
+
 ## Apple M4 / Chromium 151 reference results
 
 Recorded August 9, 2026 at 1280×720 CSS/device pixels, DPR 1, on the ANGLE Metal
