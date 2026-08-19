@@ -67,13 +67,13 @@ const PROPERTY_ALIAS_SPEC = "action:25,active:20,activeAppearanceRequest:10,acti
 const PROPERTY_ALIAS_COUNT_OVERRIDES = Object.freeze({
   // Remote mob-atlas fetch and integrity validation add one reviewed
   // active/includes/status use apiece.
-  active: 21, addEventListener: 38, ARRAY_BUFFER: 89, behavior: 30, bindBuffer: 50, bindTexture: 21,
-  block: 186, bottom: 26, bufferData: 27, bufferSubData: 12, byteLength: 16, BYTES_PER_ELEMENT: 16,
+  active: 21, activeTexture: 7, addEventListener: 38, ARRAY_BUFFER: 89, behavior: 30, bindBuffer: 50, bindTexture: 22,
+  block: 186, bottom: 28, bufferData: 27, bufferSubData: 12, byteLength: 16, BYTES_PER_ELEMENT: 16,
   center: 34, charCodeAt: 24, chunkRevisions: 11, CLAMP_TO_EDGE: 14, clear: 43, clearTimeout: 26, count: 185,
   createBuffer: 24, current: 857, currentTarget: 19, cycleLengthMs: 20, dayNight: 9, delete: 73, deleteBuffer: 42,
-  deleteProgram: 18, deleteTexture: 13, documentElement: 9, drawArrays: 24, dropId: 18, endsWith: 27,
+  deleteProgram: 18, deleteTexture: 13, documentElement: 9, drawArrays: 23, dropId: 18, endsWith: 27,
   drops: 25, DYNAMIC_DRAW: 16, enableVertexAttribArray: 27, equipment: 41,
-  every: 50, filter: 50, flatMap: 24, fromEntries: 10, getAttribLocation: 24,
+  every: 51, filter: 50, flatMap: 24, fromEntries: 10, getAttribLocation: 24,
   // Embedding the block atlas replaces the remote response dimensions/status
   // with the generated decoder's byte-array length checks.
   getUniformLocation: 69, health: 55, height: 34, includes: 52, inventory: 105, itemId: 182, length: 467,
@@ -84,8 +84,8 @@ const PROPERTY_ALIAS_COUNT_OVERRIDES = Object.freeze({
   mouseSensitivity: 4, renderDistance: 11, repeat: 32, resolve: 19, revision: 32, rotationDegrees: 22, selectedHotbar: 15,
   remainder: 17, sequence: 47, setTimeout: 22, sheared: 16, slice: 112, sourceSlot: 10, startsWith: 33,
   state: 70, STATIC_DRAW: 11, status: 20, stopImmediatePropagation: 8, subarray: 18, terrain: 23, texImage2D: 14,
-  texParameteri: 28, TEXTURE_2D: 64, TEXTURE_MAG_FILTER: 7, TEXTURE_MIN_FILTER: 7,
-  TRIANGLES: 21, uniform1f: 39, uniform3fv: 9, uniformMatrix4fv: 10,
+  texParameteri: 28, TEXTURE_2D: 65, TEXTURE_MAG_FILTER: 7, TEXTURE_MIN_FILTER: 7,
+  TRIANGLES: 20, uniform1f: 39, uniform3fv: 9, uniformMatrix4fv: 10,
   soundMuted: 12, toUpperCase: 10, UNPACK_FLIP_Y_WEBGL: 10, UNSIGNED_BYTE: 15, useProgram: 19, userId: 36, value: 37, values: 34,
   vertexAttribPointer: 30, world: 70, worldTimeMs: 7,
 });
@@ -97,8 +97,8 @@ export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_
 // Cursor-directed inventory refs, transparent held blocks, the compact-safe
 // stair palette resolver, consolidated settings props, async armor repainting,
 // and server-notice classification account for this reviewed exact-property boundary.
-export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_310;
-export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "2a662e078afea76d4f2d8ca9a83c3d7f9e34e094173740f987465e5518baad47";
+export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_314;
+export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "e5725d01805bb7778c8fbf064764fa0ab215fab2fc8b1771f660f30141f99f51";
 const PROPERTY_ALIAS_INDEX = new Map(COMPACT_CLIENT_PROPERTY_KEY_ALIASES.map(([name], index) => [name, index]));
 const PROPERTY_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_PROPERTY_KEY_ALIASES)),
