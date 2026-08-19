@@ -13,7 +13,7 @@ import {
 assert.equal(COMPACT_CLIENT_BUILTIN_ALIASES.length, 24, "the alias boundary remains deliberately narrow");
 assert.equal(COMPACT_CLIENT_BUILTIN_OCCURRENCES, 2_145);
 assert.equal(COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT,
-  "5964a98f9b6c27ec73071e337c852ad4c3c32646fa6be3bf345bb47659a0d2ee");
+  "2a41f3ff313a4ecb4ccfc7905e75900e390a4b302f518712c01a60480674666a");
 assert.deepEqual(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method]) => `${receiver}.${method}`), [
   "Math.abs", "Math.cos", "Math.ceil", "Math.floor", "Math.hypot", "Math.imul", "Math.max", "Math.min",
   "Math.round", "Math.sin", "Math.PI", "Object.freeze", "Object.keys", "Array.isArray", "Number.isFinite",
