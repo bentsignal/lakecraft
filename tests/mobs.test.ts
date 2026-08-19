@@ -165,6 +165,35 @@ stepMobSimulation(blockedSimulation, {
 assert.deepEqual([blockedCow.x, blockedCow.z], [0, 0]);
 assert.equal(blockedCow.behavior, "idle", "fully blocked translation cannot leave a walk-in-place behavior label");
 
+const swimmingSimulation = createMobSimulation([descriptor("cow", 0, 0, 205)]);
+const swimmingCow = swimmingSimulation.mobs[0]!;
+swimmingCow.y = 2;
+swimmingCow.behavior = "wander";
+swimmingCow.behaviorUntilSeconds = 10;
+swimmingCow.directionX = 1;
+const waterSurfaceY = (x: number) => x < 1 ? 7 : null;
+for (let tick = 0; tick < 180; tick += 1) stepMobSimulation(swimmingSimulation, {
+  dtSeconds: 1 / 60,
+  isNight: false,
+  terrainHeight: () => 0,
+  waterSurfaceY,
+});
+assert.ok(swimmingCow.y > 6.6 && swimmingCow.y < 6.8, "a submerged animal rises and gently floats at the surface");
+assert.ok(swimmingCow.x < 1, "a passive animal in water does not walk into a dry column through its ocean floor");
+
+const shoreCowSimulation = createMobSimulation([descriptor("cow", 0, 0, 206)]);
+const shoreCow = shoreCowSimulation.mobs[0]!;
+shoreCow.behavior = "wander";
+shoreCow.behaviorUntilSeconds = 10;
+shoreCow.directionX = 1;
+for (let tick = 0; tick < 120; tick += 1) stepMobSimulation(shoreCowSimulation, {
+  dtSeconds: 1 / 60,
+  isNight: false,
+  terrainHeight: () => 0,
+  waterSurfaceY: (x) => x >= 0.45 ? 1.9 : null,
+});
+assert.ok(shoreCow.x < 0.45, "a dry passive animal refuses to wander into water");
+
 // Snapshot arrays and objects can be retained by a renderer to avoid frame allocations.
 const reusedSnapshots = writeMobPoseSnapshots(collisionSimulation);
 const reusedFirstPose = reusedSnapshots[0];

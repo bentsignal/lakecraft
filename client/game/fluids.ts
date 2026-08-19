@@ -1,4 +1,4 @@
-import { BLOCK, blockStateName, isFluidBlock, isLavaBlock, isWaterBlock, type BlockId, type WorldEdit } from "./types.ts";
+import { BLOCK, blockStateName, isFluidBlock, isLavaBlock, isPlantBlock, isWaterBlock, type BlockId, type WorldEdit } from "./types.ts";
 
 export type FluidKind = "water" | "lava";
 export type FluidLookup = (x: number, y: number, z: number) => BlockId;
@@ -113,7 +113,8 @@ export function planFluidCell(
   kind: FluidKind, x: number, y: number, z: number, getBlock: FluidLookup, sourceIsDurable = true,
 ): WorldEdit | null {
   const current = getBlock(x, y, z);
-  if (isFluidSource(current) && sourceIsDurable || current !== BLOCK.AIR && !isFluidBlock(current)) return null;
+  if (isFluidSource(current) && sourceIsDurable
+    || current !== BLOCK.AIR && !isFluidBlock(current) && !isPlantBlock(current)) return null;
   const currentKind = fluidKind(current);
   if (currentKind && currentKind !== kind) return null;
   let nextLevel = 99;
@@ -158,7 +159,7 @@ export function fluidNeighborCells(x: number, y: number, z: number): WorldEdit[]
 }
 
 export function fluidTickDelay(block: BlockId): number {
-  return isLavaBlock(block) ? 520 : 180;
+  return isLavaBlock(block) ? 360 : 180;
 }
 
 export type BreathState = Readonly<{ air: number; drain: number; damage: number }>;

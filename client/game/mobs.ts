@@ -487,6 +487,8 @@ export interface MobStepInput {
   player?: Readonly<MobTarget> | null;
   /** Return false when a mob's body would overlap a solid block or entity. */
   canOccupy?: (kind: MobKind, x: number, y: number, z: number, radius: number, height: number) => boolean;
+  /** Surface height when this point is inside a water column. */
+  waterSurfaceY?: (x: number, y: number, z: number) => number | null;
   /** Called for arrow world collision; movement and attacks remain client-only. */
   isProjectileBlocked?: (x: number, y: number, z: number) => boolean;
   /** Optional retained output for newly confirmed local projectile impacts. */
@@ -826,6 +828,14 @@ function moveHeightAt(mob: MobState, x: number, z: number, input: Readonly<MobSt
   const centerX = Number.isFinite(input.worldCenterX) ? input.worldCenterX as number : 0;
   const centerZ = Number.isFinite(input.worldCenterZ) ? input.worldCenterZ as number : 0;
   if (!insideWorldBounds(x, z, definition.collisionRadius, centerX, centerZ, limit)) return null;
+  if (definition.passive) {
+    const targetSurface = input.waterSurfaceY?.(x, mob.y, z);
+    if (targetSurface !== null && targetSurface !== undefined) {
+      if (input.waterSurfaceY?.(mob.x, mob.y, mob.z) == null) return null;
+      const y = targetSurface - 0.3;
+      return (input.canOccupy?.(mob.kind, x, y, z, definition.collisionRadius, definition.height) ?? true) ? y : null;
+    }
+  }
   const y = input.terrainHeight(Math.floor(x), Math.floor(z)) + 1;
   if (Math.abs(y - mob.y) > 1.01) return null;
   if (input.canOccupy?.(mob.kind, x, y, z, definition.collisionRadius, definition.height) ?? true) return y;
@@ -1055,6 +1065,11 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
     mob.previousY = mob.y;
     mob.previousZ = mob.z;
     mob.previousYaw = mob.yaw;
+    const waterSurface = definition.passive ? input.waterSurfaceY?.(mob.x, mob.y, mob.z) : null;
+    if (waterSurface !== null && waterSurface !== undefined) {
+      const targetY = waterSurface - 0.3 + Math.sin(simulation.elapsedSeconds * 2 + mob.behaviorSeed) * 0.04;
+      mob.y += clamp(targetY - mob.y, -dt * 0.3, dt * 1.7);
+    }
     const light = localLightAt(mob, input);
     let targetVisible = false;
     if (!definition.passive && input.player) {

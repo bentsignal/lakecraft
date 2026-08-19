@@ -54,7 +54,7 @@ close(fluidSurfaceHeight(BLOCK.WATER_FLOW_7), 1 / 9);
 close(fluidSurfaceHeight(BLOCK.LAVA_FLOW_3), 2 / 9);
 assert.equal(fluidSurfaceHeight(BLOCK.WATER_FLOW_7, BLOCK.WATER), 1,
   "a vertical fluid column fills the cell beneath its matching fluid");
-assert.equal(fluidTickDelay(BLOCK.LAVA), 520, "lava reacts within a second while remaining slower than water");
+assert.equal(fluidTickDelay(BLOCK.LAVA), 360, "lava reacts promptly while remaining slower than water");
 
 cells.clear();
 cells.set(key(0, 0, 0), BLOCK.STONE);
@@ -100,6 +100,14 @@ for (const [kind, maximum] of [["water", 7], ["lava", 3]] as const) {
   assert.equal(planFluidCell(kind, maximum + 1, 1, 0, lineGet), null,
     `${kind} stops after its bounded descending range`);
 }
+cells.clear();
+cells.set(key(0, 1, 0), BLOCK.LAVA);
+cells.set(key(0, 0, 0), BLOCK.STONE);
+cells.set(key(1, 0, 0), BLOCK.STONE);
+cells.set(key(1, 1, 0), BLOCK.SHORT_GRASS);
+assert.deepEqual(planFluidCell("lava", 1, 1, 0, get),
+  { x: 1, y: 1, z: 0, block: BLOCK.LAVA_FLOW_1 },
+  "lava washes away biome plants instead of remaining trapped as one source block");
 cells.delete(key(0, 1, 0));
 cells.delete(key(1, 1, 0));
 cells.set(key(2, 1, 0), BLOCK.WATER_FLOW_2);

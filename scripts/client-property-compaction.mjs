@@ -575,6 +575,7 @@ const COMPACT_CLIENT_BASE_PROPERTY_MANGLE_CACHE = Object.freeze({
   "walkPhase": "Sn",
   "warningSender": "na",
   "waterBuffer": "dT",
+  "waterSurfaceY": "e8",
   "waterVertexCount": "dX",
   "wave": "te",
   "woolCount": "Pr",

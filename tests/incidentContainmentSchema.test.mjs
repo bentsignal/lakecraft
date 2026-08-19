@@ -108,11 +108,12 @@ for (const path of runtimeFiles) {
 // slopes, infinite-water refill/drain rules, and deferred bounded fluid mesh
 // work, responsive bounded lava stepping, low-frequency surface bob recovery,
 // immersion-scaled avatar gait, input-frame deferred source meshes, and sparse
-// backward-compatible projectile persistence; none adds another Lakebed
-// authority or multiplayer transport.
+// backward-compatible projectile persistence, plant-replacing prompt lava
+// flow, and passive-animal water avoidance/buoyancy; none adds another
+// Lakebed authority or multiplayer transport.
 assert.equal(runtimeFiles.length, 199, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "3a7558b7a78ccc0874eab81305f447e4bc7d55c53ad0b5da055e0db345803c73",
+  "280e5aaad18d297b8a192e5d0ffd4cfb6e9bb6cb5558af9ef41577a3c1ebd0d2",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

@@ -129,6 +129,11 @@ assert.equal(frames.size, 1);
 driveFrame(1_016);
 assert.ok(glCalls.clear > 0 && glCalls.drawArrays > 0 && glCalls.viewport > 0,
   "an active frame performs the real resize and WebGL render lifecycle");
+assert.equal(engine.applyWorldEdits([
+  { x: 3, y: 89, z: 2, block: BLOCK.STONE },
+  { x: 2, y: 89, z: 2, block: BLOCK.STONE },
+  { x: 3, y: 90, z: 2, block: BLOCK.SHORT_GRASS },
+]), true);
 const beforeFluidSourceEdit = { ...glCalls };
 assert.equal(engine.applyWorldEdits([{ x: 2, y: 90, z: 2, block: BLOCK.LAVA }]), true);
 assert.equal(glCalls.bufferData, beforeFluidSourceEdit.bufferData,
@@ -137,6 +142,8 @@ assert.ok(engine.getPerformanceStats().pendingMeshRebuilds > 0,
   "a placed fluid source is handed to the bounded frame-budgeted mesh queue");
 const settledPresentation = engine.waitForWorldPresentation();
 driveFrame(1_017);
+assert.equal(engine.getBlockAt(3, 90, 2), BLOCK.LAVA_FLOW_1,
+  "a placed lava source washes away adjacent biome plants on the next simulation frame");
 assert.equal(await settledPresentation, true,
   "an already-settled world still waits for one complete rendered frame");
 engine.replaceWorldChunkEdits(0, 0, [{ x: 1, y: 12, z: 1, block: BLOCK.STONE }]);

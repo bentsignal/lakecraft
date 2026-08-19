@@ -197,6 +197,7 @@ import {
   fluidKind,
   fluidNeighborCells,
   fluidSurfaceCornerHeight,
+  fluidSurfaceHeightAt,
   fluidTickDelay,
   planFluidCell,
   pointInFluid,
@@ -2243,7 +2244,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     for (const cell of fluidNeighborCells(x, y, z)) {
       const block = getBlock(cell.x, cell.y, cell.z);
       if (loadedChunkKeys.has(chunkKeyForBlock(cell.x, cell.z))
-        && (block === BLOCK.AIR || fluidKind(block) === kind && (
+        && (block === BLOCK.AIR || isPlantBlock(block) || fluidKind(block) === kind && (
           block !== (kind === "water" ? BLOCK.WATER : BLOCK.LAVA)
           || derivedFluidKeys.has(blockKey(cell.x, cell.y, cell.z))
         ))) {
@@ -2268,7 +2269,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (now < nextFluidStepAt[kind] || !fluidQueues[kind].size) return;
     nextFluidStepAt[kind] = now + fluidTickDelay(kind === "water" ? BLOCK.WATER : BLOCK.LAVA);
     const edits: WorldEdit[] = [];
-    const batch = takeFluidQueueBatch(fluidQueues[kind], kind === "water" ? 24 : 16);
+    const batch = takeFluidQueueBatch(fluidQueues[kind], kind === "water" ? 24 : 32);
     for (const key of batch) {
       const [x, y, z] = key.split(",").map(Number);
       if (!loadedChunkKeys.has(chunkKeyForBlock(x, z))) continue;
@@ -2347,6 +2348,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     return [x, surfaceY, z];
   }
 
+  function passiveMobWaterSurfaceY(x: number, y: number, z: number): number | null {
+    const blockX = Math.floor(x), blockZ = Math.floor(z);
+    let blockY = Math.floor(y + 0.05);
+    if (fluidKind(getBlock(blockX, blockY, blockZ)) !== "water") return null;
+    while (blockY < WORLD_EDIT_MAX_Y && fluidKind(getBlock(blockX, blockY + 1, blockZ)) === "water") blockY += 1;
+    return blockY + fluidSurfaceHeightAt(x, blockY, z, getBlock);
+  }
+
   function findNearestCave(): readonly [number, number, number] | null {
     const originX = Math.floor(pose.x);
     const originY = Math.floor(pose.y);
@@ -2411,6 +2420,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       loadedChunkKeys.has(chunkKeyForBlock(x, z))
       && isLocalMobSpawnOutsideView(pose.x, pose.z, pose.yaw, x, z)
     ))
+      && passiveMobWaterSurfaceY(x, y, z) === null
       && !blocks.has(blockKey(x, y, z)) && !blocks.has(blockKey(x, y + 1, z)),
   };
   const mobSimulation = createMobSimulation(options.simulateMobs === false ? [] : createMobSpawns(mobPopulationOptions));
@@ -3492,6 +3502,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         terrainHeight: (x, z) => terrainHeight(x, z, seed, terrain),
         player: playerTarget,
         canOccupy: mobCanOccupy,
+        waterSurfaceY: passiveMobWaterSurfaceY,
         isProjectileBlocked: (x, y, z) => {
           const blockY = Math.floor(y);
           const block = getBlock(Math.floor(x), blockY, Math.floor(z));
