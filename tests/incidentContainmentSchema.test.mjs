@@ -112,10 +112,11 @@ for (const path of runtimeFiles) {
 // flow, and passive-animal water avoidance/buoyancy; none adds another
 // Lakebed authority or multiplayer transport. The reviewed presentation also
 // adds the exact installed destroy-stage atlas, textured depth-bearing dropped
-// items, packed numeric live-block keys, and retained mesh-upload storage.
+// items, packed numeric live-block keys, retained mesh-upload storage, and
+// wall-clock-anchored priority fluid propagation with prompt bounded meshes.
 assert.equal(runtimeFiles.length, 200, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "d92e58a00d65199d518969863b2ab32750558e58a5e9b0f23142884fb4305f32",
+  "f7416ef6d42926ea3a27e1affada83199819d64598ba8135a5044be6cb98b785",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

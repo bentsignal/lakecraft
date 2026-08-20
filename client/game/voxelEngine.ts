@@ -199,6 +199,7 @@ import {
   fluidSurfaceCornerHeight,
   fluidSurfaceHeightAt,
   fluidTickDelay,
+  nextFluidStepDeadline,
   planFluidCell,
   pointInFluid,
   raycastFluidSource,
@@ -2129,6 +2130,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const blocks = new Map<number, BlockId>();
   const blockCoordinateScratch = new Int32Array(3);
   const fluidQueues: Record<FluidKind, Set<string>> = { water: new Set(), lava: new Set() };
+  const priorityFluidQueues: Record<FluidKind, Set<string>> = { water: new Set(), lava: new Set() };
   const derivedFluidKeys = new Set<string>();
   const nextFluidStepAt: Record<FluidKind, number> = { water: 0, lava: 0 };
   const skyOccluderColumns: SkyOccluderColumns = new Map();
@@ -2185,6 +2187,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const chunkBlocks = new Map<string, Set<number>>();
   const loadedChunkKeys = new Set<string>();
   const pendingChunkMeshRebuilds = new Set<string>();
+  const pendingFluidMeshRebuilds = new Set<string>();
   const pendingTerrainMeshDirtyChunks = new Set<string>();
   let pendingChunkLoads: ChunkCoordinate[] = [];
   let pendingChunkUnloads: ChunkCoordinate[] = [];
@@ -2281,7 +2284,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     return blocks.get(packedBlockKey(x, y, z)) ?? BLOCK.AIR;
   }
 
-  function enqueueFluidNeighborhood(kind: FluidKind, x: number, y: number, z: number): void {
+  function enqueueFluidNeighborhood(
+    kind: FluidKind,
+    x: number,
+    y: number,
+    z: number,
+    priority = false,
+  ): void {
     for (const cell of fluidNeighborCells(x, y, z)) {
       const block = getBlock(cell.x, cell.y, cell.z);
       if (loadedChunkKeys.has(chunkKeyForBlock(cell.x, cell.z))
@@ -2289,7 +2298,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           block !== (kind === "water" ? BLOCK.WATER : BLOCK.LAVA)
           || derivedFluidKeys.has(blockKey(cell.x, cell.y, cell.z))
         ))) {
-        fluidQueues[kind].add(blockKey(cell.x, cell.y, cell.z));
+        const key = blockKey(cell.x, cell.y, cell.z);
+        if (priority) {
+          fluidQueues[kind].delete(key);
+          priorityFluidQueues[kind].add(key);
+        } else if (!priorityFluidQueues[kind].has(key)) fluidQueues[kind].add(key);
       }
     }
   }
@@ -2303,15 +2316,34 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       const neighborKind = fluidKind(getBlock(x + dx, y + dy, z + dz));
       if (neighborKind) kinds.add(neighborKind);
     }
-    for (const kind of kinds) enqueueFluidNeighborhood(kind, x, y, z);
+    for (const kind of kinds) enqueueFluidNeighborhood(kind, x, y, z, true);
+  }
+
+  function queueFluidMeshRebuilds(edits: readonly WorldEdit[]): void {
+    for (const key of dirtyChunkKeysForEdits(edits)) {
+      if (!loadedChunkKeys.has(key)) continue;
+      pendingChunkMeshRebuilds.delete(key);
+      pendingFluidMeshRebuilds.add(key);
+    }
   }
 
   function processFluidKind(kind: FluidKind, now: number): void {
-    if (now < nextFluidStepAt[kind] || !fluidQueues[kind].size) return;
-    nextFluidStepAt[kind] = now + fluidTickDelay(kind === "water" ? BLOCK.WATER : BLOCK.LAVA);
+    if (now < nextFluidStepAt[kind]
+      || !priorityFluidQueues[kind].size && !fluidQueues[kind].size) return;
+    nextFluidStepAt[kind] = nextFluidStepDeadline(
+      nextFluidStepAt[kind],
+      now,
+      fluidTickDelay(kind === "water" ? BLOCK.WATER : BLOCK.LAVA),
+    );
     const edits: WorldEdit[] = [];
-    const batch = takeFluidQueueBatch(fluidQueues[kind], kind === "water" ? 24 : 32);
-    for (const key of batch) {
+    const limit = kind === "water" ? 24 : 32;
+    const priorityBatch = takeFluidQueueBatch(priorityFluidQueues[kind], limit);
+    const batch = priorityBatch.length < limit
+      ? priorityBatch.concat(takeFluidQueueBatch(fluidQueues[kind], limit - priorityBatch.length))
+      : priorityBatch;
+    for (let index = 0; index < batch.length; index += 1) {
+      const key = batch[index];
+      const priority = index < priorityBatch.length;
       writeBlockKeyCoordinates(key, blockCoordinateScratch);
       const x = blockCoordinateScratch[0], y = blockCoordinateScratch[1], z = blockCoordinateScratch[2];
       if (!loadedChunkKeys.has(chunkKeyForBlock(x, z))) continue;
@@ -2323,14 +2355,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       else derivedFluidKeys.add(key);
       setBlock(x, y, z, planned.block);
       edits.push(planned);
-      enqueueFluidNeighborhood(kind, x, y, z);
+      enqueueFluidNeighborhood(kind, x, y, z, priority);
     }
     // Fluid propagation is frequent and never changes sky occlusion. Queue
     // the affected meshes so the ordinary one-chunk-per-frame budget absorbs
     // the work instead of synchronously rebuilding several ocean chunks.
-    for (const key of dirtyChunkKeysForEdits(edits)) {
-      if (loadedChunkKeys.has(key)) pendingChunkMeshRebuilds.add(key);
-    }
+    queueFluidMeshRebuilds(edits);
   }
 
   function processFluids(now: number): void {
@@ -2338,17 +2368,21 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     processFluidKind("lava", now);
   }
 
-  for (const [packedKey, block] of blocks) {
+  // Natural lake/ocean sources are already settled terrain and must not seed a
+  // world-sized background queue. Only persisted edits need local replay so a
+  // placed source, removed source, or legacy derived cell resumes correctly.
+  for (const edit of options.initialEdits ?? []) {
+    const block = getBlock(edit.x, edit.y, edit.z);
     const kind = fluidKind(block);
-    if (!kind) continue;
-    writePackedBlockKeyCoordinates(packedKey, blockCoordinateScratch);
-    const x = blockCoordinateScratch[0], y = blockCoordinateScratch[1], z = blockCoordinateScratch[2];
-    const key = blockKey(x, y, z);
-    if (block !== (kind === "water" ? BLOCK.WATER : BLOCK.LAVA)) {
-      derivedFluidKeys.add(key);
-      continue;
+    const key = blockKey(edit.x, edit.y, edit.z);
+    if (kind && block !== (kind === "water" ? BLOCK.WATER : BLOCK.LAVA)) derivedFluidKeys.add(key);
+    const kinds = new Set<FluidKind>();
+    if (kind) kinds.add(kind);
+    for (const [dx, dy, dz] of [[0, 1, 0], [0, -1, 0], [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]] as const) {
+      const neighborKind = fluidKind(getBlock(edit.x + dx, edit.y + dy, edit.z + dz));
+      if (neighborKind) kinds.add(neighborKind);
     }
-    enqueueFluidNeighborhood(kind, x, y, z);
+    for (const replayKind of kinds) enqueueFluidNeighborhood(replayKind, edit.x, edit.y, edit.z);
   }
 
   function caveSpawnY(kind: keyof typeof MOB_DEFINITIONS, x: number, surfaceY: number, z: number): number | null {
@@ -2757,9 +2791,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     for (const bed of removedBeds) unregisterBedStructure(bed);
     afterAccepted?.();
     if (loadedEdits.length && fluidOnlyMeshEdit && !skyEdits.length) {
-      for (const key of dirtyChunkKeysForEdits(loadedEdits)) {
-        if (loadedChunkKeys.has(key)) pendingChunkMeshRebuilds.add(key);
-      }
+      queueFluidMeshRebuilds(loadedEdits);
     } else if (loadedEdits.length) rebuildEditedWorldChunks(loadedEdits, skyEdits);
     return batch;
   }
@@ -2798,16 +2830,18 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
     chunkBlocks.set(owner, owned);
     loadedChunkKeys.add(owner);
-    for (const [key, block] of materialized) {
+    for (const edit of rememberedEditsByChunk.get(owner)?.values() ?? []) {
+      const block = getBlock(edit.x, edit.y, edit.z);
       const kind = fluidKind(block);
-      if (!kind) continue;
-      if (block !== (kind === "water" ? BLOCK.WATER : BLOCK.LAVA)) {
-        derivedFluidKeys.add(key);
-        continue;
+      const key = blockKey(edit.x, edit.y, edit.z);
+      if (kind && block !== (kind === "water" ? BLOCK.WATER : BLOCK.LAVA)) derivedFluidKeys.add(key);
+      const kinds = new Set<FluidKind>();
+      if (kind) kinds.add(kind);
+      for (const [dx, dy, dz] of [[0, 1, 0], [0, -1, 0], [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]] as const) {
+        const neighborKind = fluidKind(getBlock(edit.x + dx, edit.y + dy, edit.z + dz));
+        if (neighborKind) kinds.add(neighborKind);
       }
-      writeBlockKeyCoordinates(key, blockCoordinateScratch);
-      const x = blockCoordinateScratch[0], y = blockCoordinateScratch[1], z = blockCoordinateScratch[2];
-      enqueueFluidNeighborhood(kind, x, y, z);
+      for (const replayKind of kinds) enqueueFluidNeighborhood(replayKind, edit.x, edit.y, edit.z);
     }
   }
 
@@ -2833,6 +2867,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       removeTorchLight(key);
     }
     chunkBlocks.delete(owner);
+    pendingFluidMeshRebuilds.delete(owner);
+    pendingChunkMeshRebuilds.delete(owner);
     removeChunkSkyOccluders(skyOccluderColumns, chunkX, chunkZ);
     loadedChunkKeys.delete(owner);
   }
@@ -3237,6 +3273,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const startedAt = performance.now();
     for (const key of uniqueKeys) {
       pendingChunkMeshRebuilds.delete(key);
+      pendingFluidMeshRebuilds.delete(key);
       rebuildChunkMesh(key);
     }
     const rebuildMs = performance.now() - startedAt;
@@ -3256,6 +3293,16 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (batch.length >= limit) break;
     }
     if (batch.length) rebuildWorldChunks(batch);
+  }
+
+  function processPendingFluidMeshes(): void {
+    if (!pendingFluidMeshRebuilds.size) return;
+    for (const key of pendingFluidMeshRebuilds) {
+      pendingFluidMeshRebuilds.delete(key);
+      if (!loadedChunkKeys.has(key)) continue;
+      rebuildWorldChunks([key]);
+      break;
+    }
   }
 
   function collides(x: number, y: number, z: number, bodyHeight = cameraPosture.bodyHeight): boolean {
@@ -3664,6 +3711,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
     const processedTerrain = processPendingTerrainChunks();
     processFluids(now);
+    // A player-triggered fluid wave owns one promptly rebuilt chunk per frame,
+    // so terrain streaming cannot hide several scheduled stages then reveal
+    // them together as an apparent pause/burst.
+    processPendingFluidMeshes();
     if (playerHealth <= 0) {
       if (!playerViewSuspended) {
         resetMovementView();
@@ -4051,7 +4102,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       lastTerrainStreamingMs,
       pendingTerrainLoads: pendingChunkLoads.length,
       pendingTerrainUnloads: pendingChunkUnloads.length,
-      pendingMeshRebuilds: pendingChunkMeshRebuilds.size,
+      pendingMeshRebuilds: pendingChunkMeshRebuilds.size + pendingFluidMeshRebuilds.size,
       lastMeshRebuildMs,
       totalMeshRebuildMs,
       lastRebuiltChunkCount,
@@ -4636,6 +4687,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
     if (!pendingChunkLoads.length && !pendingChunkUnloads.length
       && !pendingTerrainMeshDirtyChunks.size && !pendingChunkMeshRebuilds.size
+      && !pendingFluidMeshRebuilds.size
       && worldPresentationWaiters.length) {
       const settled = worldPresentationWaiters.splice(0);
       queueMicrotask(() => settled.forEach((resolve) => resolve(true)));
@@ -5194,6 +5246,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       }
       chunkMeshes.clear();
       pendingChunkMeshRebuilds.clear();
+      pendingFluidMeshRebuilds.clear();
+      fluidQueues.water.clear();
+      fluidQueues.lava.clear();
+      priorityFluidQueues.water.clear();
+      priorityFluidQueues.lava.clear();
+      derivedFluidKeys.clear();
       pendingChunkLoads = [];
       pendingChunkUnloads = [];
       loadedChunkKeys.clear();

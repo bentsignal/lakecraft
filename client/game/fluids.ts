@@ -162,6 +162,18 @@ export function fluidTickDelay(block: BlockId): number {
   return isLavaBlock(block) ? 360 : 180;
 }
 
+/**
+ * Advance a fluid deadline without accumulating frame-time drift or replaying
+ * several missed ticks in one burst. A slightly late frame stays anchored to
+ * the prior cadence; a genuinely stalled frame drops the missed work and
+ * resumes one full interval later.
+ */
+export function nextFluidStepDeadline(previousDeadline: number, now: number, delay: number): number {
+  const interval = delay > 0 ? delay : 1;
+  const scheduled = previousDeadline > 0 ? previousDeadline + interval : now + interval;
+  return scheduled > now ? scheduled : now + interval;
+}
+
 export type BreathState = Readonly<{ air: number; drain: number; damage: number }>;
 export function createBreathState(): BreathState {
   return { air: PLAYER_MAX_AIR, drain: 0, damage: 0 };

@@ -72,14 +72,14 @@ const PROPERTY_ALIAS_COUNT_OVERRIDES = Object.freeze({
   // active/includes/status use apiece.
   active: 23, activeTexture: 9, addEventListener: 38, ARRAY_BUFFER: 88, behavior: 30, behaviorSeed: 10, bindBuffer: 49, bindTexture: 26,
   block: 188, bottom: 30, bufferData: 25, bufferSubData: 14, byteLength: 17, BYTES_PER_ELEMENT: 17,
-  center: 34, charCodeAt: 25, chunkRevisions: 11, CLAMP_TO_EDGE: 16, clear: 43, clearTimeout: 26, count: 185,
-  createBuffer: 25, current: 857, currentTarget: 19, cycleLengthMs: 20, dayNight: 9, delete: 73, deleteBuffer: 43,
+  center: 34, charCodeAt: 25, chunkRevisions: 11, CLAMP_TO_EDGE: 16, clear: 49, clearTimeout: 26, count: 185,
+  createBuffer: 25, current: 857, currentTarget: 19, cycleLengthMs: 20, dayNight: 9, delete: 79, deleteBuffer: 43,
   deleteProgram: 18, deleteTexture: 14, documentElement: 9, drawArrays: 24, dropId: 18, endsWith: 27,
   drops: 25, DYNAMIC_DRAW: 17, enableVertexAttribArray: 27, equipment: 41,
   elapsedSeconds: 39, every: 51, filter: 51, flatMap: 24, fromEntries: 10, getAttribLocation: 24,
   // Embedding the block atlas replaces the remote response dimensions/status
   // with the generated decoder's byte-array length checks.
-  getUniformLocation: 69, health: 55, height: 35, includes: 52, inventory: 105, itemId: 182, length: 484,
+  getUniformLocation: 69, health: 55, height: 35, includes: 52, inventory: 105, itemId: 182, length: 488,
   indexOf: 27, maxHealth: 13, maxStack: 23, operationId: 43, options: 69, pixelStorei: 15, preventDefault: 54,
   ONE_MINUS_SRC_ALPHA: 6, pendingBlocks: 11, pendingSelfDamage: 10, pitch: 43, pointerLockElement: 24, position: 16,
   previousBlock: 19, previousX: 19, previousY: 16, previousYaw: 10, previousZ: 19, projectiles: 22,
@@ -89,7 +89,7 @@ const PROPERTY_ALIAS_COUNT_OVERRIDES = Object.freeze({
   state: 70, STATIC_DRAW: 8, status: 20, stopImmediatePropagation: 8, subarray: 19, terrain: 23, texImage2D: 15,
   texParameteri: 32, TEXTURE_2D: 74, TEXTURE_MAG_FILTER: 8, TEXTURE_MIN_FILTER: 8,
   TRIANGLES: 22, uniform1f: 41, uniform3fv: 11, uniformMatrix4fv: 12,
-  soundMuted: 12, toUpperCase: 10, UNPACK_FLIP_Y_WEBGL: 12, UNSIGNED_BYTE: 16, useProgram: 21, userId: 36, value: 37, values: 34,
+  soundMuted: 12, toUpperCase: 10, UNPACK_FLIP_Y_WEBGL: 12, UNSIGNED_BYTE: 16, useProgram: 21, userId: 36, value: 37, values: 35,
   vertexAttribPointer: 30, world: 70, worldTimeMs: 7,
 });
 export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_SPEC.split(",").map((entry) => {
@@ -99,9 +99,10 @@ export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_
 }));
 // The reviewed boundary includes cursor-directed inventory refs, exact
 // destroy-stage texture rendering, textured depth-bearing dropped items,
-// retained streaming buffers, and packed live-block coordinate access.
-export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_391;
-export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "1b2373659bea8a7ee81f7b369e4d923b5785b71d12d96e7bd2a57c6e75675468";
+// retained streaming buffers, packed live-block coordinate access, and the
+// paired prompt/background fluid queues plus their bounded mesh lifecycle.
+export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_408;
+export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "bbf4ea634d663733b20827b7b3e34082e1407ea9cea77410359cfb362d84e6b4";
 const PROPERTY_ALIAS_INDEX = new Map(COMPACT_CLIENT_PROPERTY_KEY_ALIASES.map(([name], index) => [name, index]));
 const PROPERTY_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_PROPERTY_KEY_ALIASES)),
@@ -110,14 +111,14 @@ const PROPERTY_BOUNDARY = Object.freeze({
 });
 // The embedded atlas decoder no longer needs the remote-loader Uint8Array copy
 // or its document-backed image decode branch; sparse projectile persistence
-// adds one fixed-pool ID uniqueness set at its untrusted save boundary.
-const GLOBAL_ALIAS_SPEC = "Float32Array:84,Map:74,Set:65,Uint8Array:21,document:99,performance:76,window:126";
+// and the prompt/background fluid scheduler retain their reviewed Sets.
+const GLOBAL_ALIAS_SPEC = "Float32Array:84,Map:74,Set:70,Uint8Array:21,document:99,performance:76,window:126";
 export const COMPACT_CLIENT_GLOBAL_ALIASES = Object.freeze(GLOBAL_ALIAS_SPEC.split(",").map((entry) => {
   const separator = entry.lastIndexOf(":");
   return Object.freeze([entry.slice(0, separator), Number(entry.slice(separator + 1))]);
 }));
-export const COMPACT_CLIENT_GLOBAL_OCCURRENCES = 545;
-export const COMPACT_CLIENT_GLOBAL_FINGERPRINT = "f945852eca1661fdfa8cf85f1ba88145c529537e3d35fd1a0f6742255f819a8b";
+export const COMPACT_CLIENT_GLOBAL_OCCURRENCES = 550;
+export const COMPACT_CLIENT_GLOBAL_FINGERPRINT = "0c8415cecaf731f55a059a97dcbf657b474ba1ac5f44fce373981d19c033959c";
 const GLOBAL_ALIAS_INDEX = new Map(COMPACT_CLIENT_GLOBAL_ALIASES.map(([name], index) => [name, index]));
 const GLOBAL_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_GLOBAL_ALIASES)),

@@ -12,6 +12,7 @@ import {
   fluidSurfaceCornerHeight,
   fluidSurfaceHeight,
   fluidTickDelay,
+  nextFluidStepDeadline,
   planFluidCell,
   pointInFluid,
   raycastFluidSource,
@@ -55,6 +56,12 @@ close(fluidSurfaceHeight(BLOCK.LAVA_FLOW_3), 2 / 9);
 assert.equal(fluidSurfaceHeight(BLOCK.WATER_FLOW_7, BLOCK.WATER), 1,
   "a vertical fluid column fills the cell beneath its matching fluid");
 assert.equal(fluidTickDelay(BLOCK.LAVA), 360, "lava reacts promptly while remaining slower than water");
+let waterDeadline = nextFluidStepDeadline(0, 1_000, fluidTickDelay(BLOCK.WATER));
+assert.equal(waterDeadline, 1_180, "a newly active water queue schedules one exact interval ahead");
+waterDeadline = nextFluidStepDeadline(waterDeadline, 1_192, fluidTickDelay(BLOCK.WATER));
+assert.equal(waterDeadline, 1_360, "a slightly late frame stays anchored to wall-clock cadence instead of drifting");
+waterDeadline = nextFluidStepDeadline(waterDeadline, 2_200, fluidTickDelay(BLOCK.WATER));
+assert.equal(waterDeadline, 2_380, "a long stall drops missed ticks instead of replaying a visible burst");
 
 cells.clear();
 cells.set(key(0, 0, 0), BLOCK.STONE);
@@ -220,8 +227,20 @@ assert.match(engine, /cameraFluid === "water" \? 22 : 4/,
 assert.doesNotMatch(engine.slice(engine.indexOf("function processFluidKind"), engine.indexOf("function processFluids")),
   /rebuildEditedWorldChunks|\.\.\.fluidQueues/,
   "fluid ticks stay inside the bounded deferred mesh pipeline");
-assert.match(engine, /fluidOnlyMeshEdit[\s\S]+pendingChunkMeshRebuilds\.add/,
-  "bucket source placement/removal defers chunk meshes instead of blocking the input frame");
+assert.match(engine, /fluidOnlyMeshEdit[\s\S]+queueFluidMeshRebuilds\(loadedEdits\)/,
+  "bucket source placement/removal uses the prompt bounded fluid-mesh queue");
+assert.match(engine, /processFluids\(now\);[\s\S]{0,320}processPendingFluidMeshes\(\)/,
+  "visible fluid stages rebuild promptly even while unrelated terrain chunks stream");
+assert.match(engine, /priorityFluidQueues[\s\S]+priorityBatch[\s\S]+enqueueFluidNeighborhood\(kind, x, y, z, priority\)/,
+  "player-triggered propagation remains ahead of background replay through the whole wave");
+const initialFluidReplay = engine.slice(
+  engine.indexOf("Natural lake/ocean sources"),
+  engine.indexOf("function caveSpawnY"),
+);
+assert.match(initialFluidReplay, /for \(const edit of options\.initialEdits \?\? \[\]\)/,
+  "only persisted fluid edits seed initial propagation work");
+assert.doesNotMatch(initialFluidReplay, /for \(const \[packedKey, block\] of blocks\)/,
+  "settled natural oceans do not create a world-sized background fluid queue");
 assert.match(engine, /mobAccumulatorSeconds = Math\.max\(0, mobAccumulatorSeconds\)/,
   "long frames cannot leave the strict Save and Quit runtime accumulator infinitesimally negative");
 assert.match(engine, /jumpHeld && \(!recoveringFromSurfaceBob \|\| shoreExitAhead\)/,
