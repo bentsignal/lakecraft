@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { getBowIconArt, getItemIconArt, type ItemIconArt } from "../client/components/itemIconArt.ts";
 import { createLakecraftDefaultSkinPixels } from "../client/game/playerSkin.ts";
 import { PLAYER_ARMOR_ATLAS_RGBA } from "../client/game/generated/playerArmorTexture.ts";
+import { DESTROY_STAGE_RGBA, DESTROY_STAGE_RGBA_SHA256, DESTROY_STAGE_SOURCE_SHA256 } from "../client/game/generated/destroyStageAtlas.ts";
 import { createHash } from "node:crypto";
 import { decodePng } from "../scripts/png-rgba.mjs";
 import { ITEMS, type ItemId } from "../shared/game.ts";
@@ -57,8 +58,18 @@ assert.equal(assets.bowStages.length, 3);
 assert.equal(Object.keys(assets.entities).length, 12);
 assert.equal(Object.keys(assets.armorTextures).length, 10);
 assert.ok(Object.hasOwn(assets.entities, "chicken"), "the exact temperate chicken joins every implemented mob texture");
-assert.equal(Object.keys(assets.blocks).length, 238);
+assert.equal(Object.keys(assets.blocks).length, 248);
 assert.ok(Object.hasOwn(assets.blocks, "lava"), "lava uses the exact installed 26.2 still texture");
+for (let stage = 0; stage < 10; stage += 1) {
+  const name = `destroy_stage_${stage}`;
+  const png = Buffer.from(assets.blocks[name], "base64");
+  const decoded = decodePng(png);
+  assert.deepEqual([...DESTROY_STAGE_RGBA.subarray(stage * 16 * 16 * 4, (stage + 1) * 16 * 16 * 4)], [...decoded.rgba],
+    `${name} is preserved pixel-exactly in the runtime destroy atlas`);
+  assert.equal(DESTROY_STAGE_SOURCE_SHA256[name as keyof typeof DESTROY_STAGE_SOURCE_SHA256],
+    createHash("sha256").update(png).digest("hex"));
+}
+assert.equal(createHash("sha256").update(DESTROY_STAGE_RGBA).digest("hex"), DESTROY_STAGE_RGBA_SHA256);
 assert.equal(Object.keys(assets.blockItemTextures).length, 15);
 assert.deepEqual(Object.keys(assets.blockLayers), ["grass_side_overlay"]);
 assert.deepEqual(Object.keys(assets.blockItemModelChains), [
@@ -197,6 +208,7 @@ const tintedTiles = new Set(["grass_top", "grass_side", "leaves", "short_grass",
 for (const [name, payload] of Object.entries(assets.blocks)) {
   const image = decodePng(Buffer.from(payload, "base64"));
   assert.deepEqual([image.width, image.height], [16, 16], `${name} retains its exact block tile`);
+  if (name.startsWith("destroy_stage_")) continue;
   const tile = TEXTURE_ATLAS_NAMES.indexOf(name as typeof TEXTURE_ATLAS_NAMES[number]);
   assert.ok(tile >= 0, `${name} has a production atlas slot`);
   const cell = TEXTURE_ATLAS_CELLS[tile];

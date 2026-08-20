@@ -219,7 +219,7 @@ import { PLAYER_ATTACK_COOLDOWN_MS, mitigatedPlayerDamage } from "../../shared/p
 import type { BlockType } from "../../shared/protocol.ts";
 import { ITEMS } from "../../shared/game.ts";
 import { WORLD_EDIT_MAX_Y, WORLD_EDIT_MIN_Y } from "../../shared/worldChunks.ts";
-import { appendWorldBlockCrackLines } from "./blockCracks.ts";
+import { appendWorldBlockCrackFaces, createDestroyStageTexture } from "./blockCracks.ts";
 import { hotbarWheelDirection } from "./hotbarInput.ts";
 import {
   DEFAULT_GAMEPLAY_CONTROL_BINDINGS,
@@ -294,6 +294,43 @@ type Vec3 = [number, number, number];
 
 function clampNumber(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
+}
+
+/** Parses the engine's canonical x,y,z key without split/substrings/arrays. */
+export function writeBlockKeyCoordinates(key: string, output: Int32Array): Int32Array {
+  let component = 0, value = 0, sign = 1, digits = 0;
+  for (let index = 0; index <= key.length; index += 1) {
+    const code = index < key.length ? key.charCodeAt(index) : 44;
+    if (code === 45 && digits === 0) { sign = -1; continue; }
+    if (code >= 48 && code <= 57) { value = value * 10 + code - 48; digits += 1; continue; }
+    if (code !== 44 || digits === 0 || component >= 3) throw new Error(`Invalid block key ${key}.`);
+    output[component++] = value * sign;
+    value = 0; sign = 1; digits = 0;
+  }
+  if (component !== 3) throw new Error(`Invalid block key ${key}.`);
+  return output;
+}
+
+// The persisted/network format intentionally keeps readable `x,y,z` strings,
+// but the live renderer can hold millions of natural blocks at distance 12.
+// Pack its private keys into one safe integer (21 x bits, 21 z bits, 8 y bits)
+// so streaming does not retain and churn millions of short-lived JS strings.
+const PACKED_BLOCK_XZ_OFFSET = 1_000_000;
+const PACKED_BLOCK_XZ_SPAN = 2_000_001;
+const PACKED_BLOCK_Y_SPAN = 256;
+
+export function packedBlockKey(x: number, y: number, z: number): number {
+  return ((x + PACKED_BLOCK_XZ_OFFSET) * PACKED_BLOCK_XZ_SPAN
+    + z + PACKED_BLOCK_XZ_OFFSET) * PACKED_BLOCK_Y_SPAN + y;
+}
+
+export function writePackedBlockKeyCoordinates(key: number, output: Int32Array): Int32Array {
+  const column = Math.floor(key / PACKED_BLOCK_Y_SPAN);
+  output[1] = key - column * PACKED_BLOCK_Y_SPAN;
+  const xOffset = Math.floor(column / PACKED_BLOCK_XZ_SPAN);
+  output[0] = xOffset - PACKED_BLOCK_XZ_OFFSET;
+  output[2] = column - xOffset * PACKED_BLOCK_XZ_SPAN - PACKED_BLOCK_XZ_OFFSET;
+  return output;
 }
 
 export const PLAYER_MAX_HEALTH = 20;
@@ -1925,6 +1962,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const atmosphereProgram = createProgram(gl, ATMOSPHERE_VERTEX_SHADER, ATMOSPHERE_FRAGMENT_SHADER);
   const emissiveGlowProgram = createProgram(gl, EMISSIVE_GLOW_VERTEX_SHADER, EMISSIVE_GLOW_FRAGMENT_SHADER);
   const terrainTexture = createTerrainTexture(gl);
+  const destroyStageTexture = createDestroyStageTexture(gl);
   const mobTexture = createMobTexture(gl);
   const positionLocation = gl.getAttribLocation(program, "aPosition");
   const colorLocation = gl.getAttribLocation(program, "aColor");
@@ -2088,7 +2126,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     yaw: 0,
     pitch: -0.08,
   };
-  const blocks = new Map<string, BlockId>();
+  const blocks = new Map<number, BlockId>();
+  const blockCoordinateScratch = new Int32Array(3);
   const fluidQueues: Record<FluidKind, Set<string>> = { water: new Set(), lava: new Set() };
   const derivedFluidKeys = new Set<string>();
   const nextFluidStepAt: Record<FluidKind, number> = { water: 0, lava: 0 };
@@ -2143,7 +2182,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
     invalidateMobTorchLightCache();
   }
-  const chunkBlocks = new Map<string, Set<string>>();
+  const chunkBlocks = new Map<string, Set<number>>();
   const loadedChunkKeys = new Set<string>();
   const pendingChunkMeshRebuilds = new Set<string>();
   const pendingTerrainMeshDirtyChunks = new Set<string>();
@@ -2199,12 +2238,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       terrain,
     );
     writeChunkSkyOccluders(skyOccluderColumns, coordinate.x, coordinate.z, materialized);
-    const owned = new Set<string>();
+    const owned = new Set<number>();
     for (const [key, block] of materialized) {
-      blocks.set(key, block);
-      owned.add(key);
+      writeBlockKeyCoordinates(key, blockCoordinateScratch);
+      const x = blockCoordinateScratch[0], y = blockCoordinateScratch[1], z = blockCoordinateScratch[2];
+      const packedKey = packedBlockKey(x, y, z);
+      blocks.set(packedKey, block);
+      owned.add(packedKey);
       if (isLightEmittingBlock(block)) {
-        const [x, y, z] = key.split(",").map(Number);
         addTorchLight(key, x, y, z, block);
       }
     }
@@ -2237,7 +2278,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   function getBlock(x: number, y: number, z: number): BlockId {
     if (y < TERRAIN_MIN_Y) return BLOCK.AIR;
-    return blocks.get(blockKey(x, y, z)) ?? BLOCK.AIR;
+    return blocks.get(packedBlockKey(x, y, z)) ?? BLOCK.AIR;
   }
 
   function enqueueFluidNeighborhood(kind: FluidKind, x: number, y: number, z: number): void {
@@ -2271,7 +2312,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const edits: WorldEdit[] = [];
     const batch = takeFluidQueueBatch(fluidQueues[kind], kind === "water" ? 24 : 32);
     for (const key of batch) {
-      const [x, y, z] = key.split(",").map(Number);
+      writeBlockKeyCoordinates(key, blockCoordinateScratch);
+      const x = blockCoordinateScratch[0], y = blockCoordinateScratch[1], z = blockCoordinateScratch[2];
       if (!loadedChunkKeys.has(chunkKeyForBlock(x, z))) continue;
       const planned = planFluidCell(kind, x, y, z, getBlock, !derivedFluidKeys.has(key));
       if (!planned) continue;
@@ -2296,14 +2338,16 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     processFluidKind("lava", now);
   }
 
-  for (const [key, block] of blocks) {
+  for (const [packedKey, block] of blocks) {
     const kind = fluidKind(block);
     if (!kind) continue;
+    writePackedBlockKeyCoordinates(packedKey, blockCoordinateScratch);
+    const x = blockCoordinateScratch[0], y = blockCoordinateScratch[1], z = blockCoordinateScratch[2];
+    const key = blockKey(x, y, z);
     if (block !== (kind === "water" ? BLOCK.WATER : BLOCK.LAVA)) {
       derivedFluidKeys.add(key);
       continue;
     }
-    const [x, y, z] = key.split(",").map(Number);
     enqueueFluidNeighborhood(kind, x, y, z);
   }
 
@@ -2399,6 +2443,15 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     return Number.isFinite(fallbackDistanceSquared) ? [fallbackX, fallbackY, fallbackZ] : null;
   }
   const chunkMeshes = new Map<string, ChunkMesh>();
+  // Rebuilding streamed chunks used to allocate four large JS arrays plus four
+  // exact-size Float32Arrays for every mesh. Retain one CPU staging set instead:
+  // WebGL copies bufferSubData before returning, so the next chunk can safely
+  // reuse it without retaining per-chunk CPU geometry or feeding major GC.
+  const chunkTextureVertices: number[] = [];
+  const chunkTransparentVertices: number[] = [];
+  const chunkWaterVertices: number[] = [];
+  const chunkColorVertices: number[] = [];
+  const chunkUploadScratch = Array.from({ length: 4 }, () => ({ data: new Float32Array(0) }));
   const visibleMeshes: ChunkMesh[] = [];
   const transparentMeshes: ChunkMesh[] = [];
   const waterMeshes: ChunkMesh[] = [];
@@ -2421,7 +2474,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       && isLocalMobSpawnOutsideView(pose.x, pose.z, pose.yaw, x, z)
     ))
       && passiveMobWaterSurfaceY(x, y, z) === null
-      && !blocks.has(blockKey(x, y, z)) && !blocks.has(blockKey(x, y + 1, z)),
+      && !blocks.has(packedBlockKey(x, y, z)) && !blocks.has(packedBlockKey(x, y + 1, z)),
   };
   const mobSimulation = createMobSimulation(options.simulateMobs === false ? [] : createMobSpawns(mobPopulationOptions));
   let mobIds = listMobIds(mobSimulation);
@@ -2522,6 +2575,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let mobDrawCalls = 0;
   let droppedItemDrawCalls = 0;
   let droppedItemVertexCount = 0;
+  let droppedItemColorVertexCount = 0;
+  let droppedItemTexturedVertexCount = 0;
   let droppedItemVisibleCount = 0;
   let playerProjectileVertexCount = 0;
   let primedTntVertexCount = 0;
@@ -2592,7 +2647,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   function updateMiningCrackGeometry(): void {
     crackLines.length = 0;
     crackVertexCount = target
-      ? appendWorldBlockCrackLines(crackLines, target.block,
+      ? appendWorldBlockCrackFaces(crackLines, target.block,
         miningProgress,
         blockCollisionHeight(target.block.block),
       )
@@ -2730,12 +2785,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       terrain,
     );
     writeChunkSkyOccluders(skyOccluderColumns, chunkX, chunkZ, materialized);
-    const owned = new Set<string>();
+    const owned = new Set<number>();
     for (const [key, block] of materialized) {
-      blocks.set(key, block);
-      owned.add(key);
+      writeBlockKeyCoordinates(key, blockCoordinateScratch);
+      const x = blockCoordinateScratch[0], y = blockCoordinateScratch[1], z = blockCoordinateScratch[2];
+      const packedKey = packedBlockKey(x, y, z);
+      blocks.set(packedKey, block);
+      owned.add(packedKey);
       if (isLightEmittingBlock(block)) {
-        const [x, y, z] = key.split(",").map(Number);
         addTorchLight(key, x, y, z, block);
       }
     }
@@ -2748,7 +2805,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         derivedFluidKeys.add(key);
         continue;
       }
-      const [x, y, z] = key.split(",").map(Number);
+      writeBlockKeyCoordinates(key, blockCoordinateScratch);
+      const x = blockCoordinateScratch[0], y = blockCoordinateScratch[1], z = blockCoordinateScratch[2];
       enqueueFluidNeighborhood(kind, x, y, z);
     }
   }
@@ -2765,11 +2823,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (mesh.colorBuffer) gl.deleteBuffer(mesh.colorBuffer);
       chunkMeshes.delete(owner);
     }
-    for (const key of chunkBlocks.get(owner) ?? []) {
+    for (const packedKey of chunkBlocks.get(owner) ?? []) {
+      writePackedBlockKeyCoordinates(packedKey, blockCoordinateScratch);
+      const key = blockKey(blockCoordinateScratch[0], blockCoordinateScratch[1], blockCoordinateScratch[2]);
       derivedFluidKeys.delete(key);
       fluidQueues.water.delete(key);
       fluidQueues.lava.delete(key);
-      blocks.delete(key);
+      blocks.delete(packedKey);
       removeTorchLight(key);
     }
     chunkBlocks.delete(owner);
@@ -2841,24 +2901,25 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function setBlock(x: number, y: number, z: number, block: BlockId): boolean {
-    const key = blockKey(x, y, z);
+    const key = packedBlockKey(x, y, z);
+    const canonicalKey = blockKey(x, y, z);
     const owner = chunkKeyForBlock(x, z);
     const previous = blocks.get(key) ?? BLOCK.AIR;
-    if (previous === BLOCK.TNT && block !== BLOCK.TNT && primedTnt.delete(key)) {
+    if (previous === BLOCK.TNT && block !== BLOCK.TNT && primedTnt.delete(canonicalKey)) {
       mobRenderer.setLocalPrimedTnt(x, y, z, false);
     }
-    if (isLightEmittingBlock(previous)) removeTorchLight(key);
+    if (isLightEmittingBlock(previous)) removeTorchLight(canonicalKey);
     if (block === BLOCK.AIR) {
       blocks.delete(key);
       const owned = chunkBlocks.get(owner);
       owned?.delete(key);
     } else {
       blocks.set(key, block);
-      if (isLightEmittingBlock(block)) addTorchLight(key, x, y, z, block);
+      if (isLightEmittingBlock(block)) addTorchLight(canonicalKey, x, y, z, block);
       if (previous === BLOCK.AIR) {
         let owned = chunkBlocks.get(owner);
         if (!owned) {
-          owned = new Set<string>();
+          owned = new Set<number>();
           chunkBlocks.set(owner, owned);
         }
         owned.add(key);
@@ -2880,20 +2941,38 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     rebuildWorldChunks([...dirty].filter((key) => loadedChunkKeys.has(key)));
   }
 
+  function uploadChunkGeometry(
+    buffer: WebGLBuffer,
+    values: number[],
+    scratch: { data: Float32Array },
+  ): void {
+    if (scratch.data.length < values.length) {
+      let capacity = Math.max(256, scratch.data.length || 256);
+      while (capacity < values.length) capacity *= 2;
+      scratch.data = new Float32Array(capacity);
+    }
+    scratch.data.set(values);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, values.length * Float32Array.BYTES_PER_ELEMENT, gl.STATIC_DRAW);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, scratch.data.subarray(0, values.length));
+  }
+
   function rebuildChunkMesh(chunkKey: string): void {
     const coordinate = parseChunkKey(chunkKey);
-    const textureVertices: number[] = [];
-    const transparentVertices: number[] = [];
-    const waterVertices: number[] = [];
-    const colorVertices: number[] = [];
+    const textureVertices = chunkTextureVertices; textureVertices.length = 0;
+    const transparentVertices = chunkTransparentVertices; transparentVertices.length = 0;
+    const waterVertices = chunkWaterVertices; waterVertices.length = 0;
+    const colorVertices = chunkColorVertices; colorVertices.length = 0;
     const specialVertices = { textured: textureVertices, color: colorVertices };
     let minY = Infinity;
     let maxY = -Infinity;
-    for (const key of chunkBlocks.get(chunkKey) ?? []) {
-      const block = blocks.get(key);
+    for (const packedKey of chunkBlocks.get(chunkKey) ?? []) {
+      const block = blocks.get(packedKey);
       if (block === undefined || block === BLOCK.AIR) continue;
+      writePackedBlockKeyCoordinates(packedKey, blockCoordinateScratch);
+      const x = blockCoordinateScratch[0], y = blockCoordinateScratch[1], z = blockCoordinateScratch[2];
+      const key = blockKey(x, y, z);
       if (block === BLOCK.TNT && primedTnt.has(key)) continue;
-      const [x, y, z] = key.split(",").map(Number);
       minY = Math.min(minY, y);
       maxY = Math.max(
         maxY,
@@ -2953,7 +3032,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         const start = colorVertices.length;
         const bed = getStoredBedAt(x, y, z);
         const isFoot = bed ? bedCellKey(bed.foot) === blockKey(x, y, z) : false;
-        const footLoaded = bed ? blocks.get(bedCellKey(bed.foot)) === BLOCK.BED : false;
+        const footLoaded = bed ? blocks.get(packedBlockKey(bed.foot.x, bed.foot.y, bed.foot.z)) === BLOCK.BED : false;
         appendSpecialBedMesh(
           specialVertices,
           bed && !isFoot && !footLoaded ? bed.foot.x : x,
@@ -3096,8 +3175,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (textureVertices.length) {
       textureBuffer ??= gl.createBuffer();
       if (!textureBuffer) throw new Error("Unable to allocate a textured chunk mesh buffer.");
-      gl.bindBuffer(gl.ARRAY_BUFFER, textureBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(textureVertices), gl.STATIC_DRAW);
+      uploadChunkGeometry(textureBuffer, textureVertices, chunkUploadScratch[0]);
     } else if (textureBuffer) {
       gl.deleteBuffer(textureBuffer);
       textureBuffer = null;
@@ -3106,8 +3184,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (transparentVertices.length) {
       transparentBuffer ??= gl.createBuffer();
       if (!transparentBuffer) throw new Error("Unable to allocate a transparent chunk mesh buffer.");
-      gl.bindBuffer(gl.ARRAY_BUFFER, transparentBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(transparentVertices), gl.STATIC_DRAW);
+      uploadChunkGeometry(transparentBuffer, transparentVertices, chunkUploadScratch[1]);
     } else if (transparentBuffer) {
       gl.deleteBuffer(transparentBuffer);
       transparentBuffer = null;
@@ -3116,8 +3193,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (waterVertices.length) {
       waterBuffer ??= gl.createBuffer();
       if (!waterBuffer) throw new Error("Unable to allocate a transparent chunk mesh buffer.");
-      gl.bindBuffer(gl.ARRAY_BUFFER, waterBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(waterVertices), gl.STATIC_DRAW);
+      uploadChunkGeometry(waterBuffer, waterVertices, chunkUploadScratch[2]);
     } else if (waterBuffer) {
       gl.deleteBuffer(waterBuffer);
       waterBuffer = null;
@@ -3126,8 +3202,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (colorVertices.length) {
       colorBuffer ??= gl.createBuffer();
       if (!colorBuffer) throw new Error("Unable to allocate a color chunk mesh buffer.");
-      gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colorVertices), gl.STATIC_DRAW);
+      uploadChunkGeometry(colorBuffer, colorVertices, chunkUploadScratch[3]);
     } else if (colorBuffer) {
       gl.deleteBuffer(colorBuffer);
       colorBuffer = null;
@@ -4038,6 +4113,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       nameplateVertexCount = remoteStats.nameplateVertexCount;
       const droppedItemStats = droppedItemRenderer.update(now, eye);
       droppedItemVertexCount = droppedItemStats.vertexCount;
+      droppedItemColorVertexCount = droppedItemStats.colorVertexCount;
+      droppedItemTexturedVertexCount = droppedItemStats.textureVertexCount;
       droppedItemVisibleCount = droppedItemStats.visibleItemCount;
       const playerProjectileStats = playerProjectileRenderer.update(now, eye);
       playerProjectileVertexCount = playerProjectileStats.vertexCount;
@@ -4208,6 +4285,17 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.drawArrays(gl.TRIANGLES, 0, mesh.textureVertexCount);
       drawCalls += 1;
     }
+    if (droppedItemTexturedVertexCount) {
+      gl.uniform4fv(terrainTorchLightsLocation, activeTorchUniforms);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, terrainTexture);
+      gl.uniform1i(terrainAtlasLocation, 0);
+      gl.uniform1f(terrainAlphaCutoffLocation, 0.5);
+      bindTerrainBuffer(droppedItemRenderer.textureBuffer);
+      gl.drawArrays(gl.TRIANGLES, 0, droppedItemTexturedVertexCount);
+      drawCalls += 1;
+      droppedItemDrawCalls += 1;
+    }
 
     gl.useProgram(program);
     gl.uniformMatrix4fv(mvpLocation, false, mvp);
@@ -4257,9 +4345,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       drawCalls += 1;
       avatarDrawCalls += 1;
     }
-    if (droppedItemVertexCount) {
+    if (droppedItemColorVertexCount) {
       bindBuffer(droppedItemRenderer.buffer);
-      gl.drawArrays(gl.TRIANGLES, 0, droppedItemVertexCount);
+      gl.drawArrays(gl.TRIANGLES, 0, droppedItemColorVertexCount);
       drawCalls += 1;
       droppedItemDrawCalls += 1;
     }
@@ -4435,13 +4523,25 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
     if (target) {
       if (crackVertexCount > 0) {
-        bindBuffer(crackBuffer);
-        gl.uniform1f(fogLocation, 0);
-        gl.uniform1f(lightingLocation, 0);
-        gl.lineWidth(2);
-        gl.drawArrays(gl.LINES, 0, crackVertexCount);
+        gl.useProgram(terrainProgram);
+        gl.uniformMatrix4fv(terrainMvpLocation, false, mvp);
+        gl.uniform3fv(terrainCameraLocation, eye);
+        gl.uniform1f(terrainFogLocation, 0);
+        gl.uniform1f(terrainSkyExposureLocation, 1);
+        gl.uniform4fv(terrainTorchLightsLocation, activeTorchUniforms);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, destroyStageTexture);
+        gl.uniform1i(terrainAtlasLocation, 0);
+        gl.uniform1f(terrainAlphaCutoffLocation, 0.5);
+        gl.depthMask(false);
+        bindTerrainBuffer(crackBuffer);
+        gl.drawArrays(gl.TRIANGLES, 0, crackVertexCount);
+        gl.depthMask(true);
         drawCalls += 1;
       }
+      gl.useProgram(program);
+      gl.uniformMatrix4fv(mvpLocation, false, mvp);
+      gl.uniform3fv(cameraLocation, eye);
       gl.lineWidth(1);
       bindBuffer(lineBuffer);
       gl.uniform1f(fogLocation, 0);
@@ -5122,6 +5222,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.deleteProgram(atmosphereProgram);
       gl.deleteProgram(emissiveGlowProgram);
       gl.deleteTexture(terrainTexture);
+      gl.deleteTexture(destroyStageTexture);
       destroyMobTexture(gl, mobTexture);
     },
     waitForWorldPresentation() {
@@ -5380,12 +5481,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       const changed: WorldEdit[] = [];
       for (const key of primedTnt) {
         if (nextKeys.has(key)) continue;
-        const [x, y, z] = key.split(",").map(Number);
+        writeBlockKeyCoordinates(key, blockCoordinateScratch);
+        const x = blockCoordinateScratch[0], y = blockCoordinateScratch[1], z = blockCoordinateScratch[2];
         changed.push({ x, y, z, block: BLOCK.TNT });
       }
       for (const key of nextKeys) {
         if (primedTnt.has(key)) continue;
-        const [x, y, z] = key.split(",").map(Number);
+        writeBlockKeyCoordinates(key, blockCoordinateScratch);
+        const x = blockCoordinateScratch[0], y = blockCoordinateScratch[1], z = blockCoordinateScratch[2];
         changed.push({ x, y, z, block: BLOCK.TNT });
       }
       primedTnt.clear();

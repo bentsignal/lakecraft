@@ -63,12 +63,16 @@ for (const itemId of ["grass", "leaves"] as const) {
 
   const droppedVertices = droppedBlockCubeVertexCount(itemId);
   const dropped = new Float32Array(droppedVertices * 6);
-  const stats = { totalItemCount: 0, visibleItemCount: 0, vertexCount: 0 };
-  writeDroppedItemGeometry(new Float32Array([0, 0, 0]), new Float32Array(1), [itemId], 1, [0, 0, 0], 0, dropped, stats);
+  const stats = { totalItemCount: 0, visibleItemCount: 0, vertexCount: 0,
+    colorVertexCount: 0, textureVertexCount: 0 };
+  writeDroppedItemGeometry(new Float32Array([0, 0, 0]), new Float32Array(1), [itemId], 1,
+    [0, 0, 0], 0, new Float32Array(0), dropped, stats);
   assert.equal(stats.vertexCount, droppedVertices);
+  assert.equal(stats.textureVertexCount, 36);
   assert.ok(Array.from({ length: droppedVertices }, (_, vertex) => vertex * 6)
-    .some((offset) => dropped[offset + 4] > dropped[offset + 3] && dropped[offset + 4] > dropped[offset + 5]),
-  `${itemId} dropped cube inherits the plains-tinted atlas`);
+    .every((offset) => dropped[offset + 3] >= 0 && dropped[offset + 3] <= 1
+      && dropped[offset + 4] >= 0 && dropped[offset + 4] <= 1),
+  `${itemId} dropped cube carries exact plains-tinted atlas UVs`);
 }
 
 assert.ok(getItemIconArt("short_grass").runs.some(({ color }) => {

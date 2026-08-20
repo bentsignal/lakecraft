@@ -43,9 +43,15 @@ Lakecraft should feel immediately familiar to a Minecraft Java Edition player. T
 - Ordinary glass previously disappeared with camera/order changes because its opaque frame and translucent fill both lived in a non-depth-writing transparent chunk pass. Keep the installed glass geometry in two passes: the alpha-tested frame first writes depth, then the blended fill contributes color without depth writes. Third-person held glass uses bounded volumetric frame edges rather than coplanar transparent texels. `tests/glassMaterials.test.ts` and `tests/playerSkinRenderer.test.ts` guard both paths.
 - Water's installed tile is constant 180/255 alpha. Keep water in its own near-to-far, depth-writing blended buffer before the far-to-near glass fill buffer. Stable depth ownership prevents water surfaces changing or disappearing when transparent chunk order changes without drawing every transparent face twice.
 
+## Breaking and dropped-item rendering
+
+- Block mining uses the exact ten installed `destroy_stage_0` through `destroy_stage_9` textures, sampled with nearest-neighbor filtering on all six collision faces. Progress advances through the stages, and releasing the button removes the overlay immediately.
+- Dropped full blocks are small rotating cubes textured from the same per-face world atlas as placed blocks. Dropped tools and other flat item sprites retain their installed front/back art but include opaque-pixel edge faces, so they read as thin 3D objects rather than untextured cards.
+
 ## Performance and multiplayer
 
 - Target 60 FPS on an ordinary desktop, p95 frame time under 25 ms, and no unbounded mesh or DOM growth while traveling.
+- Chunk mesh rebuilds must reuse retained geometry/upload scratch and private numeric block keys. Do not restore per-block string splitting or per-rebuild exact-size typed-array allocation: at 12 chunks those allocations produced repeated 100–160 ms garbage-collection stalls even though steady-state GPU rendering was fast.
 - Generate/unload horizontal chunk windows as the player moves; global coordinates must be deterministic and seam-free in every direction.
 - Moving players target 5 updates/second through Lakebed, with local interpolation between compact snapshots and much slower idle keepalive. Measure the resulting mutation quota honestly.
 - Dropped items and pickups are authoritative Lakebed state changes, never client-only duplication opportunities and never frame-loop writes.

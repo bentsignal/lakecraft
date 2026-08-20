@@ -523,6 +523,35 @@ export function createVisualLabRenderer(canvas: HTMLCanvasElement): VisualLabRen
       gl.uniform1i(mobAtlasLocation, 0);
       gl.uniformMatrix4fv(mobMvpLocation, false, mvp);
       gl.uniform3f(mobLightLocation, light[0], light[1], light[2]);
+    } else if (mode === "dropped") {
+      if (droppedItemRenderer.stats.textureVertexCount > 0) {
+        gl.useProgram(skinProgram);
+        gl.bindBuffer(gl.ARRAY_BUFFER, droppedItemRenderer.textureBuffer);
+        gl.enableVertexAttribArray(skinPosition);
+        gl.enableVertexAttribArray(skinUv);
+        gl.enableVertexAttribArray(skinShade);
+        gl.vertexAttribPointer(skinPosition, 3, gl.FLOAT, false, PLAYER_SKIN_VERTEX_STRIDE * 4, 0);
+        gl.vertexAttribPointer(skinUv, 2, gl.FLOAT, false, PLAYER_SKIN_VERTEX_STRIDE * 4, 12);
+        gl.vertexAttribPointer(skinShade, 1, gl.FLOAT, false, PLAYER_SKIN_VERTEX_STRIDE * 4, 20);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, atlasTexture);
+        gl.uniform1i(skinSamplerLocation, 0);
+        gl.uniformMatrix4fv(skinMvpLocation, false, mvp);
+        gl.uniform3f(skinLightLocation, light[0], light[1], light[2]);
+        gl.drawArrays(gl.TRIANGLES, 0, droppedItemRenderer.stats.textureVertexCount);
+      }
+      if (droppedItemRenderer.stats.colorVertexCount > 0) {
+        gl.useProgram(program);
+        gl.bindBuffer(gl.ARRAY_BUFFER, droppedItemRenderer.buffer);
+        gl.enableVertexAttribArray(position);
+        gl.enableVertexAttribArray(color);
+        gl.vertexAttribPointer(position, 3, gl.FLOAT, false, 24, 0);
+        gl.vertexAttribPointer(color, 3, gl.FLOAT, false, 24, 12);
+        gl.uniformMatrix4fv(mvpLocation, false, mvp);
+        gl.uniform3f(lightLocation, light[0], light[1], light[2]);
+        gl.drawArrays(gl.TRIANGLES, 0, droppedItemRenderer.stats.colorVertexCount);
+      }
+      return;
     } else {
       gl.useProgram(program);
       gl.bindBuffer(gl.ARRAY_BUFFER, mode === "mob" ? mobRenderer.buffer : mode === "dropped" ? droppedItemRenderer.buffer : buffer);

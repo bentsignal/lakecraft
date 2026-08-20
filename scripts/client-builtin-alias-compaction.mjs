@@ -12,27 +12,27 @@ import { pathToFileURL } from "node:url";
 export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["Math", "abs", 106]),
   // Directional doors and derived stair corners share retained transform math.
-  Object.freeze(["Math", "cos", 64]),
+  Object.freeze(["Math", "cos", 63]),
   // The embedded block-atlas decoder keeps its pixel-grid size and byte
   // addressing arithmetic inside the capsule's reviewed production boundary.
   Object.freeze(["Math", "ceil", 35]),
   // Shared fluid-corner sampling and bounded queue/shore calculations retain
   // exact integer cell coordinates and one horizontal movement magnitude.
-  Object.freeze(["Math", "floor", 290]),
+  Object.freeze(["Math", "floor", 291]),
   Object.freeze(["Math", "hypot", 38]),
   // Remote atlas integrity now hashes the immutable PNG bytes with Web Crypto
   // instead of applying one pixel-space FNV multiplication after browser decode.
   Object.freeze(["Math", "imul", 35]),
   // Superflat generation and sparse projectile validation clamp reviewed
   // materialization/pool bounds; surface-bob recovery clamps its live timer.
-  Object.freeze(["Math", "max", 284]),
-  Object.freeze(["Math", "min", 223]),
+  Object.freeze(["Math", "max", 285]),
+  Object.freeze(["Math", "min", 224]),
   Object.freeze(["Math", "round", 35]),
-  Object.freeze(["Math", "sin", 78]),
+  Object.freeze(["Math", "sin", 77]),
   Object.freeze(["Math", "PI", 123]),
   // The shared, immutable default/superflat terrain descriptor joins the client bundle.
   Object.freeze(["Object", "freeze", 176]),
-  Object.freeze(["Object", "keys", 33]),
+  Object.freeze(["Object", "keys", 32]),
   // Query bridges reject Lakebed's [] loading sentinel before publishing data.
   Object.freeze(["Array", "isArray", 94]),
   Object.freeze(["Number", "isFinite", 270]),
@@ -49,7 +49,7 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["JSON", "parse", 12]),
 ]);
 export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 2_161;
-export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "cb7dcbabc14b4b88d638469db3d135673a28d9487d967adff26198ec1fcda1b8";
+export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "6b3f75a8051de503fa470d7386d9d7bddb30643828951765473b863b9c2b86d0";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [
     `${receiver}.${method}`, count,
@@ -70,26 +70,26 @@ const PROPERTY_ALIAS_SPEC = "action:25,active:20,activeAppearanceRequest:10,acti
 const PROPERTY_ALIAS_COUNT_OVERRIDES = Object.freeze({
   // Remote mob-atlas fetch and integrity validation add one reviewed
   // active/includes/status use apiece.
-  active: 23, activeTexture: 7, addEventListener: 38, ARRAY_BUFFER: 89, behavior: 30, behaviorSeed: 10, bindBuffer: 50, bindTexture: 22,
-  block: 188, bottom: 28, bufferData: 27, bufferSubData: 12, byteLength: 16, BYTES_PER_ELEMENT: 16,
-  center: 34, charCodeAt: 24, chunkRevisions: 11, CLAMP_TO_EDGE: 14, clear: 43, clearTimeout: 26, count: 185,
-  createBuffer: 24, current: 857, currentTarget: 19, cycleLengthMs: 20, dayNight: 9, delete: 73, deleteBuffer: 42,
-  deleteProgram: 18, deleteTexture: 13, documentElement: 9, drawArrays: 23, dropId: 18, endsWith: 27,
-  drops: 25, DYNAMIC_DRAW: 16, enableVertexAttribArray: 27, equipment: 41,
+  active: 23, activeTexture: 9, addEventListener: 38, ARRAY_BUFFER: 88, behavior: 30, behaviorSeed: 10, bindBuffer: 49, bindTexture: 26,
+  block: 188, bottom: 30, bufferData: 25, bufferSubData: 14, byteLength: 17, BYTES_PER_ELEMENT: 17,
+  center: 34, charCodeAt: 25, chunkRevisions: 11, CLAMP_TO_EDGE: 16, clear: 43, clearTimeout: 26, count: 185,
+  createBuffer: 25, current: 857, currentTarget: 19, cycleLengthMs: 20, dayNight: 9, delete: 73, deleteBuffer: 43,
+  deleteProgram: 18, deleteTexture: 14, documentElement: 9, drawArrays: 24, dropId: 18, endsWith: 27,
+  drops: 25, DYNAMIC_DRAW: 17, enableVertexAttribArray: 27, equipment: 41,
   elapsedSeconds: 39, every: 51, filter: 51, flatMap: 24, fromEntries: 10, getAttribLocation: 24,
   // Embedding the block atlas replaces the remote response dimensions/status
   // with the generated decoder's byte-array length checks.
-  getUniformLocation: 69, health: 55, height: 35, includes: 52, inventory: 105, itemId: 182, length: 471,
-  indexOf: 28, maxHealth: 13, maxStack: 23, operationId: 43, options: 69, pixelStorei: 12, preventDefault: 54,
+  getUniformLocation: 69, health: 55, height: 35, includes: 52, inventory: 105, itemId: 182, length: 484,
+  indexOf: 27, maxHealth: 13, maxStack: 23, operationId: 43, options: 69, pixelStorei: 15, preventDefault: 54,
   ONE_MINUS_SRC_ALPHA: 6, pendingBlocks: 11, pendingSelfDamage: 10, pitch: 43, pointerLockElement: 24, position: 16,
   previousBlock: 19, previousX: 19, previousY: 16, previousYaw: 10, previousZ: 19, projectiles: 22,
   prototype: 17, randomUUID: 10, readyState: 10, reject: 24, removeEventListener: 40,
   mouseSensitivity: 4, renderDistance: 11, repeat: 32, resolve: 19, revision: 32, rotationDegrees: 22, selectedHotbar: 15,
   remainder: 17, sequence: 47, setTimeout: 22, sheared: 16, slice: 111, sourceSlot: 10, startsWith: 35,
-  state: 70, STATIC_DRAW: 11, status: 20, stopImmediatePropagation: 8, subarray: 18, terrain: 23, texImage2D: 14,
-  texParameteri: 28, TEXTURE_2D: 65, TEXTURE_MAG_FILTER: 7, TEXTURE_MIN_FILTER: 7,
-  TRIANGLES: 20, uniform1f: 39, uniform3fv: 9, uniformMatrix4fv: 10,
-  soundMuted: 12, toUpperCase: 10, UNPACK_FLIP_Y_WEBGL: 10, UNSIGNED_BYTE: 15, useProgram: 19, userId: 36, value: 37, values: 34,
+  state: 70, STATIC_DRAW: 8, status: 20, stopImmediatePropagation: 8, subarray: 19, terrain: 23, texImage2D: 15,
+  texParameteri: 32, TEXTURE_2D: 74, TEXTURE_MAG_FILTER: 8, TEXTURE_MIN_FILTER: 8,
+  TRIANGLES: 22, uniform1f: 41, uniform3fv: 11, uniformMatrix4fv: 12,
+  soundMuted: 12, toUpperCase: 10, UNPACK_FLIP_Y_WEBGL: 12, UNSIGNED_BYTE: 16, useProgram: 21, userId: 36, value: 37, values: 34,
   vertexAttribPointer: 30, world: 70, worldTimeMs: 7,
 });
 export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_SPEC.split(",").map((entry) => {
@@ -97,12 +97,11 @@ export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_
   const name = entry.slice(0, separator);
   return Object.freeze([name, PROPERTY_ALIAS_COUNT_OVERRIDES[name] ?? Number(entry.slice(separator + 1))]);
 }));
-// Cursor-directed inventory refs, transparent held blocks, the compact-safe
-// stair palette resolver, consolidated settings props, async armor repainting,
-// server-notice classification, and sparse legacy-compatible projectile saves
-// account for this reviewed exact-property boundary.
-export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_333;
-export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "42c1fd42ff9bd8b132d1bbfb9678dd29fa3f3abe72d4db1f85caacc1210b8f6e";
+// The reviewed boundary includes cursor-directed inventory refs, exact
+// destroy-stage texture rendering, textured depth-bearing dropped items,
+// retained streaming buffers, and packed live-block coordinate access.
+export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_391;
+export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "1b2373659bea8a7ee81f7b369e4d923b5785b71d12d96e7bd2a57c6e75675468";
 const PROPERTY_ALIAS_INDEX = new Map(COMPACT_CLIENT_PROPERTY_KEY_ALIASES.map(([name], index) => [name, index]));
 const PROPERTY_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_PROPERTY_KEY_ALIASES)),
@@ -112,13 +111,13 @@ const PROPERTY_BOUNDARY = Object.freeze({
 // The embedded atlas decoder no longer needs the remote-loader Uint8Array copy
 // or its document-backed image decode branch; sparse projectile persistence
 // adds one fixed-pool ID uniqueness set at its untrusted save boundary.
-const GLOBAL_ALIAS_SPEC = "Float32Array:83,Map:74,Set:65,Uint8Array:21,document:99,performance:76,window:126";
+const GLOBAL_ALIAS_SPEC = "Float32Array:84,Map:74,Set:65,Uint8Array:21,document:99,performance:76,window:126";
 export const COMPACT_CLIENT_GLOBAL_ALIASES = Object.freeze(GLOBAL_ALIAS_SPEC.split(",").map((entry) => {
   const separator = entry.lastIndexOf(":");
   return Object.freeze([entry.slice(0, separator), Number(entry.slice(separator + 1))]);
 }));
-export const COMPACT_CLIENT_GLOBAL_OCCURRENCES = 544;
-export const COMPACT_CLIENT_GLOBAL_FINGERPRINT = "5fc8d62b1d1867e0a8c5b7cbe99883bd3e2ab75f691b0eb053f7e8172a565c82";
+export const COMPACT_CLIENT_GLOBAL_OCCURRENCES = 545;
+export const COMPACT_CLIENT_GLOBAL_FINGERPRINT = "f945852eca1661fdfa8cf85f1ba88145c529537e3d35fd1a0f6742255f819a8b";
 const GLOBAL_ALIAS_INDEX = new Map(COMPACT_CLIENT_GLOBAL_ALIASES.map(([name], index) => [name, index]));
 const GLOBAL_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_GLOBAL_ALIASES)),

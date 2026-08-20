@@ -18,6 +18,11 @@ maintained text renderer. The small inventory PNG is retained losslessly so
 the slot and player-preview chrome is not reconstructed approximately in CSS.
 The 182×22 hotbar and 24×23 selection frame are retained losslessly at 2× UI
 scale so their borders and slot bevels also are not reconstructed in CSS.
+The ten block-destruction stages and the item/block art used by dropped-item
+renders are likewise selected from that pinned client. Destruction stages are
+packed losslessly into one nearest-neighbor atlas; dropped blocks reuse the
+world texture atlas, while dropped tools/items extrude their installed sprite
+silhouettes into thin, depth-bearing meshes.
 
 The home-screen “MINECRAFT / LAKE BED EDITION” title image was generated for
 this project with OpenAI ImageGen from a user-supplied composition reference,

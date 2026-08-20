@@ -67,7 +67,7 @@ const transparentPass = engineSource.slice(engineSource.indexOf(
 ));
 assert.match(transparentPass, /gl\.enable\(gl\.BLEND\)/);
 assert.match(transparentPass, /gl\.blendFunc\(gl\.SRC_ALPHA, gl\.ONE_MINUS_SRC_ALPHA\)/);
-assert.match(engineSource, /const waterVertices: number\[\] = \[\]/);
+assert.match(engineSource, /const chunkWaterVertices: number\[\] = \[\]/);
 assert.match(engineSource, /if \(isFluidBlock\(block\)\) \{[\s\S]*?appendFluidBlockMesh\(\s*waterVertices/,
   "fluids own a dedicated buffer instead of sharing camera-sorted glass geometry");
 assert.ok(engineSource.indexOf("waterMeshes.sort((left, right) => -compareTransparentChunkMeshes(left, right))")

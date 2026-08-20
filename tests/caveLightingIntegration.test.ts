@@ -88,8 +88,8 @@ for (const forbidden of [
 ]) {
   assert.equal(render.includes(forbidden), false, `render loop avoids exposure scan: ${forbidden}`);
 }
-assert.equal(engine.match(/gl\.drawArrays/g)?.length, 16,
-  "emissive aura plus the stable single fluid color pass add bounded draw sites");
+assert.equal(engine.match(/gl\.drawArrays/g)?.length, 17,
+  "emissive aura, stable fluid color, and one destroy-stage overlay add bounded draw sites");
 assert.ok(engine.includes("appendSpecialTorchMesh("));
 assert.ok(engine.includes("const specialVertices = { textured: textureVertices, color: colorVertices }"),
   "the torch stem uses the retained atlas batch while its warm ember stays in the color batch");

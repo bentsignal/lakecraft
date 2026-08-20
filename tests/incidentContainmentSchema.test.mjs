@@ -110,10 +110,12 @@ for (const path of runtimeFiles) {
 // immersion-scaled avatar gait, input-frame deferred source meshes, and sparse
 // backward-compatible projectile persistence, plant-replacing prompt lava
 // flow, and passive-animal water avoidance/buoyancy; none adds another
-// Lakebed authority or multiplayer transport.
-assert.equal(runtimeFiles.length, 199, "reviewed main runtime file set changed");
+// Lakebed authority or multiplayer transport. The reviewed presentation also
+// adds the exact installed destroy-stage atlas, textured depth-bearing dropped
+// items, packed numeric live-block keys, and retained mesh-upload storage.
+assert.equal(runtimeFiles.length, 200, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "280e5aaad18d297b8a192e5d0ffd4cfb6e9bb6cb5558af9ef41577a3c1ebd0d2",
+  "d92e58a00d65199d518969863b2ab32750558e58a5e9b0f23142884fb4305f32",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

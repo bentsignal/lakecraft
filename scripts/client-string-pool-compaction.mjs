@@ -8,9 +8,18 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 543;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 478;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "32d7780fb5c70de4d4f6be25482c3b5282b8fb69cf34ff75584f002c239593df";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 544;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 479;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "47ff66dd440b61a7b5e1fc17b30e7182b950cc1b24ee9729a19cf1538a052aeb";
+export const COMPACT_CLIENT_HUMAN_DESTROY_STAGE_DELTA = Object.freeze({
+  previousOccurrences: 543,
+  previousUniqueValues: 478,
+  previousSourceFingerprint: "32d7780fb5c70de4d4f6be25482c3b5282b8fb69cf34ff75584f002c239593df",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 1,
+  source: "client/game/blockCracks.ts#exact-installed-destroy-stage-texture-allocation",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_HUMAN_FLUID_SYSTEM_DELTA = Object.freeze({
   previousOccurrences: 540,
   previousUniqueValues: 475,

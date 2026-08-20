@@ -86,6 +86,16 @@ const BUILDING_COLORS = [
   "light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black",
 ];
 const BLOCK_PATHS = Object.freeze({
+  destroy_stage_0: "assets/minecraft/textures/block/destroy_stage_0.png",
+  destroy_stage_1: "assets/minecraft/textures/block/destroy_stage_1.png",
+  destroy_stage_2: "assets/minecraft/textures/block/destroy_stage_2.png",
+  destroy_stage_3: "assets/minecraft/textures/block/destroy_stage_3.png",
+  destroy_stage_4: "assets/minecraft/textures/block/destroy_stage_4.png",
+  destroy_stage_5: "assets/minecraft/textures/block/destroy_stage_5.png",
+  destroy_stage_6: "assets/minecraft/textures/block/destroy_stage_6.png",
+  destroy_stage_7: "assets/minecraft/textures/block/destroy_stage_7.png",
+  destroy_stage_8: "assets/minecraft/textures/block/destroy_stage_8.png",
+  destroy_stage_9: "assets/minecraft/textures/block/destroy_stage_9.png",
   grass_top: "assets/minecraft/textures/block/grass_block_top.png",
   grass_side: "assets/minecraft/textures/block/grass_block_side.png",
   dirt: "assets/minecraft/textures/block/dirt.png",

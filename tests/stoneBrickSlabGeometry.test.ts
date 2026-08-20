@@ -11,10 +11,10 @@ import {
 } from "../client/game/blockGeometry.ts";
 import { raycastVoxels } from "../client/game/terrain.ts";
 import { BLOCK } from "../client/game/types.ts";
-import { appendWorldBlockCrackLines } from "../client/game/blockCracks.ts";
+import { appendWorldBlockCrackFaces } from "../client/game/blockCracks.ts";
 import { BLOCK_PARTICLES_PER_ACTION, createBlockParticleSystem } from "../client/game/blockParticles.ts";
 import { blockTextureForFace, textureAtlasUv, type BlockFace } from "../client/game/blockTextures.ts";
-import { writeDroppedItemGeometry, droppedBlockCubeVertexCount, type DroppedItemGeometryStats } from "../client/game/droppedItemRenderer.ts";
+import { writeDroppedItemGeometry, droppedBlockCubeVertexCount, droppedSpriteVertexCount, type DroppedItemGeometryStats } from "../client/game/droppedItemRenderer.ts";
 import { createFirstPersonRenderer } from "../client/game/firstPersonRenderer.ts";
 import { remoteHeldItemGeometry, remoteHeldItemVertexCount } from "../client/game/remotePlayerRenderer.ts";
 import {
@@ -94,7 +94,7 @@ assert.equal(culledVertexCount([3, 6, -2]), 30,
 assert.equal(culledVertexCount([3, 8, -2]), 36,
   "a block one cell above cannot hide the slab top across the empty upper half");
 const slabCracks: number[] = [];
-assert.ok(appendWorldBlockCrackLines(slabCracks, { x: 3, y: 7, z: -2 }, 0.55, STONE_BRICK_SLAB_HEIGHT) > 0);
+assert.ok(appendWorldBlockCrackFaces(slabCracks, { x: 3, y: 7, z: -2 }, 0.55, STONE_BRICK_SLAB_HEIGHT) > 0);
 const crackYs = Array.from({ length: slabCracks.length / 6 }, (_, index) => slabCracks[index * 6 + 1]);
 assert.ok(Math.min(...crackYs) >= 7 - 0.004 && Math.max(...crackYs) <= 7.5 + 0.004,
   "mining cracks stay attached to the slab's half-height AABB");
@@ -146,8 +146,10 @@ heldRenderer[7]();
 
 assert.equal(droppedBlockCubeVertexCount("stone_brick_slab"), 0,
   "dropped slabs cannot enter the retained full-cube template map");
-const droppedOutput = new Float32Array(slabArt.runs.length * 6 * 6);
-const droppedStats: DroppedItemGeometryStats = { totalItemCount: 0, visibleItemCount: 0, vertexCount: 0 };
+const droppedOutput = new Float32Array(droppedSpriteVertexCount("stone_brick_slab") * 6);
+const droppedTexturedOutput = new Float32Array(36 * 6);
+const droppedStats: DroppedItemGeometryStats = { totalItemCount: 0, visibleItemCount: 0, vertexCount: 0,
+  colorVertexCount: 0, textureVertexCount: 0 };
 writeDroppedItemGeometry(
   new Float32Array([0, 1, 0]),
   new Float32Array([0]),
@@ -156,10 +158,12 @@ writeDroppedItemGeometry(
   [0, 1, 0],
   0,
   droppedOutput,
+  droppedTexturedOutput,
   droppedStats,
 );
-assert.equal(droppedStats.vertexCount, slabArt.runs.length * 6,
-  "one dropped slab uses the canonical inventory-sprite run count");
+assert.ok(droppedStats.colorVertexCount > slabArt.runs.length * 6,
+  "one dropped slab extrudes the canonical inventory sprite with front/back and pixel edges");
+assert.equal(droppedStats.textureVertexCount, 0);
 
 const remoteGeometry = remoteHeldItemGeometry("stone_brick_slab");
 assert.equal(remoteHeldItemVertexCount("stone_brick_slab"), remoteGeometry.length / 6);

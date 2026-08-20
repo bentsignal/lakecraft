@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   WORLD_BLOCK_CRACK_EPSILON,
-  appendWorldBlockCrackLines,
+  appendWorldBlockCrackFaces,
   worldBlockCrackStage,
 } from "../client/game/blockCracks.ts";
 import {
@@ -26,9 +26,9 @@ assert.equal(worldBlockCrackStage(0.01), 0);
 assert.equal(worldBlockCrackStage(0.99), 9);
 const block = { x: -3, y: 7, z: 11 };
 const vertices: number[] = [];
-const vertexCount = appendWorldBlockCrackLines(vertices, block, 0.51);
-assert.equal(vertexCount, 72, "six crack branches are projected onto all six faces");
-assert.equal(vertices.length, vertexCount * 6, "each line vertex has interleaved position and color");
+const vertexCount = appendWorldBlockCrackFaces(vertices, block, 0.51);
+assert.equal(vertexCount, 36, "the exact destroy-stage tile covers all six block faces");
+assert.equal(vertices.length, vertexCount * 6, "each crack vertex has position, exact atlas UV, and shade");
 for (let offset = 0; offset < vertices.length; offset += 6) {
   const [x, y, z] = vertices.slice(offset, offset + 3);
   assert.ok(x >= block.x - WORLD_BLOCK_CRACK_EPSILON && x <= block.x + 1 + WORLD_BLOCK_CRACK_EPSILON);
@@ -65,7 +65,7 @@ assert.doesNotMatch(multiplayerKeyHandler, /\^Digit\[1-9\]/, "a global key handl
 assert.ok(multiplayer.includes("modalOpen={chatOpen}"),
   "multiplayer chat hides the shared survival HUD and selected-item caption");
 assert.ok(engine.includes('document.pointerLockElement !== canvas'), "engine input remains gated on pointer lock");
-assert.ok(engine.includes("appendWorldBlockCrackLines(crackLines, target.block"), "cracks use target.block, never target.place");
+assert.ok(engine.includes("appendWorldBlockCrackFaces(crackLines, target.block"), "cracks use target.block, never target.place");
 assert.ok(engine.includes("function updateMiningCrackGeometry()"), "crack geometry uploads only when bounded progress changes, not every render");
 assert.ok(surface.includes("!ready ? <WorldLoadingScreen />") && loadingScreen.includes('role="status"') && loadingScreen.includes('aria-live="polite"'),
   "world entry renders a blocking, announced loading state before terrain is ready");
