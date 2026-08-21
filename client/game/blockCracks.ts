@@ -9,7 +9,7 @@ import {
 export const WORLD_BLOCK_CRACK_STAGE_COUNT = DESTROY_STAGE_COUNT;
 export const WORLD_BLOCK_CRACK_EPSILON = 0.004;
 /** Minecraft's destroy sprite is a translucent overlay, never a replacement material. */
-export const WORLD_BLOCK_CRACK_OPACITY = 0.72;
+export const WORLD_BLOCK_CRACK_OPACITY = 0.58;
 export const WORLD_BLOCK_CRACK_VERTEX_COUNT = 36;
 export const WORLD_BLOCK_CRACK_VERTEX_FLOATS = 6;
 

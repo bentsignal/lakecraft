@@ -30,8 +30,7 @@ const HUD_CSS = `
 .lc-hud button, .lc-drawer-layer button, .lc-unsupported button, .lc-menu-layer button, .lc-death-layer button { font: inherit; }
 .lc-kicker { color: var(--lc-amber); font: 9px/1.2 var(--lc-note); letter-spacing: .14em; text-transform: uppercase; }
 .lc-crosshair { height: 16px; left: 50%; pointer-events: none; position: absolute; top: 50%; transform: translate(-50%,-50%); width: 16px; z-index: 3; }
-.lc-crosshair::before,.lc-crosshair::after { content: ""; inset: 0; position: absolute; }
-.lc-crosshair::before { background: #111; clip-path: polygon(6px 0,10px 0,10px 6px,16px 6px,16px 10px,10px 10px,10px 16px,6px 16px,6px 10px,0 10px,0 6px,6px 6px); }.lc-crosshair::after { background: #fff; clip-path: polygon(7px 1px,9px 1px,9px 7px,15px 7px,15px 9px,9px 9px,9px 15px,7px 15px,7px 9px,1px 9px,1px 7px,7px 7px); }
+.lc-crosshair::before { background: #fff; clip-path: polygon(7px 1px,9px 1px,9px 7px,15px 7px,15px 9px,9px 9px,9px 15px,7px 15px,7px 9px,1px 9px,1px 7px,7px 7px); content: ""; inset: 0; position: absolute; }
 .lc-survival-wrap { bottom: max(6px, env(safe-area-inset-bottom)); left: 50%; pointer-events: auto; position: absolute; transform: translateX(-50%) scale(var(--lc-hotbar-scale)); transform-origin:bottom center; width: 364px; z-index: 2; }
 .lc-survival { display: grid; grid-template-columns: 1fr 1fr; height: 18px; margin: 0 2px 2px; position: relative; }
 .lc-survival__armor { bottom: 18px; left: 0; position: absolute; width: 180px; }

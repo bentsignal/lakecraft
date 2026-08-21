@@ -9,13 +9,18 @@ import { getItemIconArt, type ItemIconArt } from "../components/itemIconArt.ts";
 import { blockIdForCubeItem } from "./blockItemCubeGeometry.ts";
 import { blockTextureForFace, textureAtlasUv } from "./blockTextures.ts";
 import { CUBE_FACES } from "./cubeFaces.ts";
+import {
+  SKY_EXPOSURE_LEVELS,
+  packSkyExposureShade,
+} from "./skyExposure.ts";
 
 type Vec3 = readonly [number, number, number];
 
 export const MAX_RENDERED_DROPPED_ITEMS = 256;
 export const MAX_RENDERED_DROPPED_SPRITES = 64;
 export const DROPPED_ITEM_RENDER_DISTANCE = 48;
-export const DROPPED_ITEM_MESH_INTERVAL_MS = 1_000 / 30;
+/** Retained geometry follows a 60 Hz presentation clock so idle spin and pickup flight never step at 30 fps. */
+export const DROPPED_ITEM_MESH_INTERVAL_MS = 1_000 / 60;
 export const DROPPED_ITEM_MAX_ICON_RUNS = 150;
 export const DROPPED_BLOCK_CUBE_GRID_SIZE = 16;
 export const DROPPED_BLOCK_CUBE_MAX_VERTICES = 36;
@@ -53,9 +58,11 @@ export interface DroppedItemRenderer {
   readonly textureBuffer: WebGLBuffer;
   readonly stats: DroppedItemRenderStats;
   setItems(items: readonly DroppedItemRenderItem[]): void;
-  update(now: number, camera: Vec3): DroppedItemRenderStats;
+  update(now: number, camera: Vec3, skyExposureAt?: DroppedItemSkyExposureSampler): DroppedItemRenderStats;
   destroy(): void;
 }
+
+export type DroppedItemSkyExposureSampler = (x: number, y: number, z: number) => number;
 
 function itemPhase(dropId: string, droppedAt: number): number {
   let hash = Number.isFinite(droppedAt) ? Math.floor(droppedAt) : 0;
@@ -167,7 +174,8 @@ export function droppedItemBufferCapacity(itemCount = MAX_RENDERED_DROPPED_ITEMS
 }
 
 function appendTransformedTemplate(output: Float32Array, offset: number, template: Float32Array,
-  centerX: number, centerY: number, centerZ: number, yaw: number, scale = 1): number {
+  centerX: number, centerY: number, centerZ: number, yaw: number, scale: number,
+  exposureLevel: number, textured: boolean): number {
   const cosYaw = Math.cos(yaw), sinYaw = Math.sin(yaw);
   for (let source = 0; source < template.length; source += FLOATS_PER_VERTEX) {
     const localX = template[source] * scale;
@@ -176,7 +184,13 @@ function appendTransformedTemplate(output: Float32Array, offset: number, templat
     output[offset++] = centerX + localX * cosYaw + localZ * sinYaw;
     output[offset++] = centerY + localY;
     output[offset++] = centerZ - localX * sinYaw + localZ * cosYaw;
-    output[offset++] = template[source + 3]; output[offset++] = template[source + 4]; output[offset++] = template[source + 5];
+    output[offset++] = textured
+      ? template[source + 3]
+      : packSkyExposureShade(template[source + 3], exposureLevel);
+    output[offset++] = template[source + 4];
+    output[offset++] = textured
+      ? packSkyExposureShade(template[source + 5], exposureLevel)
+      : template[source + 5];
   }
   return offset;
 }
@@ -185,6 +199,7 @@ export function writeDroppedItemGeometry(
   positions: Float32Array, phases: Float32Array, itemIds: readonly ItemId[], itemCount: number,
   camera: Vec3, now: number, colorOutput: Float32Array, texturedOutput: Float32Array,
   stats: DroppedItemGeometryStats,
+  exposureLevels?: Float32Array,
 ): DroppedItemGeometryStats {
   const boundedCount = Math.max(0, Math.min(MAX_RENDERED_DROPPED_ITEMS, Math.floor(itemCount)));
   let colorOffset = 0, texturedOffset = 0, visible = 0, visibleSprites = 0;
@@ -196,13 +211,19 @@ export function writeDroppedItemGeometry(
     if (dx * dx + dy * dy + dz * dz > RENDER_DISTANCE_SQUARED) continue;
     const itemId = itemIds[index];
     if (!itemId || !Object.prototype.hasOwnProperty.call(ITEMS, itemId)) continue;
+    const exposureLevel = exposureLevels?.[index] ?? SKY_EXPOSURE_LEVELS;
     const phase = phases[index], centerY = y + 0.24 + Math.sin(seconds * 2.4 + phase) * 0.075;
     const yaw = seconds * 1.8 + phase;
     const block = DROPPED_BLOCK_TEMPLATE_BY_ITEM.get(itemId);
-    if (block) texturedOffset = appendTransformedTemplate(texturedOutput, texturedOffset, block, x, centerY, z, yaw, CUBE_SIZE);
+    if (block) texturedOffset = appendTransformedTemplate(
+      texturedOutput, texturedOffset, block, x, centerY, z, yaw, CUBE_SIZE, exposureLevel, true,
+    );
     else {
       if (visibleSprites >= MAX_RENDERED_DROPPED_SPRITES) continue;
-      colorOffset = appendTransformedTemplate(colorOutput, colorOffset, DROPPED_SPRITE_TEMPLATE_BY_ITEM.get(itemId)!, x, centerY, z, yaw);
+      colorOffset = appendTransformedTemplate(
+        colorOutput, colorOffset, DROPPED_SPRITE_TEMPLATE_BY_ITEM.get(itemId)!, x, centerY, z, yaw,
+        1, exposureLevel, false,
+      );
       visibleSprites += 1;
     }
     visible += 1;
@@ -224,6 +245,7 @@ export function createDroppedItemRenderer(gl: WebGLRenderingContext): DroppedIte
   const positions = new Float32Array(MAX_RENDERED_DROPPED_ITEMS * 3);
   const renderedPositions = new Float32Array(MAX_RENDERED_DROPPED_ITEMS * 3);
   const geometryPositions = new Float32Array(MAX_RENDERED_DROPPED_ITEMS * 3);
+  const exposureLevels = new Float32Array(MAX_RENDERED_DROPPED_ITEMS).fill(SKY_EXPOSURE_LEVELS);
   const phases = new Float32Array(MAX_RENDERED_DROPPED_ITEMS);
   const pickupReadyAt = new Float64Array(MAX_RENDERED_DROPPED_ITEMS);
   const attractionStartedAt = new Float64Array(MAX_RENDERED_DROPPED_ITEMS).fill(-1);
@@ -260,7 +282,7 @@ export function createDroppedItemRenderer(gl: WebGLRenderingContext): DroppedIte
       }
       dropIds.length = itemCount; itemIds.length = itemCount; dirty = true;
     },
-    update(now, camera) {
+    update(now, camera, skyExposureAt) {
       stats.updated = false;
       if (!dirty && now - lastMeshAt < DROPPED_ITEM_MESH_INTERVAL_MS) return stats;
       const startedAt = performance.now();
@@ -285,9 +307,14 @@ export function createDroppedItemRenderer(gl: WebGLRenderingContext): DroppedIte
         geometryPositions[offset] = renderedPositions[offset] + (camera[0] - renderedPositions[offset]) * attraction;
         geometryPositions[offset + 1] = renderedPositions[offset + 1] + (pickupY - renderedPositions[offset + 1]) * attraction;
         geometryPositions[offset + 2] = renderedPositions[offset + 2] + (camera[2] - renderedPositions[offset + 2]) * attraction;
+        exposureLevels[index] = skyExposureAt
+          ? skyExposureAt(geometryPositions[offset], geometryPositions[offset + 1], geometryPositions[offset + 2])
+          : SKY_EXPOSURE_LEVELS;
       }
       lastPositionUpdateAt = now;
-      writeDroppedItemGeometry(geometryPositions, phases, itemIds, itemCount, camera, now, colors, textured, stats);
+      writeDroppedItemGeometry(
+        geometryPositions, phases, itemIds, itemCount, camera, now, colors, textured, stats, exposureLevels,
+      );
       colorFloats = stats.colorVertexCount * FLOATS_PER_VERTEX;
       texturedFloats = stats.textureVertexCount * FLOATS_PER_VERTEX;
       if (colorFloats) { gl.bindBuffer(gl.ARRAY_BUFFER, buffer); gl.bufferSubData(gl.ARRAY_BUFFER, 0, colors.subarray(0, colorFloats)); }

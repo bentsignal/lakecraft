@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
+  TARGET_OUTLINE_COLOR,
   TARGET_OUTLINE_VERTEX_COUNT,
   bypassBlockInteractionForPlacement,
   writeTargetOutlineGeometry,
@@ -27,8 +28,12 @@ for (let vertex = 0; vertex < TARGET_OUTLINE_VERTEX_COUNT; vertex += 1) {
   xs.push(geometry[offset]);
   ys.push(geometry[offset + 1]);
   zs.push(geometry[offset + 2]);
-  assert.deepEqual(Array.from(geometry.subarray(offset + 3, offset + 6)), [1, 1, 1]);
+  for (const color of geometry.subarray(offset + 3, offset + 6)) {
+    assert.ok(Math.abs(color - TARGET_OUTLINE_COLOR) < 0.000001);
+  }
 }
+assert.ok(TARGET_OUTLINE_COLOR > 0 && TARGET_OUTLINE_COLOR < 0.3,
+  "aimed blocks use a visible dark wireframe instead of a bright white outline");
 assert.ok(Math.abs(Math.min(...xs) - 9.997) < 0.00001);
 assert.ok(Math.abs(Math.max(...xs) - 11.003) < 0.00001);
 assert.ok(Math.abs(Math.min(...ys) - 19.997) < 0.00001);

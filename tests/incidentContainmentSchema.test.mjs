@@ -120,10 +120,14 @@ for (const path of runtimeFiles) {
 // only shared Creative mining cadence and shared cutout-leaf face culling,
 // with one deterministic owner per internal leaf plane to prevent z-fighting,
 // plus idempotent selected-item reconciliation so a completed Survival edit
-// cannot restart the freshly chained mining timer for the next block.
+// cannot restart the freshly chained mining timer for the next block. This
+// pass raises retained dropped-item presentation to 60 Hz, feeds the existing
+// bounded skylight exposure into both dropped-block and dropped-tool geometry,
+// darkens targeting feedback, softens destroy-stage compositing, and retains
+// the first-person Pose Lab (but not the broader Visual Lab) in production.
 assert.equal(runtimeFiles.length, 200, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "15b26409aa5cef6afee3140d5ff662c0c3c55868fbfb6bd35aaa8dba21a07e8c",
+  "190d138e3802cefa213efea768dc5c0b4778a8c81f6ca80876b3262b88f81211",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

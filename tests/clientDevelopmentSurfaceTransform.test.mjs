@@ -8,19 +8,25 @@ import {
 const source = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 for (const component of ["FirstPersonPoseLab", "VisualLab"]) {
   assert.ok(source.includes(`<${component}`), `normal local development still renders ${component}`);
-  assert.ok(source.includes(`import { FirstPersonPoseLab, VisualLab }`),
-    "normal local development still imports both inspection surfaces");
 }
+assert.ok(source.includes("ChestDrawer, FirstPersonPoseLab, FurnaceDrawer"),
+  "the paused Pose Lab is part of the production gameplay import surface");
+assert.ok(source.includes("import { VisualLab }"), "normal local development still imports the full Visual Lab");
 assert.ok(source.includes("SinglePlayerPerformanceBenchmark"),
   "normal local development exposes the autonomous WebGL benchmark");
 
 const compact = stripClientDevelopmentSurfaces(source);
 for (const developmentOnly of [
-  "FirstPersonPoseLab", "VisualLab", "visualLabOpen", "setVisualLabOpen", "setPoseLabBowPreview",
-  "setPoseLabHeldItemPreview", "setPoseLabUsePreview", "SinglePlayerPerformanceBenchmark", "benchmarkDistance",
+  "VisualLab", "visualLabOpen", "setVisualLabOpen", "SinglePlayerPerformanceBenchmark", "benchmarkDistance",
 ]) {
   assert.equal(compact.includes(developmentOnly), false,
     `compact anonymous source excludes development-only ${developmentOnly}`);
+}
+for (const retainedPoseSurface of [
+  "FirstPersonPoseLab", "setPoseLabBowPreview", "setPoseLabHeldItemPreview", "setPoseLabUsePreview",
+]) {
+  assert.ok(compact.includes(retainedPoseSurface),
+    `compact production source retains paused pose tuning through ${retainedPoseSurface}`);
 }
 assert.equal(compact.includes("@lakecraft-development:"), false,
   "compact source consumes every reviewed marker");

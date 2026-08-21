@@ -1,11 +1,10 @@
 const REVIEWED_DEVELOPMENT_SURFACES = Object.freeze({
-  imports: "ab48818f",
+  imports: "ad1db78c",
   state: "718cded6",
   modal: "b6b7c1c8",
   guard: "cfe8bf8b",
   dependency: "55faebb2",
-  callback: "ea9612b8",
-  render: "8f461026",
+  render: "880c059f",
   benchmark: "12742b65",
 });
 

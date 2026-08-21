@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   WORLD_BLOCK_CRACK_EPSILON,
+  WORLD_BLOCK_CRACK_OPACITY,
   appendWorldBlockCrackFaces,
   worldBlockCrackStage,
 } from "../client/game/blockCracks.ts";
@@ -24,6 +25,8 @@ assert.equal(cycleHotbarIndex(0, -1), 8, "wheel cycling wraps left");
 assert.equal(worldBlockCrackStage(0), -1);
 assert.equal(worldBlockCrackStage(0.01), 0);
 assert.equal(worldBlockCrackStage(0.99), 9);
+assert.ok(WORLD_BLOCK_CRACK_OPACITY >= 0.5 && WORLD_BLOCK_CRACK_OPACITY <= 0.6,
+  "destroy stages remain readable while preserving more of the underlying block material");
 const block = { x: -3, y: 7, z: 11 };
 const vertices: number[] = [];
 const vertexCount = appendWorldBlockCrackFaces(vertices, block, 0.51);

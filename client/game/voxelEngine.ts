@@ -350,6 +350,7 @@ export const LOCAL_MOB_STREAM_RETAIN_RADIUS = DEFAULT_STREAMING_CHUNK_RADIUS * W
 export const PLAYER_RANGED_REACH = 32;
 export const PLAYER_BOW_FULL_CHARGE_MS = 1_000;
 export const TARGET_OUTLINE_VERTEX_COUNT = 24;
+export const TARGET_OUTLINE_COLOR = 0.18;
 export const PAUSED_RENDER_INTERVAL_MS = 100;
 
 interface PointerLockRequestDocument {
@@ -434,9 +435,9 @@ export function writeTargetOutlineGeometry(
     output[offset++] = target.block.x + ((corner & 1) ? 1 + e : -e);
     output[offset++] = target.block.y + ((corner & 2) ? height + e : -e);
     output[offset++] = target.block.z + ((corner & 4) ? 1 + e : -e);
-    output[offset++] = 1;
-    output[offset++] = 1;
-    output[offset++] = 1;
+    output[offset++] = TARGET_OUTLINE_COLOR;
+    output[offset++] = TARGET_OUTLINE_COLOR;
+    output[offset++] = TARGET_OUTLINE_COLOR;
   }
   return TARGET_OUTLINE_VERTEX_COUNT;
 }
@@ -4171,6 +4172,15 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     };
   }
 
+  function droppedItemSkyExposureAt(x: number, y: number, z: number): number {
+    return skyExposureLevel(
+      skyOccluderColumns,
+      Math.floor(x),
+      Math.floor(y + 0.24),
+      Math.floor(z),
+    );
+  }
+
   function render(now: number, dt: number, frameNow: number, refreshDynamicGeometry = true): void {
     resize();
     const eye = cameraEye(renderEye);
@@ -4181,7 +4191,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         remoteSkinVertexCount = remotePlayerSkinRenderer.update(remoteStates, eye);
       }
       nameplateVertexCount = remoteStats.nameplateVertexCount;
-      const droppedItemStats = droppedItemRenderer.update(now, eye);
+      const droppedItemStats = droppedItemRenderer.update(now, eye, droppedItemSkyExposureAt);
       droppedItemVertexCount = droppedItemStats.vertexCount;
       droppedItemColorVertexCount = droppedItemStats.colorVertexCount;
       droppedItemTexturedVertexCount = droppedItemStats.textureVertexCount;

@@ -18,6 +18,7 @@ import {
 } from "../client/game/droppedItemRenderer.ts";
 import { DROPPED_ITEM_ATTRACTION_MS } from "../shared/droppedItems.ts";
 import { ITEMS, type ItemId } from "../shared/game.ts";
+import { unpackSkyExposureShade } from "../client/game/skyExposure.ts";
 
 const capacity = droppedItemBufferCapacity();
 assert.equal(capacity.itemCount, MAX_RENDERED_DROPPED_ITEMS);
@@ -32,6 +33,8 @@ assert.equal(droppedItemAttractionAmount(0), 0);
 assert.ok(droppedItemAttractionAmount(DROPPED_ITEM_ATTRACTION_MS / 2) > 0.45);
 assert.equal(droppedItemAttractionAmount(DROPPED_ITEM_ATTRACTION_MS), 1,
   "pickup flight reaches the player exactly when authority collection begins");
+assert.ok(DROPPED_ITEM_MESH_INTERVAL_MS <= 1_000 / 60 + 0.001,
+  "idle spin and pickup attraction update at a smooth 60 Hz presentation cadence");
 for (const itemId of Object.keys(ITEMS) as ItemId[]) {
   assert.ok(droppedBlockCubeVertexCount(itemId) === 36 || droppedSpriteVertexCount(itemId) > 0,
     `${itemId} has either an exact textured cube or an extruded catalog sprite`);
@@ -45,7 +48,8 @@ const color = new Float32Array(capacity.colorVertexCount * 6);
 const textured = new Float32Array(capacity.textureVertexCount * 6);
 const stats: DroppedItemGeometryStats = { totalItemCount: 0, visibleItemCount: 0, vertexCount: 0,
   colorVertexCount: 0, textureVertexCount: 0 };
-writeDroppedItemGeometry(positions, phases, itemIds, 3, [0,2,0], 1_000, color, textured, stats);
+const exposureLevels = new Float32Array([0, 3, 1]);
+writeDroppedItemGeometry(positions, phases, itemIds, 3, [0,2,0], 1_000, color, textured, stats, exposureLevels);
 assert.deepEqual(stats, { totalItemCount: 3, visibleItemCount: 2,
   vertexCount: 36 + droppedSpriteVertexCount("wooden_pickaxe"),
   colorVertexCount: droppedSpriteVertexCount("wooden_pickaxe"), textureVertexCount: 36 });
@@ -61,12 +65,16 @@ for (let vertex = 0; vertex < stats.textureVertexCount; vertex += 1) {
 }
 assert.ok(cubeMaxZ - cubeMinZ >= 0.299, "dropped blocks retain full cube depth");
 assert.ok(cubeUvs.size >= 4, "dropped blocks carry real atlas UV corners rather than flat colors");
+assert.equal(unpackSkyExposureShade(textured[5]).exposureLevel, 0,
+  "dropped block vertices carry their local cave exposure into the terrain shader");
 
 let spriteMinZ = Infinity, spriteMaxZ = -Infinity;
 for (let vertex = 0; vertex < stats.colorVertexCount; vertex += 1) {
   const z = color[vertex * 6 + 2]; spriteMinZ = Math.min(spriteMinZ, z); spriteMaxZ = Math.max(spriteMaxZ, z);
 }
 assert.ok(spriteMaxZ - spriteMinZ > 0.015, "tools have visible front/back pixel-edge thickness");
+assert.equal(unpackSkyExposureShade(color[3]).exposureLevel, 1,
+  "extruded dropped tools carry the same local sky exposure into the color shader");
 assert.ok(droppedSpriteVertexCount("wooden_pickaxe") > 2 * 6,
   "a dropped tool is not a single flat two-triangle plane");
 
