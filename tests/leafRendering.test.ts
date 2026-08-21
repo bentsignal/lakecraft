@@ -48,20 +48,27 @@ assert.equal(blockFaceIsOccluded(BLOCK.WOOD, BLOCK.LEAVES), false,
   "leaf holes retain the neighboring trunk face");
 assert.equal(blockFaceIsOccluded(BLOCK.LEAVES, BLOCK.WOOD), true,
   "the hidden leaf face against a solid trunk is still culled");
-assert.equal(blockFaceIsOccluded(BLOCK.LEAVES, BLOCK.SPRUCE_LEAVES), false,
-  "adjacent canopy cells retain Minecraft-style interior cutout layers");
+assert.equal(blockFaceIsOccluded(BLOCK.LEAVES, BLOCK.SPRUCE_LEAVES, "south"), false,
+  "the positive-axis leaf owns the shared interior cutout layer");
+assert.equal(blockFaceIsOccluded(BLOCK.SPRUCE_LEAVES, BLOCK.LEAVES, "north"), true,
+  "the opposite coplanar leaf face is culled to prevent motion z-fighting");
+for (const [owner, duplicate] of [["east", "west"], ["top", "bottom"], ["south", "north"]] as const) {
+  assert.equal(blockFaceIsOccluded(BLOCK.LEAVES, BLOCK.SPRUCE_LEAVES, owner), false,
+    `${owner} owns its shared leaf plane`);
+  assert.equal(blockFaceIsOccluded(BLOCK.SPRUCE_LEAVES, BLOCK.LEAVES, duplicate), true,
+    `${duplicate} cannot overlap the owned shared leaf plane`);
+}
 
 const layeredCanopyFaces = (depth: number): number => {
   let faces = 0;
   for (let z = 0; z < depth; z += 1) {
-    for (const neighbor of [z === 0 ? BLOCK.AIR : BLOCK.LEAVES, z === depth - 1 ? BLOCK.AIR : BLOCK.LEAVES]) {
-      if (!blockFaceIsOccluded(BLOCK.LEAVES, neighbor)) faces += 1;
-    }
+    if (!blockFaceIsOccluded(BLOCK.LEAVES, z === 0 ? BLOCK.AIR : BLOCK.LEAVES, "north")) faces += 1;
+    if (!blockFaceIsOccluded(BLOCK.LEAVES, z === depth - 1 ? BLOCK.AIR : BLOCK.LEAVES, "south")) faces += 1;
   }
   return faces;
 };
 assert.equal(layeredCanopyFaces(1), 2, "one leaf cell has its two view-axis cutout faces");
-assert.equal(layeredCanopyFaces(3), 6,
-  "three leaf cells retain six distinct cutout layers instead of collapsing to one outer shell");
+assert.equal(layeredCanopyFaces(3), 4,
+  "three leaf cells retain every distinct depth plane without duplicate coplanar faces");
 
 console.log("Minecraft cutout leaf tint, depth-neighbor, and layered-canopy tests passed");

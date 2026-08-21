@@ -117,10 +117,11 @@ for (const path of runtimeFiles) {
 // this pass adds only shared mining presentation cadence/compositing, smoothed
 // dropped-item pickup presentation, random local seed creation, and the
 // save-versioned local-only wood-biome generator. The current pass changes
-// only shared Creative mining cadence and shared cutout-leaf face culling.
+// only shared Creative mining cadence and shared cutout-leaf face culling,
+// with one deterministic owner per internal leaf plane to prevent z-fighting.
 assert.equal(runtimeFiles.length, 200, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "071854b3c0cec21f3a020b88885dd9fb6290a85bf611e336777bcfccfcb69553",
+  "0f2e36bd50aa5b7b2e049d09c416b1d47825ccc427b96b203abe24adc1e729d7",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

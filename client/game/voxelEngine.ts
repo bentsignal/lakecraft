@@ -882,12 +882,13 @@ export function isLeavesBlock(block: BlockId): boolean {
 }
 
 /**
- * Fancy cutout leaves retain every neighboring leaf layer so a deep canopy
- * becomes progressively denser, while solid neighbors keep their own visible
- * face behind the cutout holes.
+ * Fancy cutout leaves retain one owner for every shared depth plane so a deep
+ * canopy becomes progressively denser without coplanar z-fighting. Solid
+ * neighbors keep their own visible face behind the cutout holes.
  */
-export function blockFaceIsOccluded(block: BlockId, neighbor: BlockId): boolean {
-  return (isLeavesBlock(neighbor) ? false
+export function blockFaceIsOccluded(block: BlockId, neighbor: BlockId, face?: BlockFace): boolean {
+  return (isLeavesBlock(neighbor) ? isLeavesBlock(block)
+    && (face === "west" || face === "bottom" || face === "north")
     : (isGlassBlock(block) && neighbor === block)
     || (isFluidBlock(block) && fluidKind(block) === fluidKind(neighbor))
     || blockOccludesFaces(neighbor));
@@ -3190,7 +3191,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       const variation = blockMaterialVariation(x, y, z);
       for (const face of FACE_DEFS) {
         const neighbor = getBlock(x + face[1], y + face[2], z + face[3]);
-        if (blockFaceIsOccluded(block, neighbor)) continue;
+        if (blockFaceIsOccluded(block, neighbor, face[0])) continue;
         const textureName = blockTextureForFace(block, face[0]);
         if (textureName) {
           const destination = isGlassBlock(block) ? transparentVertices : textureVertices;
