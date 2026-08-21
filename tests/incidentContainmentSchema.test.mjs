@@ -118,10 +118,12 @@ for (const path of runtimeFiles) {
 // dropped-item pickup presentation, random local seed creation, and the
 // save-versioned local-only wood-biome generator. The current pass changes
 // only shared Creative mining cadence and shared cutout-leaf face culling,
-// with one deterministic owner per internal leaf plane to prevent z-fighting.
+// with one deterministic owner per internal leaf plane to prevent z-fighting,
+// plus idempotent selected-item reconciliation so a completed Survival edit
+// cannot restart the freshly chained mining timer for the next block.
 assert.equal(runtimeFiles.length, 200, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "0f2e36bd50aa5b7b2e049d09c416b1d47825ccc427b96b203abe24adc1e729d7",
+  "15b26409aa5cef6afee3140d5ff662c0c3c55868fbfb6bd35aaa8dba21a07e8c",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

@@ -64,7 +64,9 @@ assert.ok(teardown.includes("cancelSecondaryPlacementHold(true);"), "teardown ca
 assert.ok(pause.includes("cancelSecondaryPlacementHold(true);"), "pause disarms held placement");
 assert.match(engine, /if \(playerHealth <= 0\)[\s\S]{0,300}cancelSecondaryPlacementHold\(true\)/,
   "death disarms held placement before further world input");
-assert.match(engine, /setSelectedBlock\(block\)[\s\S]{0,140}block !== selectedBlock[\s\S]{0,80}cancelSecondaryPlacementHold\(\)/,
+const selectedBlockSetter = engine.slice(engine.indexOf("setSelectedBlock(block)"), engine.indexOf("setSelectedItem(itemId)"));
+assert.ok(selectedBlockSetter.indexOf("if (block === selectedBlock) return;")
+    < selectedBlockSetter.indexOf("cancelSecondaryPlacementHold();"),
   "selected item changes disarm without count-only rerenders breaking a valid chain");
 assert.ok(engine.includes("cancelSecondaryPlacementHold();\n      options.onHotbarSelect")
   && engine.includes("cancelSecondaryPlacementHold();\n    options.onHotbarCycle"), "number and wheel slot changes disarm immediately");

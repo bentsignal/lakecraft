@@ -5448,12 +5448,18 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     },
     applyConfirmedPlayerHitMobKnockback,
     setSelectedBlock(block) {
-      if (block !== selectedBlock) cancelSecondaryPlacementHold();
+      // Inventory reconciliation runs after an accepted Survival edit. By that
+      // point a held primary action may already have acquired the next block,
+      // so replaying the same selection must not erase its fresh mining timer.
+      if (block === selectedBlock) return;
+      cancelSecondaryPlacementHold();
       selectedBlock = block;
       clearMining();
     },
     setSelectedItem(itemId) {
-      selectedItem = itemId && itemId in ITEMS ? itemId : null;
+      const nextSelectedItem = itemId && itemId in ITEMS ? itemId : null;
+      if (nextSelectedItem !== selectedItem) clearMining();
+      selectedItem = nextSelectedItem;
       setFirstPersonHeldItem(selectedItem, selectedBlock);
       if (paused) lastPausedRenderAt = Number.NEGATIVE_INFINITY;
     },

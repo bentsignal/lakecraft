@@ -34,7 +34,18 @@ assert.match(source, /function onPointerLockChange[\s\S]+cancelPrimaryActionHold
 assert.ok(teardown.includes("cancelPrimaryActionHold();"), "engine teardown cannot retain a physical-button state");
 assert.ok(pauseHandler.includes("cancelPrimaryActionHold();"), "pausing clears the held mine and its world-space crack buffer");
 assert.match(source, /miningTimer = window\.setTimeout\([\s\S]{0,260}crackVertexCount = 0;/, "block completion removes the world-space crack geometry before chaining");
-assert.match(source, /setSelectedBlock\(block\)[\s\S]{0,180}clearMining\(\)/, "hotbar/tool changes reset current block progress before the held chain restarts");
+const selectedBlockSetter = source.slice(
+  source.indexOf("setSelectedBlock(block)"),
+  source.indexOf("setSelectedItem(itemId)"),
+);
+assert.ok(selectedBlockSetter.indexOf("if (block === selectedBlock) return;") < selectedBlockSetter.indexOf("clearMining();"),
+  "post-break inventory reconciliation cannot restart the next held dig when the selected block is unchanged");
+const selectedItemSetter = source.slice(
+  source.indexOf("setSelectedItem(itemId)"),
+  source.indexOf("setPlayerSkin(source"),
+);
+assert.ok(selectedItemSetter.includes("if (nextSelectedItem !== selectedItem) clearMining();"),
+  "a real hotbar tool change resets progress while same-item durability reconciliation remains idempotent");
 const crackPass = source.slice(source.indexOf("if (crackVertexCount > 0)"),
   source.indexOf("gl.useProgram(program);", source.indexOf("if (crackVertexCount > 0)")));
 assert.ok(crackPass.includes("gl.blendFunc(gl.CONSTANT_ALPHA, gl.ONE_MINUS_CONSTANT_ALPHA)"),
