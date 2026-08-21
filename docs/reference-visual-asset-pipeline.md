@@ -14,14 +14,16 @@ third-person, dropped-item, and Visual Lab views.
 
 Lakecraft uses Minecraft's public file formats, coordinate systems, model
 inheritance, display contexts, skin layout, and visible behavior as engineering
-references. Lakecraft does **not** commit, bundle, deploy, or redistribute
-Mojang texture, model, or game files.
+references. For compatibility testing, the project also checks in the bounded
+subset of visual assets imported from the owner's installed, user-owned Java
+26.2 client. The pinned source hash, exact selected paths, generated manifests,
+and attribution are documented in `TEXTURE_PIPELINE.md` and
+`THIRD_PARTY_NOTICES.md`; do not expand that subset casually.
 
-Bundled Lakecraft art is drawn for this project and recorded in the visual
-manifest with its source concept and generator revision. A user may import a
-64x64 or 128x128 PNG skin that they own or are authorized to use. The imported
-skin remains client-local and is never included in Lakecraft source or a hosted
-deployment.
+Original Lakecraft art remains the deterministic fallback and is recorded with
+its source concept and generator revision. A user may import a 64x64 or 128x128
+PNG skin that they own or are authorized to use. That skin remains client-local
+and is never included in Lakecraft source or a hosted deployment.
 
 The machine-readable provenance boundary and reviewed fingerprints live in
 `shared/visualAssetManifest.ts`; fingerprint tests bind the generated item and
@@ -33,7 +35,8 @@ behavior may deliberately track the reference closely. Every shipped Lakecraft
 pixel and model value is nevertheless authored in this repository. The
 implementation must keep these paths visibly distinct:
 
-- `bundled-original`: original Lakecraft pixels, safe to commit and deploy.
+- `bundled-compatibility`: the reviewed, hash-pinned installed-client subset.
+- `bundled-original`: original Lakecraft pixels used as fallback content.
 - `user-skin`: user-selected PNG, stored in the browser for that user.
 - `reference-audit`: metadata or measurements gathered during development;
   never texture pixels copied from another game.

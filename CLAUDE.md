@@ -61,6 +61,22 @@ npx lakebed logs --port 3000
 
 Use `endpoint({ method, path }, handler)` from `lakebed/server` when the app needs to expose an HTTP route for webhooks or other non-Lakebed clients. Endpoint handlers receive request data including `headers.get(name)`, URL params, query params, and body helpers.
 
+## Project direction
+
+- Lakecraft should feel immediately familiar to a Minecraft Java Edition player. Favor faithful proportions, interactions, pixel density, and restrained UI over branded or decorative reinterpretations.
+- Visual behavior is accepted with representative screenshots and observed motion in every relevant camera/state. Automated tests guard regressions but do not prove that a visual result looks right.
+- Single-player is browser-local. Multiplayer world state and gameplay are authoritative in each Railway server and its SQLite volume; Lakebed owns the client capsule, identity, server directory, registration, and scoped join tickets. Never reintroduce Lakebed gameplay polling or mutations as a multiplayer fallback.
+- Implement shared gameplay and presentation once under `client/gameplay/`; isolate only authority and persistence differences in the local and Railway adapters.
+- Keep authoritative operations deterministic, bounded, conserved, revisioned, and replay-safe. A retry may acknowledge current canonical state to its initiator but must not rebroadcast historical effects.
+- The product is still pre-launch. Do not add migrations, legacy fallbacks, or broad backwards-compatibility work unless the user asks. Preserve existing compatibility paths until a deliberate removal is requested.
+- Validate performance changes with the deterministic benchmark at render distances 6 and 12, comparing the same browser, hardware, viewport, and idle/turn/sprint scenes. Frame-time distributions and live behavior are the evidence, not microbenchmarks alone.
+
+## Project knowledge and work tracking
+
+Repository code, tests, and focused documentation are the canonical sources of project knowledge; UAV is not required and must not be used as a second source of truth. Start with [the documentation index](docs/README.md). Git and merged pull requests preserve completed implementation history. Keep actionable work in the bounded [project backlog](docs/backlog.md) until the owner chooses to move it to GitHub Issues; never create per-run task journals.
+
+Write a durable note only for non-obvious rationale, constraints, or operational nuance that cannot be recovered cheaply from code, tests, Git history, or an existing document. Put it in the narrowest relevant document, link the owning code or test, and update or remove it when the implementation changes. Markdown source files must remain at or below 300 lines; run `node scripts/check-markdown-lines.mjs` after documentation changes.
+
 ## Additional resources
 
 - [Lakebed docs](https://docs.lakebed.dev/)

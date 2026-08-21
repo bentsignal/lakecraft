@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
+  existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -43,7 +44,13 @@ import {
 
 const repositoryRoot = new URL("../", import.meta.url);
 const validatorPath = new URL("../scripts/validate-live-qa-evidence.mjs", import.meta.url);
-const runbook = readFileSync(new URL("../docs/live-visual-qa.md", import.meta.url), "utf8");
+const runbook = [
+  "live-visual-qa.md",
+  "live-visual-qa-setup.md",
+  "live-visual-qa-worlds.md",
+  "live-visual-qa-routes.md",
+  "live-visual-qa-reports.md",
+].map((name) => readFileSync(new URL(`../docs/${name}`, import.meta.url), "utf8")).join("\n");
 const probeSource = readFileSync(new URL("../scripts/task41-browser-probe.js", import.meta.url), "utf8");
 const PROJECT_ROOT = process.env.TASK41_TEST_REPO_ROOT ?? fileURLToPath(repositoryRoot);
 const commitResult = spawnSync("git", ["-C", PROJECT_ROOT, "rev-parse", "HEAD"], { encoding: "utf8" });
@@ -339,7 +346,8 @@ function currentSourceSnapshot(sourceRoot, targetRoot) {
       && path.split("/").every((segment) => segment && segment !== "." && segment !== ".."),
       `unsafe current-source snapshot path: ${path}`,
     );
-    return !sourceSnapshotPathExcluded(path);
+    return !sourceSnapshotPathExcluded(path)
+      && existsSync(join(sourceRoot, ...path.split("/")));
   });
   assert.ok(includedPaths.length > 0, "current-source snapshot must contain reviewed worktree files");
   const manifest = includedPaths.map((path) => {

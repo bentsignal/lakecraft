@@ -53,8 +53,8 @@ Lakecraft should feel immediately familiar to a Minecraft Java Edition player. T
 - Target 60 FPS on an ordinary desktop, p95 frame time under 25 ms, and no unbounded mesh or DOM growth while traveling.
 - Chunk mesh rebuilds must reuse retained geometry/upload scratch and private numeric block keys. Do not restore per-block string splitting or per-rebuild exact-size typed-array allocation: at 12 chunks those allocations produced repeated 100–160 ms garbage-collection stalls even though steady-state GPU rendering was fast.
 - Generate/unload horizontal chunk windows as the player moves; global coordinates must be deterministic and seam-free in every direction.
-- Moving players target 5 updates/second through Lakebed, with local interpolation between compact snapshots and much slower idle keepalive. Measure the resulting mutation quota honestly.
-- Dropped items and pickups are authoritative Lakebed state changes, never client-only duplication opportunities and never frame-loop writes.
+- Railway servers own realtime multiplayer simulation and persistence. Clients predict presentation where useful, then reconcile to bounded authoritative snapshots and revisioned results.
+- Multiplayer drops and pickups are authoritative Railway operations, never client-only duplication opportunities or frame-loop writes. Single-player applies the same conservation rules through its local authority.
 - Right-clicking a sheep with shears yields one to three wool, spends one durability only on acceptance, and visibly removes its wool coat until death/respawn; retrying the same multiplayer operation cannot pay twice.
 - White wool is directly placeable, uses an original woven 16×16 texture, breaks softly by hand, drops itself, and remains the same item used in the three-wool bed recipe.
 
