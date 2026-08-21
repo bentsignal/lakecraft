@@ -4,7 +4,8 @@ import { readFileSync } from "node:fs";
 const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const chestDrawer = readFileSync(new URL("../client/components/ChestDrawer.tsx", import.meta.url), "utf8");
 
-assert.ok(app.includes("ChestDrawer, FurnaceDrawer, GameHud"), "single-player reuses the existing Minecraft-style container drawers");
+assert.match(app, /import \{[^}]*\bChestDrawer\b[^}]*\bFurnaceDrawer\b[^}]*\bGameHud\b[^}]*\} from "\.\.\/components";/,
+  "single-player reuses the existing Minecraft-style container drawers");
 assert.equal(app.includes("lakebed/client"), false, "local containers never mount the Lakebed client runtime");
 
 const interaction = app.slice(app.indexOf("onInteractBlock: (target)"), app.indexOf("onPoseChange:", app.indexOf("onInteractBlock: (target)")));
