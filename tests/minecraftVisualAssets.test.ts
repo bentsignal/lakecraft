@@ -204,7 +204,16 @@ for (const [materialIndex, material] of ["leather", "iron", "gold", "diamond"].e
     }
   }
 }
-const tintedTiles = new Set(["grass_top", "grass_side", "leaves", "short_grass", "water"]);
+const leafTints = {
+  leaves: [0x77, 0xab, 0x2f],
+  spruce_leaves: [0x61, 0x99, 0x61],
+  birch_leaves: [0x80, 0xa7, 0x55],
+  jungle_leaves: [0x30, 0xbb, 0x0b],
+  acacia_leaves: [0xae, 0xa4, 0x2a],
+  dark_oak_leaves: [0x59, 0xae, 0x30],
+  mangrove_leaves: [0x8d, 0xb1, 0x27],
+} as const;
+const tintedTiles = new Set(["grass_top", "grass_side", "short_grass", "water", ...Object.keys(leafTints)]);
 for (const [name, payload] of Object.entries(assets.blocks)) {
   const image = decodePng(Buffer.from(payload, "base64"));
   assert.deepEqual([image.width, image.height], [16, 16], `${name} retains its exact block tile`);
@@ -229,36 +238,19 @@ for (const [name, payload] of Object.entries(assets.blocks)) {
 
 const tint = (value: number, channel: number): number => Math.round(value * channel / 255);
 const plainsGrass = [0x91, 0xbd, 0x59] as const;
-const plainsFoliage = [0x77, 0xab, 0x2f] as const;
 const waterTint = [0x3f, 0x76, 0xe4] as const;
-const sourceTiles = Object.fromEntries(["grass_top", "grass_side", "leaves", "short_grass", "water"].map((name) => [
+const sourceTiles = Object.fromEntries(["grass_top", "grass_side", "short_grass", "water", ...Object.keys(leafTints)].map((name) => [
   name,
   decodePng(Buffer.from(assets.blocks[name], "base64")),
 ]));
 const grassOverlay = decodePng(Buffer.from(assets.blockLayers.grass_side_overlay, "base64"));
 for (const [name, channels] of [["grass_top", plainsGrass], ["short_grass", plainsGrass],
-  ["leaves", plainsFoliage], ["water", waterTint]] as const) {
+  ["water", waterTint], ...Object.entries(leafTints)] as const) {
   const source = sourceTiles[name];
   const tile = TEXTURE_ATLAS_NAMES.indexOf(name);
   const cell = TEXTURE_ATLAS_CELLS[tile];
   const tileX = cell % TEXTURE_ATLAS_COLUMNS;
   const tileY = Math.floor(cell / TEXTURE_ATLAS_COLUMNS);
-  if (name === "leaves") {
-    const installedColors = new Set<string>();
-    for (let pixel = 0; pixel < 256; pixel += 1) {
-      const offset = pixel * 4;
-      if (source.rgba[offset + 3]) installedColors.add(
-        [0, 1, 2].map((channel) => tint(source.rgba[offset + channel], channels[channel])).concat(255).join(","),
-      );
-    }
-    for (let pixel = 0; pixel < 256; pixel += 1) {
-      const atlasOffset = ((tileY * 16 + Math.floor(pixel / 16)) * TEXTURE_ATLAS_COLUMNS * 16
-        + tileX * 16 + pixel % 16) * 4;
-      assert.ok(installedColors.has([...TEXTURE_ATLAS_RGBA.subarray(atlasOffset, atlasOffset + 4)].join(",")),
-        `opaque leaves pixel ${pixel} remains in the installed tinted palette`);
-    }
-    continue;
-  }
   for (let pixel = 0; pixel < 256; pixel += 1) {
     const sourceOffset = pixel * 4;
     const atlasOffset = ((tileY * 16 + Math.floor(pixel / 16)) * TEXTURE_ATLAS_COLUMNS * 16
@@ -267,7 +259,7 @@ for (const [name, channels] of [["grass_top", plainsGrass], ["short_grass", plai
       [...TEXTURE_ATLAS_RGBA.subarray(atlasOffset, atlasOffset + 4)],
       [0, 1, 2].map((channel) => tint(source.rgba[sourceOffset + channel], channels[channel]))
         .concat(source.rgba[sourceOffset + 3]),
-      `${name} pixel ${pixel} keeps the installed mask under the fixed plains tint`,
+      `${name} pixel ${pixel} keeps the installed mask, cutout alpha, and reviewed Minecraft tint`,
     );
   }
 }

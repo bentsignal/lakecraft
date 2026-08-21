@@ -116,10 +116,11 @@ for (const path of runtimeFiles) {
 // wall-clock-anchored priority fluid propagation with prompt bounded meshes;
 // this pass adds only shared mining presentation cadence/compositing, smoothed
 // dropped-item pickup presentation, random local seed creation, and the
-// save-versioned local-only wood-biome generator.
+// save-versioned local-only wood-biome generator. The current pass changes
+// only shared Creative mining cadence and shared cutout-leaf face culling.
 assert.equal(runtimeFiles.length, 200, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "783388be00711221c5504a8b3904fea31e045fa98bc0b92809f58ba9b55434ee",
+  "14d20204cd35542997e749da221a55c8f3c120faf0e9b0440dc5998db3c0eb5d",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

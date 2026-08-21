@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import {
   IDLE_PRIMARY_ACTION_HOLD,
+  INSTANT_MINING_HOLD_INTERVAL_MS,
   pressPrimaryAction,
   releasePrimaryAction,
   shouldStartHeldMining,
 } from "../client/game/continuousMining.ts";
+
+assert.equal(INSTANT_MINING_HOLD_INTERVAL_MS, 300,
+  "holding Creative mine repeats instant edits at about 3.3 blocks per second");
 
 const ready = {
   pointerLocked: true,

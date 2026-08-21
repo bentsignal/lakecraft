@@ -264,6 +264,7 @@ import {
 } from "./playerMovement.ts";
 import {
   IDLE_PRIMARY_ACTION_HOLD,
+  INSTANT_MINING_HOLD_INTERVAL_MS,
   pressPrimaryAction,
   releasePrimaryAction,
   shouldStartHeldMining,
@@ -876,11 +877,16 @@ export function blockOccludesFaces(block: BlockId): boolean {
   return block !== BLOCK.BED && blockStopsSky(block);
 }
 
-/** Glass keeps neighboring opaque faces, but adjacent glass cells share no internal seam. */
+export function isLeavesBlock(block: BlockId): boolean {
+  return block === BLOCK.LEAVES || blockStateName(block).endsWith("_leaves");
+}
+
+/** Cutout leaves keep neighboring solid faces so their holes reveal logs/terrain, never empty cells. */
 export function blockFaceIsOccluded(block: BlockId, neighbor: BlockId): boolean {
-  return (isGlassBlock(block) && neighbor === block)
+  return (isLeavesBlock(neighbor) ? isLeavesBlock(block)
+    : (isGlassBlock(block) && neighbor === block)
     || (isFluidBlock(block) && fluidKind(block) === fluidKind(neighbor))
-    || blockOccludesFaces(neighbor);
+    || blockOccludesFaces(neighbor));
 }
 
 /** Stable far-to-near key order for the bounded per-chunk transparent pass. */
@@ -2592,6 +2598,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let miningStartedAt = 0;
   let miningDurationMs = 0;
   let miningProgress = 0;
+  let instantMiningReadyAt = 0;
   let crackVertexCount = 0;
   const crackLines: number[] = [];
   let rangedChargeStartedAt = 0;
@@ -2667,6 +2674,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   function cancelPrimaryActionHold(): void {
     primaryActionHold = releasePrimaryAction();
+    instantMiningReadyAt = 0;
     clearMining();
   }
 
@@ -2695,7 +2703,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(crackLines), gl.DYNAMIC_DRAW);
   }
 
-  function beginHeldBlockMining(): boolean {
+  function beginHeldBlockMining(now = performance.now(), freshPress = false): boolean {
     if (!primaryActionHold.held || !primaryActionHold.miningArmed || miningTimer || !target) return false;
     const mined = { ...target.block };
     const targetPrimed = primedTnt.has(blockKey(mined.x, mined.y, mined.z));
@@ -2710,8 +2718,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       targetPrimed,
     })) return false;
     const duration = Math.max(0, options.getMiningDuration?.(mined.block) ?? 0);
+    if (duration === 0 && !freshPress && now < instantMiningReadyAt) return false;
     emitHandAction("mine");
     if (duration === 0) {
+      instantMiningReadyAt = now + INSTANT_MINING_HOLD_INTERVAL_MS;
       emitEdit({ x: mined.x, y: mined.y, z: mined.z, block: BLOCK.AIR });
       return true;
     }
@@ -3929,7 +3939,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       options.onTargetChange?.(target);
     } else target = nextTarget;
 
-    beginHeldBlockMining();
+    beginHeldBlockMining(now);
     repeatHeldBlockPlacement(now);
 
     if (now - lastPoseSent > 90 && (poseDirty || forwardInput !== 0 || strafe !== 0 || Math.abs(velocity[1]) > 0.01)) {
@@ -5092,7 +5102,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (primaryActionHold.held) return;
       const attackedEntity = attackEntityUnderCrosshair();
       primaryActionHold = pressPrimaryAction(attackedEntity);
-      if (!attackedEntity) beginHeldBlockMining();
+      if (!attackedEntity) beginHeldBlockMining(performance.now(), true);
     } else if (button === 2) {
       if (secondaryButtonHeld) return;
       secondaryButtonHeld = true;

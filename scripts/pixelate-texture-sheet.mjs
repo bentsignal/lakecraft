@@ -717,6 +717,18 @@ function applyNamedMaterialRules(image, names, columns, tileSize) {
 
 const PLAINS_GRASS_TINT = [0x91, 0xbd, 0x59];
 const PLAINS_FOLIAGE_TINT = [0x77, 0xab, 0x2f];
+// Exact Minecraft 26.2 foliage-colormap samples for the biomes that own each
+// generated tree family. Spruce and birch use Minecraft's fixed leaf colors;
+// mangrove_swamp declares its override directly in the installed biome JSON.
+const LEAF_TINTS = Object.freeze({
+  leaves: PLAINS_FOLIAGE_TINT,
+  spruce_leaves: [0x61, 0x99, 0x61],
+  birch_leaves: [0x80, 0xa7, 0x55],
+  jungle_leaves: [0x30, 0xbb, 0x0b],
+  acacia_leaves: [0xae, 0xa4, 0x2a],
+  dark_oak_leaves: [0x59, 0xae, 0x30],
+  mangrove_leaves: [0x8d, 0xb1, 0x27],
+});
 const WATER_TINT = [0x3f, 0x76, 0xe4];
 
 function tintImportedPixel(source, offset, tint) {
@@ -764,34 +776,23 @@ function applyImportedMinecraftBlockTextures(image, names, columns, tileSize, ce
     }
   }
   const overlayPayload = blockLayers?.grass_side_overlay;
-  if (!decoded.grass_top || !decoded.grass_side || !decoded.leaves || !decoded.short_grass || !overlayPayload) {
+  if (!decoded.grass_top || !decoded.grass_side || !decoded.short_grass || !overlayPayload
+    || Object.keys(LEAF_TINTS).some((name) => !decoded[name])) {
     fail("installed grass, short grass, and leaves require their tint masks plus the grass-side overlay.");
   }
   const overlay = decodeImportedPng(Buffer.from(overlayPayload, "base64"));
   if (overlay.width !== tileSize || overlay.height !== tileSize) {
     fail(`imported block layer grass_side_overlay must be ${tileSize}x${tileSize}.`);
   }
-  for (const [name, tint] of [["grass_top", PLAINS_GRASS_TINT], ["short_grass", PLAINS_GRASS_TINT], ["leaves", PLAINS_FOLIAGE_TINT]]) {
+  for (const [name, tint] of [["grass_top", PLAINS_GRASS_TINT], ["short_grass", PLAINS_GRASS_TINT], ...Object.entries(LEAF_TINTS)]) {
     const tile = names.indexOf(name);
     const source = decoded[name];
     const tileX = cells[tile] % columns;
     const tileY = Math.floor(cells[tile] / columns);
     for (let y = 0; y < tileSize; y += 1) for (let x = 0; x < tileSize; x += 1) {
-      let input = (y * tileSize + x) * 4;
-      if (name === "leaves" && source.rgba[input + 3] === 0) {
-        let distance = Infinity;
-        for (let sy = 0; sy < tileSize; sy += 1) for (let sx = 0; sx < tileSize; sx += 1) {
-          const candidate = (sy * tileSize + sx) * 4;
-          const nextDistance = Math.abs(sx - x) + Math.abs(sy - y);
-          if (source.rgba[candidate + 3] && nextDistance < distance) {
-            input = candidate;
-            distance = nextDistance;
-          }
-        }
-      }
+      const input = (y * tileSize + x) * 4;
       const output = ((tileY * tileSize + y) * image.width + tileX * tileSize + x) * 4;
       const pixel = tintImportedPixel(source, input, tint);
-      if (name === "leaves") pixel[3] = 255;
       image.rgba.set(pixel, output);
     }
   }

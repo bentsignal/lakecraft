@@ -15,13 +15,19 @@ const teardown = source.slice(source.indexOf("destroy()"), source.indexOf("apply
 const pauseHandler = source.slice(source.indexOf("setPaused(nextPaused)"), source.indexOf("isPaused()"));
 
 assert.ok(primaryHandler.includes("pressPrimaryAction(attackedEntity)"), "primary press records whether an entity consumed the click");
-assert.ok(primaryHandler.includes("beginHeldBlockMining()"), "a block-facing press starts the first mining cycle immediately");
-assert.ok(updateLoop.includes("beginHeldBlockMining();"), "the frame loop reacquires the next ray target while the button stays held");
-assert.ok(updateLoop.indexOf("target = nextTarget") < updateLoop.indexOf("beginHeldBlockMining();"), "continuous mining uses the freshly raycast target");
+assert.ok(primaryHandler.includes("beginHeldBlockMining(performance.now(), true)"),
+  "a block-facing click bypasses held cadence and removes an instant-mine target immediately");
+assert.ok(updateLoop.includes("beginHeldBlockMining(now);"),
+  "the frame loop reacquires the next ray target while the button stays held");
+assert.ok(updateLoop.indexOf("target = nextTarget") < updateLoop.indexOf("beginHeldBlockMining(now);"),
+  "continuous mining uses the freshly raycast target");
+assert.ok(source.includes("duration === 0 && !freshPress && now < instantMiningReadyAt")
+  && source.includes("instantMiningReadyAt = now + INSTANT_MINING_HOLD_INTERVAL_MS"),
+  "held instant mining is throttled independently from click-to-break and never creates a crack timer");
 assert.ok(source.includes('emitHandAction("mine");\n        options.onMiningHit?.'), "long digs replay the same arm swing at the bounded hit cadence");
 assert.ok(source.includes("miningDurationMs >= (FIRST_PERSON_ACTION_MS + 30) * 2")
   && source.includes("now - lastMiningHitAt >= FIRST_PERSON_ACTION_MS + 30"),
-  "short Creative digs use one coherent swing while long digs repeat only completed swings");
+  "long survival digs repeat only completed swings");
 assert.ok(primaryRelease.includes("if (button === 0) cancelPrimaryActionHold()"),
   "release cancels the timer and disarms chaining");
 assert.match(source, /function onPointerLockChange[\s\S]+cancelPrimaryActionHold\(\)/, "pointer-lock loss cancels a held mine");

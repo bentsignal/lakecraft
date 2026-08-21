@@ -74,7 +74,7 @@ const PROPERTY_ALIAS_COUNT_OVERRIDES = Object.freeze({
   block: 188, bottom: 30, bufferData: 25, bufferSubData: 14, byteLength: 17, BYTES_PER_ELEMENT: 17,
   center: 34, charCodeAt: 25, chunkRevisions: 11, CLAMP_TO_EDGE: 16, clear: 49, clearTimeout: 26, count: 185,
   createBuffer: 25, current: 864, currentTarget: 19, cycleLengthMs: 20, dayNight: 9, delete: 83, deleteBuffer: 43,
-  deleteProgram: 18, deleteTexture: 14, documentElement: 9, drawArrays: 24, dropId: 29, endsWith: 27,
+  deleteProgram: 18, deleteTexture: 14, documentElement: 9, drawArrays: 24, dropId: 29, endsWith: 28,
   drops: 25, DYNAMIC_DRAW: 17, enableVertexAttribArray: 27, equipment: 41,
   elapsedSeconds: 39, every: 51, filter: 51, flatMap: 24, fromEntries: 10, getAttribLocation: 24,
   // Embedding the block atlas replaces the remote response dimensions/status
@@ -101,8 +101,9 @@ export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_
 // destroy-stage texture rendering, textured depth-bearing dropped items,
 // retained streaming buffers, packed live-block coordinate access, and the
 // paired prompt/background fluid queues plus their bounded mesh lifecycle.
-export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_433;
-export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "a800b1bd285c2f8da94e6940065b50f3ae2f4abf795b7af2b4b770f5bc8aef9c";
+// One shared leaf-family predicate adds the reviewed `endsWith` call.
+export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_434;
+export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "7e00c0c692b377227d7d0b8290e60cbadce75795f0f25316430d6898d992dd95";
 const PROPERTY_ALIAS_INDEX = new Map(COMPACT_CLIENT_PROPERTY_KEY_ALIASES.map(([name], index) => [name, index]));
 const PROPERTY_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_PROPERTY_KEY_ALIASES)),
@@ -111,14 +112,15 @@ const PROPERTY_BOUNDARY = Object.freeze({
 });
 // The embedded atlas decoder no longer needs the remote-loader Uint8Array copy
 // or its document-backed image decode branch; sparse projectile persistence
-// and the prompt/background fluid scheduler retain their reviewed Sets.
-const GLOBAL_ALIAS_SPEC = "Float32Array:86,Map:75,Set:70,Uint8Array:21,document:99,performance:77,window:126";
+// and the prompt/background fluid scheduler retain their reviewed Sets. The
+// instant Creative hold cadence adds two reviewed performance-clock reads.
+const GLOBAL_ALIAS_SPEC = "Float32Array:86,Map:75,Set:70,Uint8Array:21,document:99,performance:79,window:126";
 export const COMPACT_CLIENT_GLOBAL_ALIASES = Object.freeze(GLOBAL_ALIAS_SPEC.split(",").map((entry) => {
   const separator = entry.lastIndexOf(":");
   return Object.freeze([entry.slice(0, separator), Number(entry.slice(separator + 1))]);
 }));
-export const COMPACT_CLIENT_GLOBAL_OCCURRENCES = 554;
-export const COMPACT_CLIENT_GLOBAL_FINGERPRINT = "e7b0e9ced3b4ca85d43a01d48db433d737fa96994b87f28f22e5387c9d00d07f";
+export const COMPACT_CLIENT_GLOBAL_OCCURRENCES = 556;
+export const COMPACT_CLIENT_GLOBAL_FINGERPRINT = "c81424aeac00e277209f01059782bed65d11e1308859c77afca5d6e260770dcf";
 const GLOBAL_ALIAS_INDEX = new Map(COMPACT_CLIENT_GLOBAL_ALIASES.map(([name], index) => [name, index]));
 const GLOBAL_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_GLOBAL_ALIASES)),

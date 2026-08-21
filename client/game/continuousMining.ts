@@ -5,6 +5,9 @@ export interface PrimaryActionHoldState {
   miningArmed: boolean;
 }
 
+/** Repeated instant edits while held advance at Minecraft's deliberate 3–4 blocks/second cadence. */
+export const INSTANT_MINING_HOLD_INTERVAL_MS = 300;
+
 export const IDLE_PRIMARY_ACTION_HOLD: Readonly<PrimaryActionHoldState> = Object.freeze({
   held: false,
   miningArmed: false,

@@ -13,8 +13,8 @@ import { fieldOfViewRadians, mouseLookScale, type ClientSettings } from "../sett
 import type { GameplayControlBindings } from "./controlBindings.ts";
 import { audioSurfaceForBlock, ENGINE_TO_GAME, ITEM_TO_ENGINE } from "./catalog.ts";
 
-/** Minecraft-style cadence: held Creative mining advances at about three blocks per second. */
-export const CREATIVE_BLOCK_BREAK_SECONDS = 1 / 3;
+/** Creative clicks remove their target immediately; held cadence is throttled by the engine. */
+export const CREATIVE_BLOCK_BREAK_SECONDS = 0;
 
 export interface GameplayPresentationContext {
   getSettings(): Pick<ClientSettings, "fovDegrees" | "mouseSensitivity" | "keyBindings">;

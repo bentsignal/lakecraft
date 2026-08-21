@@ -150,6 +150,7 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
   if (!new Set(["glass", "sapling", "torch", "water", "lava", "cactus", "short_grass", "dandelion", "poppy"]).has(TEXTURE_ATLAS_NAMES[index])
     && !TEXTURE_ATLAS_NAMES[index].endsWith("_stained_glass")
     && !TEXTURE_ATLAS_NAMES[index].includes("_door_")
+    && TEXTURE_ATLAS_NAMES[index] !== "leaves"
     && !TEXTURE_ATLAS_NAMES[index].endsWith("_leaves")
   ) {
     for (let offset = 3; offset < tile.length; offset += 4) {

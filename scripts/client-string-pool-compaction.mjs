@@ -687,9 +687,18 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 607;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 608;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 180;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "8c31b31412ed90452a9e58be7b0a12a875481d50a7bffa690d015e6732cf9d35";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "86d91e0550f16be4a813bc66dafaca25e71ef5faba6a843962cae2323b82898f";
+export const COMPACT_CLIENT_LOW_FREQUENCY_CUTOUT_LEAVES_DELTA = Object.freeze({
+  previousOccurrences: 607,
+  previousUniqueValues: 180,
+  previousSourceFingerprint: "8c31b31412ed90452a9e58be7b0a12a875481d50a7bffa690d015e6732cf9d35",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 0,
+  source: "client/game/voxelEngine.ts#shared-leaf-family-culling",
+  exclusionChanges: 0,
+});
 // Same cardinality; the installed Minecraft pickup sample adds its reviewed hash ordering.
 export const COMPACT_CLIENT_LOW_FREQUENCY_FLUID_SYSTEM_DELTA = Object.freeze({
   previousOccurrences: 613,
