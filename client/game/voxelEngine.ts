@@ -881,9 +881,13 @@ export function isLeavesBlock(block: BlockId): boolean {
   return block === BLOCK.LEAVES || blockStateName(block).endsWith("_leaves");
 }
 
-/** Cutout leaves keep neighboring solid faces so their holes reveal logs/terrain, never empty cells. */
+/**
+ * Fancy cutout leaves retain every neighboring leaf layer so a deep canopy
+ * becomes progressively denser, while solid neighbors keep their own visible
+ * face behind the cutout holes.
+ */
 export function blockFaceIsOccluded(block: BlockId, neighbor: BlockId): boolean {
-  return (isLeavesBlock(neighbor) ? isLeavesBlock(block)
+  return (isLeavesBlock(neighbor) ? false
     : (isGlassBlock(block) && neighbor === block)
     || (isFluidBlock(block) && fluidKind(block) === fluidKind(neighbor))
     || blockOccludesFaces(neighbor));

@@ -7,8 +7,8 @@ import {
   shouldStartHeldMining,
 } from "../client/game/continuousMining.ts";
 
-assert.equal(INSTANT_MINING_HOLD_INTERVAL_MS, 300,
-  "holding Creative mine repeats instant edits at about 3.3 blocks per second");
+assert.equal(INSTANT_MINING_HOLD_INTERVAL_MS, 150,
+  "holding Creative mine repeats instant edits at about 6.7 blocks per second");
 
 const ready = {
   pointerLocked: true,

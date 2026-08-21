@@ -120,7 +120,7 @@ for (const path of runtimeFiles) {
 // only shared Creative mining cadence and shared cutout-leaf face culling.
 assert.equal(runtimeFiles.length, 200, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "14d20204cd35542997e749da221a55c8f3c120faf0e9b0440dc5998db3c0eb5d",
+  "071854b3c0cec21f3a020b88885dd9fb6290a85bf611e336777bcfccfcb69553",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))
