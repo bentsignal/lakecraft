@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { ChestDrawer, FirstPersonPoseLab, FurnaceDrawer, GameHud, type ChestTransferDirection, type HudMessage } from "../components";
+import { ChestDrawer, FurnaceDrawer, GameHud, type ChestTransferDirection, type HudMessage } from "../components";
 /* @lakecraft-development:imports:start */
-import { VisualLab } from "../components";
+import { FirstPersonPoseLab, VisualLab } from "../components";
 import { SinglePlayerPerformanceBenchmark } from "./PerformanceBenchmark.tsx";
 /* @lakecraft-development:imports:end */
 import { ChatOverlay, type LakecraftChatMessage } from "../chat";
@@ -2049,6 +2049,7 @@ function LocalGameplaySession({
 
   const lastAutosavedText = lastAutosavedAt === null ? "Last autosaved —"
     : `Last autosaved ${new Date(lastAutosavedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}`;
+  /* @lakecraft-development:callback:start */
   const setPoseLabBowPreview = useCallback((drawn: boolean | null) => {
     engineRef.current?.setPoseLabDrawPreview(drawn);
   }, []);
@@ -2061,6 +2062,11 @@ function LocalGameplaySession({
   const setPoseLabUsePreview = useCallback((active: boolean) => {
     engineRef.current?.setPoseLabActionPreview(active ? "use" : null, 0.65);
   }, []);
+  const setPoseLabRigPreview = useCallback((kind: "live" | "idle" | "walk" | "crouch" | "crouch_profile" | "walk_profile" | "look_up" | "look_down" | "swing" | "look_left" | "look_right") => {
+    const code = ({ live: 0, idle: 1, walk: 2, crouch: 3, crouch_profile: 4, walk_profile: 5, look_up: 6, look_down: 7, swing: 8, look_left: 9, look_right: 10 } as const)[kind];
+    engineRef.current?.setPoseLabRigPreview(code);
+  }, []);
+  /* @lakecraft-development:callback:end */
   const returnToTitle = () => {
     if (!persist("quit")) return;
     quitSavedRef.current = true;
@@ -2079,15 +2085,17 @@ function LocalGameplaySession({
       rootClassName="lc-singleplayer"
       rootStyle={`.lc-singleplayer{position:fixed;inset:0;width:100vw;height:100dvh;overflow:hidden;background:#79a7cf}.lc-singleplayer>canvas{position:absolute;inset:0;width:100%;height:100%;display:block}`}
     >
+      {/* @lakecraft-development:render:start */}
       <FirstPersonPoseLab
         onBowPreviewChange={setPoseLabBowPreview}
         onCameraModeChange={(mode) => engineRef.current?.setCameraMode(mode)}
         onCycleCamera={() => engineRef.current?.cycleCameraMode() ?? "first_person"}
         onHeldItemPreviewChange={setPoseLabHeldItemPreview}
+        onOpenVisualLab={() => setVisualLabOpen(true)}
+        onRigPreviewChange={setPoseLabRigPreview}
         onUsePreviewChange={setPoseLabUsePreview}
         open={pauseOpen && !inventoryOpen && !uiModalOpen && !deathScreenOpen}
       />
-      {/* @lakecraft-development:render:start */}
       <VisualLab
         onApplySkin={(source, model) => engineRef.current?.setPlayerSkin(source, model)}
         onClose={() => setVisualLabOpen(false)}

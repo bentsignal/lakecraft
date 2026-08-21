@@ -8,18 +8,9 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 608;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 529;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "c79ecf762e532b2c283132cf5fe334367bd3a8f0742d792ced590f301d751101";
-export const COMPACT_CLIENT_HUMAN_POSE_LAB_DELTA = Object.freeze({
-  previousOccurrences: 544,
-  previousUniqueValues: 479,
-  previousSourceFingerprint: "1ae4b8a966a2335578b800e86495bc1f41bff794b407526901d82a5a898492b1",
-  occurrenceDelta: 64,
-  uniqueValueDelta: 50,
-  source: "client/components/FirstPersonPoseLab.tsx#paused-production-empty-hand-pose-editor",
-  exclusionChanges: 0,
-});
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 544;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 479;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "96f307f2526c657d9801b1ab105e0c2d81ac7bb060f9e2358095ce5af8773c91";
 // Counts are unchanged: the reviewed create-world hint now says blank seeds are random.
 export const COMPACT_CLIENT_HUMAN_DESTROY_STAGE_DELTA = Object.freeze({
   previousOccurrences: 543,
@@ -257,18 +248,9 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
   source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_480;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 143;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "9afadcd09a2b57e0b4ee575b77b64da5de7542994c0fc40e50b74139a4615df0";
-export const COMPACT_CLIENT_REPEATED_POSE_LAB_DELTA = Object.freeze({
-  previousOccurrences: 1_380,
-  previousUniqueValues: 138,
-  previousSourceFingerprint: "725ba1bce9960190e5495374fd28ec7fbe575b6c1eb048a8bcbd9c772051c2b8",
-  occurrenceDelta: 100,
-  uniqueValueDelta: 5,
-  source: "client/components/FirstPersonPoseLab.tsx#paused-production-empty-hand-pose-editor",
-  exclusionChanges: 0,
-});
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_380;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 138;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "dd60c2859ad1bb432040661c1d4bb30650e5e3fa8ec5962eb53e3a0d74b97cf5";
 export const COMPACT_CLIENT_REPEATED_PICKUP_BIOME_DELTA = Object.freeze({
   previousOccurrences: 1_375,
   previousUniqueValues: 137,
@@ -705,18 +687,9 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 634;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 187;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "88d4f0dd68874e9b9a3231de27cf57219e643246fb9b3f0e140d1177e3c40570";
-export const COMPACT_CLIENT_LOW_FREQUENCY_POSE_LAB_DELTA = Object.freeze({
-  previousOccurrences: 608,
-  previousUniqueValues: 180,
-  previousSourceFingerprint: "86d91e0550f16be4a813bc66dafaca25e71ef5faba6a843962cae2323b82898f",
-  occurrenceDelta: 26,
-  uniqueValueDelta: 7,
-  source: "client/components/FirstPersonPoseLab.tsx#paused-production-empty-hand-pose-editor",
-  exclusionChanges: 0,
-});
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 608;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 180;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "8c74e2967ca8a1c8bb6aebbda3e4d26faa44c030a32d68939d5dd5ea9e88d70c";
 export const COMPACT_CLIENT_LOW_FREQUENCY_CUTOUT_LEAVES_DELTA = Object.freeze({
   previousOccurrences: 607,
   previousUniqueValues: 180,
@@ -1088,7 +1061,7 @@ export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([
   "behaviorUntilSeconds", "checksum_mismatch", "chestplate",
   "contextmenu", "crafting_table_front", "crafting_table_side", "crafting_table_top",
   "createdAt", "deathUntil", "duplicate", "equipment", "expectedBlock",
-  "expectedChunkRevision", "expectedInventoryRevision", "furnace_front",
+  "expectedChunkRevision", "expectedInventoryRevision", "first_person", "furnace_front",
   "furnace_side", "furnace_top", "fuseStartedAtSeconds", "fuseUntilSeconds",
   "ineligible", "invalid_coordinate", "invalid_count", "invalid_equipment", "invalid_grid",
   "invalid_slot", "invalid_transaction_cleared", "miningHit", "mousemove",
@@ -1100,21 +1073,11 @@ export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([
   "world_changed", "world_create_transaction_pending", "world_delete_cleanup_pending",
   "world_delete_transaction_pending",
 ]);
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES = 122;
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES = 61;
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES = 124;
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES = 62;
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCE_KIND = "StringLiteral";
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_PATH = "closed compact client bundle";
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT = "a6fc7624f03420077f30539bb3093ee02243034699b77e9baf82b8154ec11ad5";
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_POSE_LAB_DELTA = Object.freeze({
-  previousOccurrences: 124,
-  previousUniqueValues: 62,
-  previousSourceFingerprint: "dee0ce7f3ce28c9c9f951c5e1d14fa496b28498c150417914e736165eddb9d00",
-  occurrenceDelta: -2,
-  uniqueValueDelta: -1,
-  removedValue: "first_person",
-  source: "client/components/FirstPersonPoseLab.tsx#production-camera-preview",
-  exclusionChanges: 0,
-});
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT = "dee0ce7f3ce28c9c9f951c5e1d14fa496b28498c150417914e736165eddb9d00";
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_TITLE_DELTA = Object.freeze({
   previousOccurrences: 126,
   previousUniqueValues: 63,
@@ -1150,7 +1113,7 @@ export const COMPACT_CLIENT_FIXED_IDENTITY_VALUES = Object.freeze([
   "unsupported",
   "empty",
 ]);
-export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES = 66;
+export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES = 63;
 export const COMPACT_CLIENT_FIXED_IDENTITY_UNIQUE_VALUES = 7;
 export const COMPACT_CLIENT_FIXED_IDENTITY_INCREMENTAL_UNIQUE_VALUES = 1;
 export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCE_KIND = "StringLiteral";
@@ -1161,18 +1124,9 @@ export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_COUNTS = Object.freeze({
   recovered: 3,
   corrupt: 5,
   unsupported: 6,
-  empty: 6,
+  empty: 3,
 });
-export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT = "ffcfae052dd788a9318b3bef135f5afc537de699474bac90a53353c555c982f5";
-export const COMPACT_CLIENT_FIXED_IDENTITY_POSE_LAB_DELTA = Object.freeze({
-  previousOccurrences: 63,
-  previousUniqueValues: 7,
-  previousSourceFingerprint: "5fd4de55e898da872316f9ca3b21eea35281c59e105da8648aae730da3d7c0a4",
-  occurrenceDelta: 3,
-  uniqueValueDelta: 0,
-  valueDeltas: Object.freeze({ empty: 3 }),
-  source: "client/components/FirstPersonPoseLab.tsx#empty-hand-preview-identity",
-});
+export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT = "5fd4de55e898da872316f9ca3b21eea35281c59e105da8648aae730da3d7c0a4";
 export const COMPACT_CLIENT_FIXED_IDENTITY_CREATIVE_COMMIT_DELTA = Object.freeze({
   previousOccurrences: 63,
   previousUniqueValues: 7,

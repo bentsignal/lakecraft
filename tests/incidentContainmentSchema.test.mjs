@@ -124,10 +124,11 @@ for (const path of runtimeFiles) {
 // pass raises retained dropped-item presentation to 60 Hz, feeds the existing
 // bounded skylight exposure into both dropped-block and dropped-tool geometry,
 // darkens targeting feedback, softens destroy-stage compositing, and retains
-// the first-person Pose Lab (but not the broader Visual Lab) in production.
+// the first-person Pose Lab alongside the broader Visual Lab only in local
+// development; compact production strips both reviewed editor surfaces.
 assert.equal(runtimeFiles.length, 200, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "190d138e3802cefa213efea768dc5c0b4778a8c81f6ca80876b3262b88f81211",
+  "40a59f350d83d41eb530483c79ba81f0ebcec463afb4861dd209148e84efdabc",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))
