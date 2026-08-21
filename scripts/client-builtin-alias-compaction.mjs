@@ -10,7 +10,7 @@ import { pathToFileURL } from "node:url";
 // corresponding globals. The ordered occurrence fingerprint makes that claim
 // fail closed whenever the first-stage bundle changes.
 export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
-  Object.freeze(["Math", "abs", 107]),
+  Object.freeze(["Math", "abs", 108]),
   // Directional doors and derived stair corners share retained transform math.
   Object.freeze(["Math", "cos", 63]),
   // The embedded block-atlas decoder keeps its pixel-grid size and byte
@@ -18,38 +18,38 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["Math", "ceil", 35]),
   // Shared fluid-corner sampling and bounded queue/shore calculations retain
   // exact integer cell coordinates and one horizontal movement magnitude.
-  Object.freeze(["Math", "floor", 292]),
+  Object.freeze(["Math", "floor", 295]),
   Object.freeze(["Math", "hypot", 38]),
   // Remote atlas integrity now hashes the immutable PNG bytes with Web Crypto
   // instead of applying one pixel-space FNV multiplication after browser decode.
   Object.freeze(["Math", "imul", 35]),
   // Superflat generation and sparse projectile validation clamp reviewed
   // materialization/pool bounds; surface-bob recovery clamps its live timer.
-  Object.freeze(["Math", "max", 288]),
+  Object.freeze(["Math", "max", 293]),
   Object.freeze(["Math", "min", 226]),
-  Object.freeze(["Math", "round", 35]),
+  Object.freeze(["Math", "round", 36]),
   Object.freeze(["Math", "sin", 77]),
   Object.freeze(["Math", "PI", 123]),
   // The shared, immutable default/superflat terrain descriptor joins the client bundle.
   Object.freeze(["Object", "freeze", 176]),
-  Object.freeze(["Object", "keys", 32]),
+  Object.freeze(["Object", "keys", 33]),
   // Query bridges reject Lakebed's [] loading sentinel before publishing data.
   Object.freeze(["Array", "isArray", 94]),
-  Object.freeze(["Number", "isFinite", 271]),
+  Object.freeze(["Number", "isFinite", 277]),
   // Realtime PvP validates integral damage and health at the untrusted wire boundary.
   Object.freeze(["Number", "isInteger", 61]),
   // Terrain descriptors reject non-integral or unsafe superflat ground heights.
   Object.freeze(["Number", "isSafeInteger", 55]),
   Object.freeze(["Number", "MAX_SAFE_INTEGER", 20]),
-  Object.freeze(["Number", "NEGATIVE_INFINITY", 26]),
+  Object.freeze(["Number", "NEGATIVE_INFINITY", 28]),
   Object.freeze(["Number", "POSITIVE_INFINITY", 14]),
   Object.freeze(["Number", "parseInt", 7]),
   Object.freeze(["Date", "now", 67]),
   Object.freeze(["JSON", "stringify", 20]),
   Object.freeze(["JSON", "parse", 12]),
 ]);
-export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 2_174;
-export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "2d26cc4df6a0fe4406c1c64d79a4af6c1b8226cf8055809578669710239e78a3";
+export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 2_193;
+export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "3a25e4d16dd9cf0bfc869cf0230468e9c19250b0528ffb0d3c03ad08984dd04c";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [
     `${receiver}.${method}`, count,
@@ -71,25 +71,25 @@ const PROPERTY_ALIAS_COUNT_OVERRIDES = Object.freeze({
   // Remote mob-atlas fetch and integrity validation add one reviewed
   // active/includes/status use apiece.
   active: 23, activeTexture: 9, addEventListener: 38, ARRAY_BUFFER: 88, behavior: 30, behaviorSeed: 10, bindBuffer: 49, bindTexture: 26,
-  block: 188, bottom: 30, bufferData: 25, bufferSubData: 14, byteLength: 17, BYTES_PER_ELEMENT: 17,
-  center: 34, charCodeAt: 25, chunkRevisions: 11, CLAMP_TO_EDGE: 16, clear: 49, clearTimeout: 26, count: 185,
-  createBuffer: 25, current: 864, currentTarget: 19, cycleLengthMs: 20, dayNight: 9, delete: 83, deleteBuffer: 43,
+  block: 191, bottom: 30, bufferData: 25, bufferSubData: 14, byteLength: 17, BYTES_PER_ELEMENT: 17,
+  center: 36, charCodeAt: 25, chunkRevisions: 11, CLAMP_TO_EDGE: 16, clear: 49, clearTimeout: 26, count: 185,
+  createBuffer: 25, current: 877, currentTarget: 25, cycleLengthMs: 20, dayNight: 9, delete: 83, deleteBuffer: 43,
   deleteProgram: 18, deleteTexture: 14, documentElement: 9, drawArrays: 24, dropId: 29, endsWith: 28,
   drops: 25, DYNAMIC_DRAW: 17, enableVertexAttribArray: 27, equipment: 41,
-  elapsedSeconds: 39, every: 51, filter: 51, flatMap: 24, fromEntries: 10, getAttribLocation: 24,
+  elapsedSeconds: 39, every: 51, filter: 52, flatMap: 24, fromEntries: 10, getAttribLocation: 24,
   // Embedding the block atlas replaces the remote response dimensions/status
   // with the generated decoder's byte-array length checks.
-  getUniformLocation: 69, health: 55, height: 35, includes: 52, inventory: 105, itemId: 182, length: 489,
+  getUniformLocation: 69, health: 55, height: 35, includes: 52, inventory: 105, itemId: 183, length: 489,
   indexOf: 27, maxHealth: 13, maxStack: 23, operationId: 43, options: 69, pixelStorei: 15, preventDefault: 54,
-  ONE_MINUS_SRC_ALPHA: 7, pendingBlocks: 11, pendingSelfDamage: 10, pitch: 43, pointerLockElement: 24, position: 16,
+  ONE_MINUS_SRC_ALPHA: 7, pendingBlocks: 11, pendingSelfDamage: 10, pitch: 43, pointerLockElement: 24, position: 22,
   previousBlock: 19, previousX: 19, previousY: 16, previousYaw: 10, previousZ: 19, projectiles: 22,
   prototype: 17, randomUUID: 10, readyState: 10, reject: 24, removeEventListener: 40,
-  mouseSensitivity: 4, renderDistance: 11, repeat: 32, resolve: 19, revision: 32, rotationDegrees: 22, selectedHotbar: 15,
+  mouseSensitivity: 4, renderDistance: 11, repeat: 32, resolve: 19, revision: 32, rotationDegrees: 30, selectedHotbar: 15,
   remainder: 17, sequence: 47, setTimeout: 22, sheared: 16, slice: 111, sourceSlot: 10, startsWith: 35,
   state: 70, STATIC_DRAW: 8, status: 20, stopImmediatePropagation: 8, subarray: 19, terrain: 23, texImage2D: 15,
   texParameteri: 32, TEXTURE_2D: 74, TEXTURE_MAG_FILTER: 8, TEXTURE_MIN_FILTER: 8,
   TRIANGLES: 22, uniform1f: 41, uniform3fv: 11, uniformMatrix4fv: 12,
-  soundMuted: 12, toUpperCase: 10, UNPACK_FLIP_Y_WEBGL: 12, UNSIGNED_BYTE: 16, useProgram: 21, userId: 36, value: 37, values: 35,
+  soundMuted: 12, toFixed: 24, toUpperCase: 10, UNPACK_FLIP_Y_WEBGL: 12, UNSIGNED_BYTE: 16, useProgram: 21, userId: 36, value: 40, values: 35,
   vertexAttribPointer: 30, world: 71, worldTimeMs: 7,
 });
 export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_SPEC.split(",").map((entry) => {
@@ -102,8 +102,8 @@ export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_
 // retained streaming buffers, packed live-block coordinate access, and the
 // paired prompt/background fluid queues plus their bounded mesh lifecycle.
 // One shared leaf-family predicate adds the reviewed `endsWith` call.
-export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_434;
-export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "7e00c0c692b377227d7d0b8290e60cbadce75795f0f25316430d6898d992dd95";
+export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_478;
+export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "25fa3fbf4aef6ca7ffd539ab7aa5a461cd2263a98adbac1fb491451c710872c8";
 const PROPERTY_ALIAS_INDEX = new Map(COMPACT_CLIENT_PROPERTY_KEY_ALIASES.map(([name], index) => [name, index]));
 const PROPERTY_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_PROPERTY_KEY_ALIASES)),
@@ -114,13 +114,13 @@ const PROPERTY_BOUNDARY = Object.freeze({
 // or its document-backed image decode branch; sparse projectile persistence
 // and the prompt/background fluid scheduler retain their reviewed Sets. The
 // instant Creative hold cadence adds two reviewed performance-clock reads.
-const GLOBAL_ALIAS_SPEC = "Float32Array:86,Map:75,Set:70,Uint8Array:21,document:99,performance:79,window:126";
+const GLOBAL_ALIAS_SPEC = "Float32Array:87,Map:75,Set:70,Uint8Array:21,document:99,performance:79,window:126";
 export const COMPACT_CLIENT_GLOBAL_ALIASES = Object.freeze(GLOBAL_ALIAS_SPEC.split(",").map((entry) => {
   const separator = entry.lastIndexOf(":");
   return Object.freeze([entry.slice(0, separator), Number(entry.slice(separator + 1))]);
 }));
-export const COMPACT_CLIENT_GLOBAL_OCCURRENCES = 556;
-export const COMPACT_CLIENT_GLOBAL_FINGERPRINT = "c81424aeac00e277209f01059782bed65d11e1308859c77afca5d6e260770dcf";
+export const COMPACT_CLIENT_GLOBAL_OCCURRENCES = 557;
+export const COMPACT_CLIENT_GLOBAL_FINGERPRINT = "efa40f5166f441193a59175861c89c9417932c3860c2b906b2bf2b17c46e0362";
 const GLOBAL_ALIAS_INDEX = new Map(COMPACT_CLIENT_GLOBAL_ALIASES.map(([name], index) => [name, index]));
 const GLOBAL_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_GLOBAL_ALIASES)),

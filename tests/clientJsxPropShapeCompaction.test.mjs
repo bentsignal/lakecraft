@@ -13,13 +13,13 @@ assert.equal(Object.keys(COMPACT_CLIENT_JSX_PROP_SHAPE_COUNTS).length, 13,
   "the production transform stays limited to the thirteen reviewed generated-JSX shapes");
 assert.equal(COMPACT_CLIENT_JSX_PROP_SHAPE_INPUT_BOUNDARY, "raw-pre-jsx-v1");
 assert.equal(COMPACT_CLIENT_JSX_PROP_SHAPE_SOURCE_FINGERPRINT,
-  "7856d0b8c17399feb19f732e4ce35eb9693e4c37f8ea01cfc25312bff882b355",
+  "18fd5e7a9f495c301f90adf58387eac39fa3fdaee1983cd5bf47ae62abffdf47",
   "the production fingerprint is sampled at the raw pre-JSX, pre-string-pool boundary");
 assert.deepEqual(COMPACT_CLIENT_JSX_PROP_SHAPE_COUNTS, {
   "className,aria-hidden": 9,
   "className,aria-hidden,children": 3,
   "className,aria-label,children": 11,
-  "className,children": 58,
+  "className,children": 77,
   "className,id,children": 4,
   "className,onClick,type,children": 7,
   "className,role,aria-label,children": 9,
@@ -28,7 +28,7 @@ assert.deepEqual(COMPACT_CLIENT_JSX_PROP_SHAPE_COUNTS, {
   "className,role,children": 11,
   "disabled,onClick,type,children": 1,
   "id,children": 12,
-  "onClick,type,children": 5,
+  "onClick,type,children": 7,
 });
 
 const fixtureManifest = {
