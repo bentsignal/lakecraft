@@ -220,7 +220,11 @@ import { PLAYER_ATTACK_COOLDOWN_MS, mitigatedPlayerDamage } from "../../shared/p
 import type { BlockType } from "../../shared/protocol.ts";
 import { ITEMS } from "../../shared/game.ts";
 import { WORLD_EDIT_MAX_Y, WORLD_EDIT_MIN_Y } from "../../shared/worldChunks.ts";
-import { appendWorldBlockCrackFaces, createDestroyStageTexture } from "./blockCracks.ts";
+import {
+  appendWorldBlockCrackFaces,
+  createDestroyStageTexture,
+  WORLD_BLOCK_CRACK_OPACITY,
+} from "./blockCracks.ts";
 import { hotbarWheelDirection } from "./hotbarInput.ts";
 import {
   DEFAULT_GAMEPLAY_CONTROL_BINDINGS,
@@ -4584,10 +4588,15 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         gl.bindTexture(gl.TEXTURE_2D, destroyStageTexture);
         gl.uniform1i(terrainAtlasLocation, 0);
         gl.uniform1f(terrainAlphaCutoffLocation, 0.5);
+        gl.enable(gl.BLEND);
+        gl.blendColor(0, 0, 0, WORLD_BLOCK_CRACK_OPACITY);
+        gl.blendFunc(gl.CONSTANT_ALPHA, gl.ONE_MINUS_CONSTANT_ALPHA);
         gl.depthMask(false);
         bindTerrainBuffer(crackBuffer);
         gl.drawArrays(gl.TRIANGLES, 0, crackVertexCount);
         gl.depthMask(true);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.disable(gl.BLEND);
         drawCalls += 1;
       }
       gl.useProgram(program);
@@ -4719,7 +4728,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       lastMiningProgressAt = now;
       miningProgress = clampNumber((now - miningStartedAt) / miningDurationMs, 0.01, 0.99);
       updateMiningCrackGeometry();
-      if (target && now - lastMiningHitAt >= 225) {
+      if (target && miningDurationMs >= (FIRST_PERSON_ACTION_MS + 30) * 2
+        && now - lastMiningHitAt >= FIRST_PERSON_ACTION_MS + 30) {
         lastMiningHitAt = now;
         emitHandAction("mine");
         options.onMiningHit?.({ ...target, block: { ...target.block }, place: { ...target.place } });

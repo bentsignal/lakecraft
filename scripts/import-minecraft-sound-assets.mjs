@@ -7,7 +7,7 @@ if (!assetsArgument) throw new Error("Usage: node scripts/import-minecraft-sound
 
 const VERSION = "26.2";
 const INDEX_ID = "32";
-const INDEX_SHA1 = "cf75b185cb35b32e299b0c8e674fa202d7911a3c";
+const INDEX_SHA1 = "773791767c043b4f9493b50c54257619cecb08a4";
 const assetsRoot = resolve(assetsArgument);
 const indexPath = join(assetsRoot, "indexes", `${INDEX_ID}.json`);
 const indexBytes = await readFile(indexPath);
@@ -27,6 +27,7 @@ const requested = [];
 for (const surface of surfaces) for (const [cue, action] of [["footstep", "step"], ["blockBreak", "break"], ["blockPlace", "place"]]) {
   requested.push([`${cue}:${surface}`, `block.${surface}.${action}`]);
 }
+requested.push(["pickup", "entity.item.pickup"]);
 for (const mob of mobs) for (const [cue, action] of [["mobIdle", "ambient"], ["mobHurt", "hurt"], ["mobDeath", "death"]]) {
   const event = `entity.${mob}.${action}`;
   if (sounds[event]) requested.push([`${cue}:${mob}`, event]);

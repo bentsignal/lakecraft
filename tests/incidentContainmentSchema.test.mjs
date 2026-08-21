@@ -113,10 +113,13 @@ for (const path of runtimeFiles) {
 // Lakebed authority or multiplayer transport. The reviewed presentation also
 // adds the exact installed destroy-stage atlas, textured depth-bearing dropped
 // items, packed numeric live-block keys, retained mesh-upload storage, and
-// wall-clock-anchored priority fluid propagation with prompt bounded meshes.
+// wall-clock-anchored priority fluid propagation with prompt bounded meshes;
+// this pass adds only shared mining presentation cadence/compositing, smoothed
+// dropped-item pickup presentation, random local seed creation, and the
+// save-versioned local-only wood-biome generator.
 assert.equal(runtimeFiles.length, 200, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "f7416ef6d42926ea3a27e1affada83199819d64598ba8135a5044be6cb98b785",
+  "783388be00711221c5504a8b3904fea31e045fa98bc0b92809f58ba9b55434ee",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

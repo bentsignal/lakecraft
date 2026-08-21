@@ -2,7 +2,7 @@
   "format": "lakecraft.minecraft-sound-assets.v1",
   "minecraftVersion": "26.2",
   "assetIndexId": "32",
-  "assetIndexSha1": "cf75b185cb35b32e299b0c8e674fa202d7911a3c",
+  "assetIndexSha1": "773791767c043b4f9493b50c54257619cecb08a4",
   "soundsJsonSha1": "9ac006d5537ed0fa4a7bcd1eccfc505155847686",
   "resourceBaseUrl": "https://resources.download.minecraft.net",
   "sourceIndexBytes": 586366,
@@ -214,6 +214,16 @@
           "path": "minecraft/sounds/dig/stone1.ogg",
           "hash": "4ec831592ae2bcbac1b4047a9f9f72a2de5ca834",
           "size": 7434
+        }
+      ]
+    },
+    "pickup": {
+      "event": "entity.item.pickup",
+      "assets": [
+        {
+          "path": "minecraft/sounds/random/pop.ogg",
+          "hash": "d6ae1c04d0a7376a33d1df12e1b8057cfbab6bc2",
+          "size": 4487
         }
       ]
     },

@@ -8,6 +8,7 @@ import {
   MAX_RENDERED_DROPPED_ITEMS,
   MAX_RENDERED_DROPPED_SPRITES,
   createDroppedItemRenderer,
+  droppedItemAttractionAmount,
   droppedBlockCubeVertexCount,
   droppedItemBufferCapacity,
   droppedSpriteVertexCount,
@@ -15,6 +16,7 @@ import {
   type DroppedItemGeometryStats,
   type DroppedItemRenderItem,
 } from "../client/game/droppedItemRenderer.ts";
+import { DROPPED_ITEM_ATTRACTION_MS } from "../shared/droppedItems.ts";
 import { ITEMS, type ItemId } from "../shared/game.ts";
 
 const capacity = droppedItemBufferCapacity();
@@ -26,6 +28,10 @@ assert.equal(DROPPED_BLOCK_CUBE_MAX_VERTICES, 36, "one exact textured cube needs
 assert.ok(capacity.totalBytes < 5_000_000, "the mixed dropped-item GPU pool stays below five MiB");
 assert.equal(droppedItemBufferCapacity(-2).totalBytes, 0);
 assert.equal(droppedItemBufferCapacity(999).itemCount, MAX_RENDERED_DROPPED_ITEMS);
+assert.equal(droppedItemAttractionAmount(0), 0);
+assert.ok(droppedItemAttractionAmount(DROPPED_ITEM_ATTRACTION_MS / 2) > 0.45);
+assert.equal(droppedItemAttractionAmount(DROPPED_ITEM_ATTRACTION_MS), 1,
+  "pickup flight reaches the player exactly when authority collection begins");
 for (const itemId of Object.keys(ITEMS) as ItemId[]) {
   assert.ok(droppedBlockCubeVertexCount(itemId) === 36 || droppedSpriteVertexCount(itemId) > 0,
     `${itemId} has either an exact textured cube or an extruded catalog sprite`);

@@ -10,7 +10,8 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // application copy or making a new literal eligible requires human review.
 export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 544;
 export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 479;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "47ff66dd440b61a7b5e1fc17b30e7182b950cc1b24ee9729a19cf1538a052aeb";
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "1ae4b8a966a2335578b800e86495bc1f41bff794b407526901d82a5a898492b1";
+// Counts are unchanged: the reviewed create-world hint now says blank seeds are random.
 export const COMPACT_CLIENT_HUMAN_DESTROY_STAGE_DELTA = Object.freeze({
   previousOccurrences: 543,
   previousUniqueValues: 478,
@@ -247,9 +248,18 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
   source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_375;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 137;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "2aec06920b6bf57ea4c74de654d7c188f34b2f891e21c5b0e77fa501e608453b";
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_380;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 138;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "725ba1bce9960190e5495374fd28ec7fbe575b6c1eb048a8bcbd9c772051c2b8";
+export const COMPACT_CLIENT_REPEATED_PICKUP_BIOME_DELTA = Object.freeze({
+  previousOccurrences: 1_375,
+  previousUniqueValues: 137,
+  previousSourceFingerprint: "2aec06920b6bf57ea4c74de654d7c188f34b2f891e21c5b0e77fa501e608453b",
+  occurrenceDelta: 5,
+  uniqueValueDelta: 1,
+  source: "drop attraction identity plus generator-v4 biome names",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_REPEATED_FLUID_SYSTEM_DELTA = Object.freeze({
   previousOccurrences: 1_359,
   previousUniqueValues: 135,
@@ -679,7 +689,8 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
 });
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 607;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 180;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "c3597cd2aedbada6716e0e9316f825e1bd0989adcfe30c9b7fdd96c49c7d6248";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "8c31b31412ed90452a9e58be7b0a12a875481d50a7bffa690d015e6732cf9d35";
+// Same cardinality; the installed Minecraft pickup sample adds its reviewed hash ordering.
 export const COMPACT_CLIENT_LOW_FREQUENCY_FLUID_SYSTEM_DELTA = Object.freeze({
   previousOccurrences: 613,
   previousUniqueValues: 182,

@@ -13,6 +13,9 @@ import { fieldOfViewRadians, mouseLookScale, type ClientSettings } from "../sett
 import type { GameplayControlBindings } from "./controlBindings.ts";
 import { audioSurfaceForBlock, ENGINE_TO_GAME, ITEM_TO_ENGINE } from "./catalog.ts";
 
+/** Minecraft-style cadence: held Creative mining advances at about three blocks per second. */
+export const CREATIVE_BLOCK_BREAK_SECONDS = 1 / 3;
+
 export interface GameplayPresentationContext {
   getSettings(): Pick<ClientSettings, "fovDegrees" | "mouseSensitivity" | "keyBindings">;
   getInventory(): Inventory;
@@ -36,7 +39,7 @@ export function createGameplayPresentationOptions(context: GameplayPresentationC
     selectedBlock: ITEM_TO_ENGINE[selectedItem() ?? "stick"] ?? 0,
     selectedItem: selectedItem(),
     getMiningDuration: (block) => {
-      if (context.getGameMode() === "creative") return 0.05;
+      if (context.getGameMode() === "creative") return CREATIVE_BLOCK_BREAK_SECONDS;
       const gameBlock = ENGINE_TO_GAME[block];
       return gameBlock ? miningSeconds(gameBlock, selectedItem() ?? undefined) : 0.2;
     },

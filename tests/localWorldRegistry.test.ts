@@ -360,6 +360,22 @@ assert.equal(normalizeLocalWorldName("x".repeat(49)), null);
 assert.equal(deterministicLocalWorldSeed("-42"), -42);
 assert.equal(deterministicLocalWorldSeed("Fern Hollow"), deterministicLocalWorldSeed("Fern Hollow"));
 assert.notEqual(deterministicLocalWorldSeed("Fern Hollow"), deterministicLocalWorldSeed("Fern Valley"));
+{
+  const storage = new MemoryStorage();
+  const first = createLocalWorld(storage, {
+    name: "Random One", seedText: "", gameMode: "survival", now: 1_750_000_000_001, randomSeed: 123_456,
+  });
+  const second = createLocalWorld(storage, {
+    name: "Random Two", seedText: "   ", gameMode: "survival", now: 1_750_000_000_002, randomSeed: -654_321,
+  });
+  assert.equal(first.ok && first.world.seed, 123_456, "blank world seeds use the generated signed 32-bit value");
+  assert.equal(second.ok && second.world.seed, -654_321, "each blank world can receive an independent random seed");
+  const explicit = createLocalWorld(storage, {
+    name: "Chosen", seedText: "Fern Hollow", gameMode: "survival", now: 1_750_000_000_003, randomSeed: 99,
+  });
+  assert.equal(explicit.ok && explicit.world.seed, deterministicLocalWorldSeed("Fern Hollow"),
+    "an explicit seed remains deterministic and ignores blank-seed randomness");
+}
 assert.equal(reconcileLocalWorldSelection("b", ["a", "b"]), "b");
 assert.equal(reconcileLocalWorldSelection("b", ["a"]), null);
 assert.equal(moveLocalWorldSelection(null, ["a", "b"], "ArrowDown"), "a");

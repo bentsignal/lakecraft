@@ -1,5 +1,6 @@
 import type { LocalMobDeathDropEvent } from "../game/mobs.ts";
 import {
+  DROPPED_ITEM_ATTRACTION_MS,
   DROPPED_ITEM_PICKUP_DELAY_MS,
   DROPPED_ITEM_PICKUP_RADIUS,
   DROPPED_ITEM_TTL_MS,
@@ -15,6 +16,22 @@ export interface LocalDropCollectionResult {
   inventory: Inventory;
   drops: LocalDroppedItem[];
   changed: boolean;
+}
+
+export type LocalDropAttractionTimes = Map<string, number>;
+
+function attractionComplete(
+  dropId: string,
+  now: number,
+  attractionTimes?: LocalDropAttractionTimes,
+): boolean {
+  if (!attractionTimes) return true;
+  const startedAt = attractionTimes.get(dropId);
+  if (startedAt === undefined) {
+    attractionTimes.set(dropId, now);
+    return false;
+  }
+  return now - startedAt >= DROPPED_ITEM_ATTRACTION_MS;
 }
 
 /**
@@ -112,6 +129,7 @@ export function collectLocalDroppedItems(
   pose: Readonly<{ x: number; y: number; z: number }>,
   pickupRadius = DROPPED_ITEM_PICKUP_RADIUS,
   now = Date.now(),
+  attractionTimes?: LocalDropAttractionTimes,
 ): LocalDropCollectionResult {
   let nextInventory = inventory;
   let changed = false;
@@ -124,6 +142,11 @@ export function collectLocalDroppedItems(
     }
     const distanceSquared = (pose.x - drop.x) ** 2 + (pose.y - drop.y) ** 2 + (pose.z - drop.z) ** 2;
     if (distanceSquared > radiusSquared) {
+      attractionTimes?.delete(drop.dropId);
+      remaining.push(drop);
+      continue;
+    }
+    if (!attractionComplete(drop.dropId, now, attractionTimes)) {
       remaining.push(drop);
       continue;
     }
@@ -135,6 +158,7 @@ export function collectLocalDroppedItems(
     }
     nextInventory = added.inventory;
     changed = true;
+    attractionTimes?.delete(drop.dropId);
     if (added.remainder > 0) remaining.push({ ...drop, item: { ...drop.item, count: added.remainder } });
   }
   return { inventory: nextInventory, drops: remaining, changed };
@@ -152,6 +176,7 @@ export function collectMovedLocalDroppedItems(
   pose: Readonly<{ x: number; y: number; z: number }>,
   pickupRadius = DROPPED_ITEM_PICKUP_RADIUS,
   now = Date.now(),
+  attractionTimes?: LocalDropAttractionTimes,
 ): LocalDropCollectionResult {
   let nextInventory = inventory;
   const changes: Array<{ index: number; remainder: number }> = [];
@@ -161,11 +186,16 @@ export function collectMovedLocalDroppedItems(
     if (!drop) continue;
     if (now < drop.droppedAt + DROPPED_ITEM_PICKUP_DELAY_MS) continue;
     const distanceSquared = (pose.x - drop.x) ** 2 + (pose.y - drop.y) ** 2 + (pose.z - drop.z) ** 2;
-    if (distanceSquared > radiusSquared) continue;
+    if (distanceSquared > radiusSquared) {
+      attractionTimes?.delete(drop.dropId);
+      continue;
+    }
+    if (!attractionComplete(drop.dropId, now, attractionTimes)) continue;
     const added = addItemStack(nextInventory, drop.item);
     const picked = drop.item.count - added.remainder;
     if (picked <= 0) continue;
     nextInventory = added.inventory;
+    attractionTimes?.delete(drop.dropId);
     changes.push({ index, remainder: added.remainder });
   }
   if (changes.length === 0) return { inventory, drops, changed: false };

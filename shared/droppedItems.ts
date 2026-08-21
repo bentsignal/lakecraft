@@ -17,6 +17,8 @@ export const DROPPED_ITEM_TTL_MS = 5 * 60 * 1_000;
 /** Every new world drop is inert for everyone until this deadline. */
 export const DROPPED_ITEM_PICKUP_DELAY_MS = 1_000;
 export const DROPPED_ITEM_PICKUP_RADIUS = 2;
+/** Time the world entity visibly flies into the player before inventory credit. */
+export const DROPPED_ITEM_ATTRACTION_MS = 220;
 export const DROPPED_ITEM_CHUNK_SIZE = 16;
 export const MAX_DROPPED_ITEM_REQUEST_LENGTH = 8_191;
 export const MAX_DROPPED_ITEM_JSON_LENGTH = 512;

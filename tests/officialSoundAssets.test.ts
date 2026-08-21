@@ -20,17 +20,18 @@ const expectedProvenance = {
   format: "lakecraft.minecraft-sound-assets.v1",
   minecraftVersion: "26.2",
   assetIndexId: "32",
-  assetIndexSha1: "cf75b185cb35b32e299b0c8e674fa202d7911a3c",
+  assetIndexSha1: "773791767c043b4f9493b50c54257619cecb08a4",
   soundsJsonSha1: "9ac006d5537ed0fa4a7bcd1eccfc505155847686",
   resourceBaseUrl: "https://resources.download.minecraft.net",
 };
 const soundKeys: string[] = [];
 for (const surface of ["grass", "stone", "wood", "sand", "gravel", "metal", "glass"])
   for (const cue of ["footstep", "blockBreak", "blockPlace"]) soundKeys.push(`${cue}:${surface}`);
+soundKeys.push("pickup");
 for (const mob of ["pig", "cow", "sheep", "chicken", "zombie", "skeleton", "creeper", "spider"])
   for (const cue of ["mobIdle", "mobHurt", "mobDeath"])
     if (!(mob === "creeper" && cue === "mobIdle")) soundKeys.push(`${cue}:${mob}`);
-assert.equal(soundKeys.length, 44);
+assert.equal(soundKeys.length, 45);
 assert.equal(OFFICIAL_SOUND_BASE, expectedProvenance.resourceBaseUrl);
 assert.equal(OFFICIAL_SOUND_INDEXES.length, soundKeys.length);
 assert.equal(OFFICIAL_MUSIC_INDEXES.length, 3);
@@ -45,7 +46,8 @@ for (let index = 0; index < soundKeys.length; index += 1) {
   const recorded = manifest.groups[key];
   const [cue, subject] = key.split(":");
   const hash = officialSoundAsset(cue as GameAudioCue,
-    cue.startsWith("mob") ? { mob: subject as GameAudioMob } : { surface: subject as GameAudioSurface });
+    cue.startsWith("mob") ? { mob: subject as GameAudioMob }
+      : cue === "pickup" ? {} : { surface: subject as GameAudioSurface });
   assert.ok(recorded?.event && Array.isArray(recorded.assets), `${key} retains its source event and paths`);
   assert.equal(recorded.assets.length, 1);
   assert.equal(hash, recorded.assets[0].hash);

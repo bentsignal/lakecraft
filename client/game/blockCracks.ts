@@ -8,6 +8,8 @@ import {
 
 export const WORLD_BLOCK_CRACK_STAGE_COUNT = DESTROY_STAGE_COUNT;
 export const WORLD_BLOCK_CRACK_EPSILON = 0.004;
+/** Minecraft's destroy sprite is a translucent overlay, never a replacement material. */
+export const WORLD_BLOCK_CRACK_OPACITY = 0.72;
 export const WORLD_BLOCK_CRACK_VERTEX_COUNT = 36;
 export const WORLD_BLOCK_CRACK_VERTEX_FLOATS = 6;
 
@@ -19,9 +21,9 @@ export function worldBlockCrackStage(progress: number): number {
 function pushVertex(
   output: number[], x: number, y: number, z: number, u: number, v: number,
 ): void {
-  // Position, exact destroy-atlas UV, and unattenuated shade. The ordinary
-  // terrain program discards the one-alpha background and draws only Mojang's
-  // authored crack pixels.
+  // Position, exact destroy-atlas UV, and unattenuated shade. The renderer
+  // discards the one-alpha background, then composites Mojang's authored crack
+  // pixels over the still-visible block texture.
   output.push(x, y, z, u, v, 1);
 }
 

@@ -138,10 +138,11 @@ export function officialSoundAsset(cue: GameAudioCue, options: GameAudioPlayOpti
   const surface = options.surface === "generic" || !options.surface ? "stone" : options.surface;
   const blockCue = cue === "footstep" ? 0 : cue === "blockBreak" ? 1 : cue === "blockPlace" ? 2 : -1;
   let index = blockCue < 0 ? -1 : OFFICIAL_SURFACES.indexOf(surface) * 3 + blockCue;
+  if (cue === "pickup") index = 21;
   if (index < 0 && options.mob) {
     const mob = OFFICIAL_MOBS.indexOf(options.mob);
     const action = cue === "mobIdle" ? 0 : cue === "mobHurt" ? 1 : cue === "mobDeath" ? 2 : -1;
-    if (mob >= 0 && action >= 0 && !(options.mob === "creeper" && action === 0)) index = 21 + mob * 3 + action - (mob >= 6 ? 1 : 0);
+    if (mob >= 0 && action >= 0 && !(options.mob === "creeper" && action === 0)) index = 22 + mob * 3 + action - (mob >= 6 ? 1 : 0);
   }
   if (index < 0) return null;
   return officialAssetAt(OFFICIAL_SOUND_INDEXES, index);

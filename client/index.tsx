@@ -121,6 +121,7 @@ import {
 } from "../shared/presenceMotion";
 import type { MotionVisualActionKind } from "../shared/multiplayerSegments.ts";
 import {
+  DROPPED_ITEM_ATTRACTION_MS,
   DROPPED_ITEM_PICKUP_RADIUS,
   droppedItemForwardPosition,
   type NormalizedDroppedItem,
@@ -361,6 +362,7 @@ function RailwayMultiplayerSession({
   const pointerSessionRef = useRef(createGameplayPointerSessionState(false));
   const realtimeDropsRef = useRef<NormalizedDroppedItem[]>([]);
   const droppedPickupAttemptRef = useRef(new Map<string, number>());
+  const droppedPickupAttractionRef = useRef<{ dropId: string; startedAt: number } | null>(null);
   const appliedPickupDropsRef = useRef(new Set<string>());
   const lastDroppedPickupSweepRef = useRef(0);
   const respawnRequestInFlightRef = useRef(false);
@@ -929,7 +931,17 @@ function RailwayMultiplayerSession({
       .map((drop) => ({ drop, distance: Math.hypot(drop.x - pose.x, drop.y - pose.y, drop.z - pose.z) }))
       .filter(({ distance }) => distance <= DROPPED_ITEM_PICKUP_RADIUS)
       .sort((left, right) => left.distance - right.distance)[0]?.drop;
-    if (nearby && now - (droppedPickupAttemptRef.current.get(nearby.dropId) ?? 0) >= 350) {
+    if (!nearby) {
+      droppedPickupAttractionRef.current = null;
+      return;
+    }
+    const attraction = droppedPickupAttractionRef.current;
+    if (!attraction || attraction.dropId !== nearby.dropId) {
+      droppedPickupAttractionRef.current = { dropId: nearby.dropId, startedAt: now };
+      return;
+    }
+    if (now - attraction.startedAt >= DROPPED_ITEM_ATTRACTION_MS
+      && now - (droppedPickupAttemptRef.current.get(nearby.dropId) ?? 0) >= 350) {
       droppedPickupAttemptRef.current.set(nearby.dropId, now);
       void pickupNearbyDroppedItem(nearby);
     }

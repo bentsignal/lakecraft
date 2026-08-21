@@ -178,18 +178,44 @@ function biomeTerrainHeight(x: number, z: number, seed: number): number {
   return 66.5 + broad + rolling + ridge * ridge * 105 - basin * 28;
 }
 
+export type TerrainBiome = "plains" | "desert" | "birch_forest" | "taiga" | "jungle" | "savanna" | "dark_forest";
+
+export function treeBlocksForBiome(biome: TerrainBiome): readonly [BlockId, BlockId] {
+  return biome === "taiga" ? [BLOCK.SPRUCE_LOG, BLOCK.SPRUCE_LEAVES]
+    : biome === "birch_forest" ? [BLOCK.BIRCH_LOG, BLOCK.BIRCH_LEAVES]
+      : biome === "jungle" ? [BLOCK.JUNGLE_LOG, BLOCK.JUNGLE_LEAVES]
+        : biome === "savanna" ? [BLOCK.ACACIA_LOG, BLOCK.ACACIA_LEAVES]
+          : biome === "dark_forest" ? [BLOCK.DARK_OAK_LOG, BLOCK.DARK_OAK_LEAVES]
+            : [BLOCK.WOOD, BLOCK.LEAVES];
+}
+
+function usesBiomeGeneration(terrain?: WorldTerrainDescriptor): boolean {
+  return terrain?.generatorVersion === 3 || terrain?.generatorVersion === 4;
+}
+
 export function terrainBiome(
   x: number, z: number, seed: number, terrain?: WorldTerrainDescriptor,
-): "plains" | "desert" {
-  if (terrain?.generatorVersion !== 3 || Math.max(Math.abs(x), Math.abs(z)) <= SAND_SPAWN_SANCTUARY_RADIUS) {
+): TerrainBiome {
+  if (!usesBiomeGeneration(terrain) || Math.max(Math.abs(x), Math.abs(z)) <= SAND_SPAWN_SANCTUARY_RADIUS) {
     return "plains";
   }
-  return valueNoise(x, z, seed + 6_019, 72) > 0.58 ? "desert" : "plains";
+  if (terrain?.generatorVersion === 3) {
+    return valueNoise(x, z, seed + 6_019, 72) > 0.58 ? "desert" : "plains";
+  }
+  const climate = valueNoise(x, z, seed + 6_019, 64);
+  const forest = valueNoise(x, z, seed + 6_071, 52);
+  if (climate > 0.69) return "desert";
+  if (climate > 0.59) return "savanna";
+  if (climate < 0.31) return "taiga";
+  if (climate < 0.41) return "birch_forest";
+  if (forest > 0.63) return "jungle";
+  if (forest < 0.37) return "dark_forest";
+  return "plains";
 }
 
 export function terrainHeight(x: number, z: number, seed: number, terrain?: WorldTerrainDescriptor): number {
   if (terrain?.preset === "superflat") return terrain.superflatGroundY;
-  const modern = terrain?.generatorVersion === 3;
+  const modern = usesBiomeGeneration(terrain);
   const naturalHeight = modern ? biomeTerrainHeight(x, z, seed) : rawTerrainHeight(x, z, seed);
   const spawnDistance = Math.max(Math.abs(x), Math.abs(z));
   const spawnBlend = Math.max(
@@ -209,7 +235,7 @@ export function terrainSandDepth(x: number, z: number, seed: number, terrain?: W
   const blockX = Math.floor(x);
   const blockZ = Math.floor(z);
   if (Math.max(Math.abs(blockX), Math.abs(blockZ)) <= SAND_SPAWN_SANCTUARY_RADIUS) return 0;
-  if (terrain?.generatorVersion === 3) {
+  if (usesBiomeGeneration(terrain)) {
     if (terrainBiome(blockX, blockZ, seed, terrain) === "desert") return 3;
     return terrainHeight(blockX, blockZ, seed, terrain) <= TERRAIN_SEA_LEVEL + 1 ? 2 : 0;
   }
@@ -239,7 +265,7 @@ export function terrainBaseBlock(
 ): BlockId {
   const top = terrainHeight(x, z, seed, terrain);
   if (y < TERRAIN_MIN_Y) return BLOCK.AIR;
-  if (y > top) return terrain?.generatorVersion === 3 && y <= TERRAIN_SEA_LEVEL ? BLOCK.WATER : BLOCK.AIR;
+  if (y > top) return usesBiomeGeneration(terrain) && y <= TERRAIN_SEA_LEVEL ? BLOCK.WATER : BLOCK.AIR;
   if (y === TERRAIN_MIN_Y) return BLOCK.BEDROCK;
   const sandDepth = terrainSandDepth(x, z, seed, terrain);
   if (sandDepth > 0 && y > top - sandDepth) return BLOCK.SAND;
@@ -546,7 +572,7 @@ function addGround(
       const sandDepth = terrainSandDepth(x, z, seed, terrain);
       const clayDepth = cachedClayDepth(clayColumns, x, z);
       const dirtDepth = Math.min(top - 1, hash2(x, z, seed + 401) > 0.62 ? 3 : 2);
-      const surface = terrain?.generatorVersion === 3 ? Math.max(top, TERRAIN_SEA_LEVEL) : top;
+      const surface = usesBiomeGeneration(terrain) ? Math.max(top, TERRAIN_SEA_LEVEL) : top;
       for (let y = region.minY; y <= surface; y += 1) {
         const base = y > top
           ? BLOCK.WATER
@@ -743,7 +769,7 @@ function carveCaves(blocks: Map<string, BlockId>, region: TerrainRegion, seed: n
 function addLavaSprings(
   blocks: Map<string, BlockId>, region: TerrainRegion, seed: number, terrain?: WorldTerrainDescriptor,
 ): void {
-  if (terrain?.generatorVersion !== 3) return;
+  if (!usesBiomeGeneration(terrain)) return;
   for (let x = region.minX; x <= region.maxX; x += 1) for (let z = region.minZ; z <= region.maxZ; z += 1) {
     for (let y = Math.max(1, region.minY); y <= 8; y += 1) {
       const cell = blockKey(x, y, z);
@@ -758,9 +784,16 @@ function isTreeSite(x: number, z: number, seed: number, terrain?: WorldTerrainDe
   if (Math.max(Math.abs(x), Math.abs(z)) <= SPAWN_BLEND_RADIUS + TREE_MARGIN) return false;
   if (terrainSandDepth(x, z, seed, terrain) > 0) return false;
 
+  const biome = terrainBiome(x, z, seed, terrain);
+  if (biome === "desert") return false;
   // Low-frequency forest noise creates recognizable groves and open meadows.
   const forestDensity = valueNoise(x, z, seed + 977, 24);
-  if (forestDensity < 0.38) return false;
+  const densityFloor = terrain?.generatorVersion !== 4 ? 0.38
+    : biome === "jungle" ? 0.12
+      : biome === "dark_forest" ? 0.18
+        : biome === "taiga" || biome === "birch_forest" ? 0.27
+          : biome === "savanna" ? 0.55 : 0.43;
+  if (forestDensity < densityFloor) return false;
 
   const ground = terrainHeight(x, z, seed, terrain);
   for (let dx = -1; dx <= 1; dx += 1) {
@@ -780,9 +813,12 @@ function addTree(
   terrain?: WorldTerrainDescriptor,
 ): void {
   const ground = terrainHeight(x, z, seed, terrain);
-  const trunkHeight = hash2(x, z, seed + 613) > 0.62 ? 5 : 4;
+  const biome = terrainBiome(x, z, seed, terrain);
+  const [log, leaves] = treeBlocksForBiome(biome);
+  const trunkHeight = biome === "jungle" ? 6 + +(hash2(x, z, seed + 613) > 0.5)
+    : hash2(x, z, seed + 613) > 0.62 ? 5 : 4;
   for (let dy = 1; dy <= trunkHeight; dy += 1) {
-    if (isInside(region, x, z)) blocks.set(blockKey(x, ground + dy, z), BLOCK.WOOD);
+    if (isInside(region, x, z)) blocks.set(blockKey(x, ground + dy, z), log);
   }
 
   const crownY = ground + trunkHeight;
@@ -795,11 +831,11 @@ function addTree(
         if (radius === 2 && Math.abs(dx) === radius && Math.abs(dz) === radius) continue;
         if (dy === 1 && Math.abs(dx) + Math.abs(dz) > 1) continue;
         const key = blockKey(x + dx, crownY + dy, z + dz);
-        if (!blocks.has(key)) blocks.set(key, BLOCK.LEAVES);
+        if (!blocks.has(key)) blocks.set(key, leaves);
       }
     }
   }
-  if (isInside(region, x, z)) blocks.set(blockKey(x, crownY + 2, z), BLOCK.LEAVES);
+  if (isInside(region, x, z)) blocks.set(blockKey(x, crownY + 2, z), leaves);
 }
 
 function addTrees(
@@ -824,7 +860,7 @@ function addTrees(
 function addBiomePlants(
   blocks: Map<string, BlockId>, region: TerrainRegion, seed: number, terrain?: WorldTerrainDescriptor,
 ): void {
-  if (terrain?.generatorVersion !== 3) return;
+  if (!usesBiomeGeneration(terrain)) return;
   for (let x = region.minX; x <= region.maxX; x += 1) for (let z = region.minZ; z <= region.maxZ; z += 1) {
     const top = terrainHeight(x, z, seed, terrain);
     if (top < TERRAIN_SEA_LEVEL || blocks.has(blockKey(x, top + 1, z))) continue;

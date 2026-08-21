@@ -1573,9 +1573,9 @@ export function clampHotbarIndex(value: number): number {
 
 export function toolEffectiveness(blockId: BlockId, itemId?: ItemId | null): number {
   const block = BLOCKS[blockId];
-  if (!itemId) return block.preferredTool === "hand" ? 1 : 0.35;
+  if (!itemId) return block.preferredTool === "hand" ? 1 : 0.55;
   const tool = ITEMS[itemId].tool;
-  if (!tool) return block.preferredTool === "hand" ? 1 : 0.35;
+  if (!tool) return block.preferredTool === "hand" ? 1 : 0.55;
   if (tool.kind !== block.preferredTool) return 0.5;
   return tool.tier === "gold" ? 12 : tool.tier === "diamond" ? 8 : tool.tier === "iron" ? 6 : tool.tier === "stone" ? 4 : 2.5;
 }

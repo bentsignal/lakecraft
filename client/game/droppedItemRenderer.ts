@@ -1,5 +1,10 @@
 import { ITEMS, type ItemId } from "../../shared/game.ts";
 import type { NormalizedDroppedItem } from "../../shared/droppedItems.ts";
+import {
+  DROPPED_ITEM_ATTRACTION_MS,
+  DROPPED_ITEM_PICKUP_DELAY_MS,
+  DROPPED_ITEM_PICKUP_RADIUS,
+} from "../../shared/droppedItems.ts";
 import { getItemIconArt, type ItemIconArt } from "../components/itemIconArt.ts";
 import { blockIdForCubeItem } from "./blockItemCubeGeometry.ts";
 import { blockTextureForFace, textureAtlasUv } from "./blockTextures.ts";
@@ -14,6 +19,7 @@ export const DROPPED_ITEM_MESH_INTERVAL_MS = 1_000 / 30;
 export const DROPPED_ITEM_MAX_ICON_RUNS = 150;
 export const DROPPED_BLOCK_CUBE_GRID_SIZE = 16;
 export const DROPPED_BLOCK_CUBE_MAX_VERTICES = 36;
+export const DROPPED_ITEM_POSITION_SMOOTHING = 18;
 
 const FLOATS_PER_VERTEX = 6;
 const CUBE_SIZE = 0.30;
@@ -145,6 +151,11 @@ export function droppedSpriteVertexCount(itemId: ItemId): number {
   return (DROPPED_SPRITE_TEMPLATE_BY_ITEM.get(itemId)?.length ?? 0) / FLOATS_PER_VERTEX;
 }
 
+export function droppedItemAttractionAmount(elapsedMs: number): number {
+  const progress = Math.max(0, Math.min(1, elapsedMs / DROPPED_ITEM_ATTRACTION_MS));
+  return progress * progress * (3 - 2 * progress);
+}
+
 export function droppedItemBufferCapacity(itemCount = MAX_RENDERED_DROPPED_ITEMS) {
   const count = Math.max(0, Math.min(MAX_RENDERED_DROPPED_ITEMS, Math.floor(itemCount)));
   const colorVertexCount = Math.min(count, MAX_RENDERED_DROPPED_SPRITES) * DROPPED_ITEM_VERTICES_PER_ITEM;
@@ -211,9 +222,14 @@ export function createDroppedItemRenderer(gl: WebGLRenderingContext): DroppedIte
   const colors = new Float32Array(capacity.colorVertexCount * FLOATS_PER_VERTEX);
   const textured = new Float32Array(capacity.textureVertexCount * FLOATS_PER_VERTEX);
   const positions = new Float32Array(MAX_RENDERED_DROPPED_ITEMS * 3);
+  const renderedPositions = new Float32Array(MAX_RENDERED_DROPPED_ITEMS * 3);
+  const geometryPositions = new Float32Array(MAX_RENDERED_DROPPED_ITEMS * 3);
   const phases = new Float32Array(MAX_RENDERED_DROPPED_ITEMS);
+  const pickupReadyAt = new Float64Array(MAX_RENDERED_DROPPED_ITEMS);
+  const attractionStartedAt = new Float64Array(MAX_RENDERED_DROPPED_ITEMS).fill(-1);
+  const dropIds: string[] = [];
   const itemIds: ItemId[] = [];
-  let itemCount = 0, lastMeshAt = -Infinity, dirty = true;
+  let itemCount = 0, lastMeshAt = -Infinity, dirty = true, lastPositionUpdateAt = -Infinity;
   let colorFloats = 0, texturedFloats = 0;
   const stats: DroppedItemRenderStats = { totalItemCount: 0, visibleItemCount: 0, vertexCount: 0,
     colorVertexCount: 0, textureVertexCount: 0, meshMs: 0, uploadBytes: 0, meshUpdates: 0, updated: false };
@@ -222,22 +238,56 @@ export function createDroppedItemRenderer(gl: WebGLRenderingContext): DroppedIte
   return {
     buffer, textureBuffer, stats,
     setItems(items) {
+      const previousCount = itemCount;
       itemCount = 0;
       for (let sourceIndex = 0; sourceIndex < Math.min(items.length, MAX_RENDERED_DROPPED_ITEMS); sourceIndex += 1) {
         const item = items[sourceIndex];
         if (!item || !Number.isFinite(item.x) || !Number.isFinite(item.y) || !Number.isFinite(item.z)
           || !Object.prototype.hasOwnProperty.call(ITEMS, item.item.itemId)) continue;
         const offset = itemCount * 3;
+        const sameItem = itemCount < previousCount && dropIds[itemCount] === item.dropId;
         positions[offset] = item.x; positions[offset + 1] = item.y; positions[offset + 2] = item.z;
+        if (!sameItem) {
+          renderedPositions[offset] = item.x;
+          renderedPositions[offset + 1] = item.y;
+          renderedPositions[offset + 2] = item.z;
+          attractionStartedAt[itemCount] = -1;
+          pickupReadyAt[itemCount] = performance.now()
+            + Math.max(0, item.droppedAt + DROPPED_ITEM_PICKUP_DELAY_MS - Date.now());
+        }
+        dropIds[itemCount] = item.dropId;
         itemIds[itemCount] = item.item.itemId; phases[itemCount] = itemPhase(item.dropId, item.droppedAt); itemCount += 1;
       }
-      itemIds.length = itemCount; dirty = true;
+      dropIds.length = itemCount; itemIds.length = itemCount; dirty = true;
     },
     update(now, camera) {
       stats.updated = false;
       if (!dirty && now - lastMeshAt < DROPPED_ITEM_MESH_INTERVAL_MS) return stats;
       const startedAt = performance.now();
-      writeDroppedItemGeometry(positions, phases, itemIds, itemCount, camera, now, colors, textured, stats);
+      const elapsedSeconds = Number.isFinite(lastPositionUpdateAt)
+        ? Math.max(0, Math.min(0.1, (now - lastPositionUpdateAt) / 1_000)) : 0;
+      const smoothing = 1 - Math.exp(-DROPPED_ITEM_POSITION_SMOOTHING * elapsedSeconds);
+      const pickupY = camera[1] - 0.72;
+      for (let index = 0; index < itemCount; index += 1) {
+        const offset = index * 3;
+        for (let axis = 0; axis < 3; axis += 1) {
+          const delta = positions[offset + axis] - renderedPositions[offset + axis];
+          renderedPositions[offset + axis] += Math.abs(delta) > 3 ? delta : delta * smoothing;
+        }
+        const dx = renderedPositions[offset] - camera[0];
+        const dy = renderedPositions[offset + 1] - pickupY;
+        const dz = renderedPositions[offset + 2] - camera[2];
+        const inRange = dx * dx + dy * dy + dz * dz <= DROPPED_ITEM_PICKUP_RADIUS ** 2;
+        if (now >= pickupReadyAt[index] && inRange && attractionStartedAt[index] < 0) attractionStartedAt[index] = now;
+        else if (!inRange) attractionStartedAt[index] = -1;
+        const attraction = attractionStartedAt[index] < 0 ? 0
+          : droppedItemAttractionAmount(now - attractionStartedAt[index]);
+        geometryPositions[offset] = renderedPositions[offset] + (camera[0] - renderedPositions[offset]) * attraction;
+        geometryPositions[offset + 1] = renderedPositions[offset + 1] + (pickupY - renderedPositions[offset + 1]) * attraction;
+        geometryPositions[offset + 2] = renderedPositions[offset + 2] + (camera[2] - renderedPositions[offset + 2]) * attraction;
+      }
+      lastPositionUpdateAt = now;
+      writeDroppedItemGeometry(geometryPositions, phases, itemIds, itemCount, camera, now, colors, textured, stats);
       colorFloats = stats.colorVertexCount * FLOATS_PER_VERTEX;
       texturedFloats = stats.textureVertexCount * FLOATS_PER_VERTEX;
       if (colorFloats) { gl.bindBuffer(gl.ARRAY_BUFFER, buffer); gl.bufferSubData(gl.ARRAY_BUFFER, 0, colors.subarray(0, colorFloats)); }

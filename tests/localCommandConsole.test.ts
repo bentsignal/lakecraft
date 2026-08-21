@@ -166,7 +166,7 @@ assert.ok(
 const presentation = readFileSync(new URL("../client/gameplay/presentation.ts", import.meta.url), "utf8");
 assert.ok(presentation.includes('canTakePlayerDamage: () => context.getGameMode() === "survival"'));
 assert.ok(app.includes("getGameMode: () => gameModeRef.current"));
-assert.ok(presentation.includes('if (context.getGameMode() === "creative") return 0.05'));
+assert.ok(presentation.includes('if (context.getGameMode() === "creative") return CREATIVE_BLOCK_BREAK_SECONDS'));
 assert.ok(app.includes('(gameModeRef.current === "creative" || countItem(inventoryRef.current, "arrow") > 0)'),
   "Creative bows do not require or consume arrows");
 assert.ok(app.includes('const nextInventory = creative ? inventoryRef.current : inventoryRef.current.map'),

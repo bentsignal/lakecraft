@@ -19,7 +19,7 @@ assert.match(multiplayer, /await sink\(pending\.operationId, pending\.optimistic
 assert.match(multiplayer, /play\("blockBreak"[\s\S]*spawnBlockParticles\(\{[\s\S]*action: "break"/,
   "Railway confirmation, not Lakebed, emits break feedback");
 assert.match(singleplayer, /play\("blockBreak"[\s\S]*spawnBlockParticles\(\{ action: "break"/);
-assert.match(engine, /now - lastMiningHitAt >= 225/);
+assert.match(engine, /now - lastMiningHitAt >= FIRST_PERSON_ACTION_MS \+ 30/);
 assert.match(engine, /footstepDistance \+= movedHorizontally/);
 assert.match(engineTypes, /onMiningHit\?:/);
 assert.match(engineTypes, /onFootstep\?:/);

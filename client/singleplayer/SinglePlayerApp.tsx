@@ -263,6 +263,7 @@ function LocalGameplaySession({
   const survivalActivityRef = useRef(0.5);
   const survivalSampledAtRef = useRef(performance.now());
   const dropsRef = useRef<LocalDroppedItem[]>(initialSnapshot.drops);
+  const dropAttractionTimesRef = useRef(new Map<string, number>());
   const activeDropIndicesRef = useRef(new Set<number>());
   const movedDropIndicesRef = useRef(new Set<number>());
   const dropGravityClockRef = useRef(createLocalDropGravityClock());
@@ -918,12 +919,20 @@ function LocalGameplaySession({
 
   function collectLocalDrops(pose: { x: number; y: number; z: number }): void {
     if (healthRef.current <= 0 || dropsRef.current.length === 0) return;
-    const collected = collectLocalDroppedItems(inventoryRef.current, dropsRef.current, pose);
+    const collected = collectLocalDroppedItems(
+      inventoryRef.current,
+      dropsRef.current,
+      pose,
+      undefined,
+      Date.now(),
+      dropAttractionTimesRef.current,
+    );
     if (!collected.changed) return;
     inventoryRef.current = collected.inventory;
     dropsRef.current = collected.drops;
     syncLocalDropGravity();
     setInventory(collected.inventory);
+    audioRef.current?.play("pickup", { seed: `local:${Date.now()}`, intensity: 0.72 });
     engineRef.current?.setDroppedItems(collected.drops);
     markWorldDirty();
   }
@@ -1211,7 +1220,7 @@ function LocalGameplaySession({
     };
     const engine = createGameplaySessionEngine(canvas, createLocalGameplayAuthority({
       seed: worldRef.current.seed,
-      terrain: { preset: "default", superflatGroundY: 20, generatorVersion: worldRef.current.generatorVersion as 2 | 3 },
+      terrain: { preset: "default", superflatGroundY: 20, generatorVersion: worldRef.current.generatorVersion as 2 | 3 | 4 },
       streamingChunkRadius: clientSettingsRef.current.renderDistance,
       initialEdits: [...editsRef.current.values()],
       initialBedStructures: initialSnapshot.world.beds ?? [],
@@ -1238,12 +1247,16 @@ function LocalGameplaySession({
           dropsRef.current,
           movedDropIndicesRef.current,
           pose,
+          undefined,
+          Date.now(),
+          dropAttractionTimesRef.current,
         );
         if (collected.changed) {
           inventoryRef.current = collected.inventory;
           dropsRef.current = collected.drops;
           syncLocalDropGravity(localEngine);
           setInventory(collected.inventory);
+          audioRef.current?.play("pickup", { seed: `local:${Date.now()}`, intensity: 0.72 });
         }
         localEngine.setDroppedItems(dropsRef.current);
         markWorldDirty();

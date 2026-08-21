@@ -5,7 +5,11 @@ import {
   pruneExpiredLocalDroppedItems,
 } from "../client/singleplayer/localDroppedItems.ts";
 import { SINGLEPLAYER_SAVE_LIMITS } from "../client/singleplayer/localSave.ts";
-import { DROPPED_ITEM_PICKUP_DELAY_MS, DROPPED_ITEM_TTL_MS } from "../shared/droppedItems.ts";
+import {
+  DROPPED_ITEM_ATTRACTION_MS,
+  DROPPED_ITEM_PICKUP_DELAY_MS,
+  DROPPED_ITEM_TTL_MS,
+} from "../shared/droppedItems.ts";
 import { createEmptyInventory } from "../shared/game.ts";
 
 const now = 1_000_000;
@@ -89,6 +93,14 @@ const stationaryOwner = collectLocalDroppedItems(emptyInventory, tooEarly.drops,
   now + DROPPED_ITEM_PICKUP_DELAY_MS);
 assert.equal(stationaryOwner.drops.length, 0, "the owner can collect in place at the exact deadline");
 assert.equal(stationaryOwner.inventory[0]?.itemId, "dirt");
+const attractionTimes = new Map<string, number>();
+const attractionStart = now + DROPPED_ITEM_PICKUP_DELAY_MS;
+const flying = collectLocalDroppedItems(emptyInventory, [manualToss], { x: 0, y: 1, z: 0 }, undefined,
+  attractionStart, attractionTimes);
+assert.equal(flying.drops.length, 1, "pickup retains the world entity during its visible magnet flight");
+const attracted = collectLocalDroppedItems(emptyInventory, flying.drops, { x: 0, y: 1, z: 0 }, undefined,
+  attractionStart + DROPPED_ITEM_ATTRACTION_MS, attractionTimes);
+assert.equal(attracted.drops.length, 0, "inventory credit lands at the end of the magnet flight");
 
 const saturatedStalePool = Array.from(
   { length: SINGLEPLAYER_SAVE_LIMITS.drops },

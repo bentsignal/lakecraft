@@ -14,6 +14,7 @@ import {
   raycastVoxels,
   terrainBiome,
   terrainHeight,
+  treeBlocksForBiome,
 } from "../client/game/terrain.ts";
 import { BLOCK } from "../client/game/types.ts";
 import { WATER_EXIT_SPEED, blockFaceIsOccluded, blockHasCollision, waterVerticalVelocity } from "../client/game/voxelEngine.ts";
@@ -21,6 +22,7 @@ import { WATER_EXIT_SPEED, blockFaceIsOccluded, blockHasCollision, waterVertical
 const SEED = 7_319;
 const V2 = { preset: "default", superflatGroundY: 20, generatorVersion: 2 } as const;
 const V3 = { preset: "default", superflatGroundY: 20, generatorVersion: 3 } as const;
+const V4 = { preset: "default", superflatGroundY: 20, generatorVersion: 4 } as const;
 
 assert.deepEqual(
   [...createTerrainRegion(SEED, -12, 12, -12, 12, { terrain: V2 })],
@@ -29,7 +31,8 @@ assert.deepEqual(
 );
 assert.equal(isWorldTerrainDescriptor(V2), true);
 assert.equal(isWorldTerrainDescriptor(V3), true);
-assert.equal(isWorldTerrainDescriptor({ ...V3, generatorVersion: 4 }), false);
+assert.equal(isWorldTerrainDescriptor(V4), true);
+assert.equal(isWorldTerrainDescriptor({ ...V3, generatorVersion: 5 }), false);
 assert.deepEqual(BLOCK_TYPES.slice(-NATURAL_BLOCK_STATE_TYPES.length), NATURAL_BLOCK_STATE_TYPES);
 assert.deepEqual(WORLD_CHUNK_BLOCK_TYPES.slice(-NATURAL_BLOCK_STATE_TYPES.length), NATURAL_BLOCK_STATE_TYPES);
 assert.deepEqual(NATURAL_BLOCK_STATE_TYPES.map((state) => BLOCK[state.toUpperCase() as keyof typeof BLOCK]),
@@ -96,5 +99,24 @@ const throughWater = raycastVoxels([0.5, 65.5, 0.5], [1, 0, 0], (x) =>
 assert.equal(throughWater?.block.x, 2, "interaction rays pass through water to solid blocks");
 
 assert.ok(generationMs < 3_000, `128x128 biome generation took ${generationMs.toFixed(1)}ms`);
+
+const expandedBiomes = new Set<string>();
+for (let x = -128; x < 128; x += 1) for (let z = -128; z < 128; z += 1) {
+  expandedBiomes.add(terrainBiome(x, z, SEED, V4));
+}
+assert.deepEqual([...expandedBiomes].sort(),
+  ["birch_forest", "dark_forest", "desert", "jungle", "plains", "savanna", "taiga"],
+  "new worlds contain broad base-game wood and climate regions");
+assert.deepEqual(treeBlocksForBiome("taiga"), [BLOCK.SPRUCE_LOG, BLOCK.SPRUCE_LEAVES]);
+assert.deepEqual(treeBlocksForBiome("birch_forest"), [BLOCK.BIRCH_LOG, BLOCK.BIRCH_LEAVES]);
+assert.deepEqual(treeBlocksForBiome("jungle"), [BLOCK.JUNGLE_LOG, BLOCK.JUNGLE_LEAVES]);
+assert.deepEqual(treeBlocksForBiome("savanna"), [BLOCK.ACACIA_LOG, BLOCK.ACACIA_LEAVES]);
+assert.deepEqual(treeBlocksForBiome("dark_forest"), [BLOCK.DARK_OAK_LOG, BLOCK.DARK_OAK_LEAVES]);
+const expanded = createTerrainRegion(SEED, -64, 63, -64, 63, { terrain: V4 });
+for (const log of [BLOCK.SPRUCE_LOG, BLOCK.BIRCH_LOG, BLOCK.JUNGLE_LOG, BLOCK.ACACIA_LOG]) {
+  assert.ok([...expanded.values()].includes(log), `generator v4 places wood state ${log} in its matching biome`);
+}
+const darkForestPatch = createTerrainRegion(SEED, -144, -97, -144, -81, { terrain: V4 });
+assert.ok([...darkForestPatch.values()].includes(BLOCK.DARK_OAK_LOG), "dark forests place dark-oak trunks");
 console.log(JSON.stringify({ generationMs, minimum, maximum, desertColumns, counts: Object.fromEntries(counts) }));
 console.log("lakecraft biome terrain tests: ok");

@@ -395,7 +395,7 @@ export function LocalWorldBrowser({ onBack, onPlay, storage: suppliedStorage }: 
             ) : (
               <>
                 <input aria-label="World Name" autoFocus defaultValue="New World" maxLength={48} name="world-title" />
-                <input aria-label="Seed" name="world-seed" placeholder="Seed (blank: Lakecraft)" />
+                <input aria-label="Seed" name="world-seed" placeholder="Seed (blank: random)" />
                 <select aria-label="Game Mode" className="lc-menu-button" name="world-mode">
                   <option value="survival">Survival</option>
                   <option value="creative">Creative</option>

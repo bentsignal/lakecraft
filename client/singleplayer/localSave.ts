@@ -29,7 +29,8 @@ import { LOCAL_DROP_TERMINAL_VELOCITY } from "./localDropGravity.ts";
 
 export const SINGLEPLAYER_SAVE_FORMAT = "lakecraft.singleplayer" as const;
 export const SINGLEPLAYER_SAVE_VERSION = 2 as const;
-export const SINGLEPLAYER_GENERATOR_VERSION = 3 as const;
+export const SINGLEPLAYER_GENERATOR_VERSION = 4 as const;
+export const SINGLEPLAYER_PREVIOUS_GENERATOR_VERSION = 3 as const;
 export const SINGLEPLAYER_LEGACY_GENERATOR_VERSION = 2 as const;
 export const SINGLEPLAYER_SAVE_SLOT_A_KEY = "lakecraft.singleplayer.save.a";
 export const SINGLEPLAYER_SAVE_SLOT_B_KEY = "lakecraft.singleplayer.save.b";
@@ -491,6 +492,7 @@ export function validateSinglePlayerSnapshot(value: unknown): SinglePlayerSnapsh
     || !exactKeys(value.world, ["worldId", "generatorVersion", "seed", "createdAt", "activePlayMs", "gameMode", "weather", "edits", "beds"])
     || !identifier(value.world.worldId)
     || (value.world.generatorVersion !== SINGLEPLAYER_LEGACY_GENERATOR_VERSION
+      && value.world.generatorVersion !== SINGLEPLAYER_PREVIOUS_GENERATOR_VERSION
       && value.world.generatorVersion !== SINGLEPLAYER_GENERATOR_VERSION)
     || !safeInteger(value.world.seed, -2_147_483_648, 2_147_483_647)
     || !safeInteger(value.world.createdAt, 0, MAX_TIMESTAMP)

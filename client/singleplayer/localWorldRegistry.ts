@@ -683,6 +683,16 @@ export function deterministicLocalWorldSeed(value: string): number {
   return hash | 0;
 }
 
+/** A blank seed creates a genuinely new world while explicit text remains deterministic. */
+export function randomLocalWorldSeed(): number {
+  const values = new Int32Array(1);
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    crypto.getRandomValues(values);
+    return values[0];
+  }
+  return (Math.floor(Math.random() * 0x1_0000_0000) - 0x8000_0000) | 0;
+}
+
 function nextWorldId(registry: LocalWorldRegistry, seed: number, createdAt: number): string | null {
   const stem = `world-${createdAt.toString(36)}-${(seed >>> 0).toString(36)}`;
   const occupied = new Set(registry.worlds.map(({ id }) => id));
@@ -776,7 +786,7 @@ function persistNewLocalWorld(
 
 export function createLocalWorld(
   storage: SinglePlayerStorageAdapter,
-  input: { name: string; seedText: string; gameMode: LocalGameMode; now?: number },
+  input: { name: string; seedText: string; gameMode: LocalGameMode; now?: number; randomSeed?: number },
 ): LocalWorldMutationResult {
   const createdAt = timestamp(input.now ?? Date.now());
   const loaded = loadLocalWorldRegistry(storage, createdAt);
@@ -785,7 +795,11 @@ export function createLocalWorld(
     return failure("world_create_recovery_pending");
   }
   const name = normalizeLocalWorldName(input.name);
-  const seed = deterministicLocalWorldSeed(input.seedText);
+  const seed = input.seedText.trim()
+    ? deterministicLocalWorldSeed(input.seedText)
+    : safeInteger(input.randomSeed, -2_147_483_648, 2_147_483_647)
+      ? input.randomSeed!
+      : randomLocalWorldSeed();
   const replayed = name ? loaded.registry.worlds.find((candidate) =>
     candidate.name === name
     && candidate.seed === seed
