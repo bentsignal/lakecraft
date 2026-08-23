@@ -1,14 +1,12 @@
 # Reference-driven visual asset pipeline
 
-Status: active implementation contract (2026-08-04)
+Status: active implementation contract, updated 2026-08-23
 
 ## Purpose
 
-Lakecraft's visual system must make every block, item, tool, player part, held
-item, and mob immediately recognizable. It must not rely on one-off colored
-boxes or a second, unrelated inventory illustration. The same catalog entry and
-the same production geometry must drive the world, inventory, first-person,
-third-person, dropped-item, and Visual Lab views.
+Every block, item, tool, player part, and mob must use one catalog definition
+across world, inventory, first-person, third-person, dropped-item, and Visual Lab
+rendering. Do not substitute one-off colored boxes or separate inventory art.
 
 ## Provenance boundary
 
@@ -17,23 +15,22 @@ inheritance, display contexts, skin layout, and visible behavior as engineering
 references. For compatibility testing, the project also checks in the bounded
 subset of visual assets imported from the owner's installed, user-owned Java
 26.2 client. The pinned source hash, exact selected paths, generated manifests,
-and attribution are documented in `TEXTURE_PIPELINE.md` and
+and attribution are documented in `docs/design/texture-pipeline.md` and
 `THIRD_PARTY_NOTICES.md`; do not expand that subset casually.
 
-Original Lakecraft art remains the deterministic fallback and is recorded with
-its source concept and generator revision. A user may import a 64x64 or 128x128
-PNG skin that they own or are authorized to use. That skin remains client-local
-and is never included in Lakecraft source or a hosted deployment.
+Original Lakecraft art remains the fallback and records its source concept and
+generator revision. A user may import a 64x64 or 128x128 PNG skin that they own
+or may use. The browser stores the selected PNG locally. Multiplayer may relay
+an exact 64x64 RGBA reduction after join, but the original PNG never leaves the
+browser or enters a hosted deployment.
 
 The machine-readable provenance boundary and reviewed fingerprints live in
 `shared/visualAssetManifest.ts`; fingerprint tests bind the generated item and
 atlas artifacts back to that manifest.
 
-Visual similarity is a specification, not a file source: recognizable 16px
-silhouettes, cuboid proportions, UV conventions, display contexts, and animation
-behavior may deliberately track the reference closely. Every shipped Lakecraft
-pixel and model value is nevertheless authored in this repository. The
-implementation must keep these paths visibly distinct:
+Reference behavior does not determine asset provenance. Lakecraft may match
+16px silhouettes, cuboid proportions, UV conventions, display contexts, and
+animation while drawing assets from the four explicit sources below.
 
 - `bundled-compatibility`: the reviewed, hash-pinned installed-client subset.
 - `bundled-original`: original Lakecraft pixels used as fallback content.
@@ -82,8 +79,8 @@ These are interoperability and behavior references only:
 
 Model inheritance is resolved before rendering. For example, all Lakecraft
 pickaxes, axes, shovels, and swords inherit the project's shared `handheld`
-display transform; bow charge variants inherit the bow transform and only swap
-the original Lakecraft sprite.
+display transform. Bow charge variants inherit the bow transform and swap only
+the catalog sprite.
 
 ## Original asset authoring rules
 
@@ -107,32 +104,31 @@ geometries:
 - `slim`: 3-pixel-wide arms.
 
 The rig contains head, torso, right/left arm, and right/left leg bones with the
-same pixel-relative proportions expected by standard skins. Each part renders
-its base UV box and optional second-layer UV box (hat, jacket, sleeves, and
-trouser overlays). Transparent outer-layer pixels remain transparent. The hand
-is part of the arm cuboid: there is no separate offset hand box and therefore no
-hand/arm seam.
+pixel-relative proportions expected by standard skins. Each part renders its
+base UV box and optional second-layer UV box for the hat, jacket, sleeves, and
+trouser overlays. Transparent outer-layer pixels remain transparent. The hand
+is part of the arm cuboid. There is no separate hand box or hand/arm seam.
 
 Skin import must:
 
-1. accept PNG only;
-2. validate 64x64 or 128x128 dimensions;
-3. ask for `wide` or `slim` rather than guessing silently;
-4. accept legal PNG grayscale, indexed/palette, RGB, and RGBA encodings,
-   including Adam7-interlaced files, then let the browser decode them to RGBA;
-5. upload decoded pixels to WebGL without filtering;
-6. retain the validated selection and arm model in origin-local browser storage;
-7. fail closed on malformed storage and provide a one-click reset to the bundled
+1. Accept PNG only.
+2. Validate 64x64 or 128x128 dimensions.
+3. Ask for `wide` or `slim` instead of guessing.
+4. Accept legal PNG grayscale, indexed/palette, RGB, and RGBA encodings,
+   including Adam7-interlaced files, then let the browser decode them to RGBA.
+5. Upload decoded pixels to WebGL without filtering.
+6. Retain the validated selection and arm model in origin-local browser storage.
+7. Fail closed on malformed storage and provide a one-click reset to the bundled
    original Lakecraft skin.
 
 ## Camera contract
 
 The `F` key cycles through these modes while gameplay owns keyboard input:
 
-1. first person;
-2. third person behind;
-3. third person facing the player;
-4. first person.
+1. First person.
+2. Third person behind.
+3. Third person facing the player.
+4. First person.
 
 Typing in chat or another text field must never change perspective. Third-person
 cameras reuse the local textured player rig, including its actual equipped
@@ -142,8 +138,8 @@ body is hidden inside first person.
 
 ## Visual Lab contract
 
-Visual Lab is an in-app development surface backed by production renderers. It
-is not a mockup or a separate CSS illustration. It provides:
+Visual Lab runs the production renderers inside the app. It is not a mockup or
+a separate CSS illustration. It provides:
 
 - searchable catalog and next/previous navigation;
 - block/item/entity tabs;
@@ -162,42 +158,25 @@ is not a mockup or a separate CSS illustration. It provides:
 The same visual must not be reimplemented in the lab. A regression in a
 production renderer must therefore appear in the lab and vice versa.
 
-Current production-backed coverage includes the complete 97-item catalog, a
-scrollable 97-asset contact sheet plus deterministic one-image PNG export,
-inventory sprite extrusion, atlas-projected
-inventory cubes derived from the same authored world faces, exact held
-first-person composition, full cube and dedicated special-block meshes,
-day/night/torch/neutral lighting, four inspection backgrounds, standard
-wide/slim player skins with local persistence, legal indexed/interlaced PNG
-decoding, deterministic idle/walk articulation, full-catalog third-person held
-item inspection, and bounded 20-piece highlighted/shadowed armor with open
-helmet, neckline, belt, bracers, and boots. Third-person full blocks are real
-six-face cubes built from exact world-atlas texels; sprites consume canonical
-catalog display transforms and grip pivots. A bounded spinning dropped-item
-batch uses true six-face authored-atlas mips for full blocks and exact catalog
-pixel runs for non-cube items. All eight mob kinds share the production batch,
-idle/walk/hurt/death/special states, and original sparse multi-face pixel
-detailing within the fixed per-mob vertex envelope. The
-furnace now has independently authored neutral side masonry and one distinct
-front opening instead of repeating front semantics around the cube.
+Current production coverage includes:
 
-Remote-player held items now use bounded canonical-sprite distance mips instead
-of anonymous colored boxes while preserving one retained batch. Remote bodies
-use the bundled-original Lakecraft explorer's exact palette and standard-skin
-proportions, including its olive jacket, orange scarf, dark trousers, boots,
-hair, eyes, and face details. The distance rig remains a fixed 17-box semantic
-mesh in that same retained batch, so this fidelity pass adds no vertices or GPU
-buffer capacity.
+- the complete 97-item catalog and a deterministic contact-sheet PNG export;
+- shared inventory, first-person, third-person, dropped-item, and world models;
+- day, night, torch, and neutral lighting against four inspection backgrounds;
+- wide and slim player skins, local PNG persistence, and indexed or interlaced
+  PNG decoding;
+- fixed-capacity armor, dropped-item, remote-player, and mob batches;
+- all eight mob kinds with idle, walk, hurt, death, and special states.
 
-Remote custom-skin selection is deliberately future work because the
-multiplayer protocol does not
-transport an authorized skin payload or content reference; this pass does not
-invent that network or persistence contract.
-That limitation must not be hidden behind an alternate lab-only model.
+Third-person full blocks use six world-atlas faces. Sprite items use catalog
+display transforms and grip pivots. Remote players and mobs use retained batches
+with fixed vertex capacity. Multiplayer sends content-addressed 64x64 skin data
+outside realtime pose snapshots. The server validates hashes and bounds the
+transfer, but armor remains cosmetic self-report and cannot affect damage.
 
 ## Automated acceptance
 
-The visual migration is complete only when all of the following pass:
+The visual system passes acceptance when all of the following hold:
 
 - every `ItemId` resolves to a visual definition;
 - every placeable block resolves all required faces;
@@ -211,19 +190,3 @@ The visual migration is complete only when all of the following pass:
 - third-person camera obstruction tests pass;
 - build, type checks, gameplay tests, and fixed performance budgets pass;
 - browser screenshots are reviewed at desktop and compact viewport sizes.
-
-## Migration order
-
-1. Introduce the typed visual catalog, display transforms, and model resolver.
-2. Replace the separate inventory sheet with catalog sprites.
-3. Implement sprite extrusion and migrate tools, bow stages, materials, food,
-   utilities, and armor icons.
-4. Route first-person, third-person, and dropped-item rendering through the same
-   models.
-5. Replace the colored player boxes with the textured standard/slim skin rig.
-6. Add camera cycling and Visual Lab around those production paths.
-7. Migrate authored blocks and then every mob; close completeness gaps only
-   through the catalog rather than renderer-specific fallbacks.
-
-Temporary Pose Lab controls may remain during migration, but they stop being the
-source of truth once catalog display transforms are active.

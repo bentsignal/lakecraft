@@ -16,10 +16,11 @@ Deploy the current beta with the published
 [Lakecraft Multiplayer Server template](https://railway.com/deploy/lakecraft-multiplayer-server).
 `railway-template-plan.json` is the reviewed, testable mirror of that Railway
 template. It is deliberately not presented as an importable Railway manifest.
-The marketplace overview lives in `docs/railway-template-overview.md`.
+The marketplace overview lives in
+[`docs/architecture/railway-template.md`](../../docs/architecture/railway-template.md).
 
 The template also generates an `ADMIN_TOKEN`. Use it from an operator terminal
 to mint a one-time pairing code at `/admin/api/pair-code`, then enter that short
 code at `https://YOUR-DOMAIN/admin`. The command deck stores a signed browser
 session without exposing the service token to the page. Keep the admin token
-separate from the invitation token; the `secrets` command generates both independently.
+separate from the invitation token. The `secrets` command generates both.

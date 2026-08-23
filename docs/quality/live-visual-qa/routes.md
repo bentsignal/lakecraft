@@ -1,7 +1,7 @@
-# Task 41 cave, combat, and multiplayer routes
+# Visual QA cave, combat, and multiplayer routes
 
-Return to [the visual-QA index](live-visual-qa.md) for run order and the
-canonical case ledger. Complete the [world route](live-visual-qa-worlds.md)
+Return to [the visual-QA index](README.md) for run order and the
+canonical case ledger. Complete the [world route](worlds.md)
 before these routes, using the same run ID, commit, and measured segments.
 
 ## Cave-lighting route
@@ -44,7 +44,7 @@ sampling window.
 
 ## Combat regression
 
-Run the route in `docs/creative-combat-qa.md` in QA Creative. Capture the
+Run the route in `docs/quality/creative-combat.md` in QA Creative. Capture the
 following as separate cases at both viewports:
 
 - melee hit/miss, armor mitigation/wear, and solid hostile/explosion cover;
@@ -59,9 +59,9 @@ modal, or command-console controls.
 
 ## Legacy multiplayer scope
 
-This section preserves the evidence schema enforced by the Task 41 validator;
-it does not describe current Railway multiplayer QA. The current two-client
-Railway check is tracked in [the bounded backlog](backlog.md).
+This section preserves the evidence schema enforced by the legacy validator.
+It does not describe current Railway multiplayer QA. Track missing Railway
+evidence in [GitHub Issues](https://github.com/bentsignal/lakecraft/issues).
 
 The multiplayer report has one scope status: `passed` or `deferred`. A passed
 report must contain these ordered passing checks:
@@ -97,8 +97,8 @@ identity includes `identityCommitment`, `runSaltedIdentityHash`,
 `<runId>:<identityCommitment>`. Each active window lasts 60 seconds through 30
 minutes, and the two windows overlap for at least 60 seconds. Its
 schema-version 1 proof repeats that binding, names only the other fixed ID in
-`peerVisibilityIds`, and contains 2–3,600 ordered `quotaTelemetry` rows with
-`sequence`, `timestamp`, monotonic `attempts`, monotonic `grants`, and
+`peerVisibilityIds`, and contains 2 through 3,600 ordered `quotaTelemetry` rows.
+Each row has `sequence`, `timestamp`, monotonic `attempts`, monotonic `grants`, and
 `paused: false`. Attempts may not exceed grants; final attempts and grants are
 positive and the session observes a positive delta.
 
@@ -108,10 +108,10 @@ path/hash. Each schema-version 1 interaction proof is bound to the run and
 both identity windows and contains these ordered passing event kinds:
 `movement-nameplate`, `chat`, `item-sharing`, `pvp`, and `reconnect`.
 
-Until the validator is modernized, set the whole scope to `deferred`, keep `identities` and
-`interactions` empty, and use the ordered reason codes
+Until the validator is updated, set the whole scope to `deferred`. Keep
+`identities` and `interactions` empty, and use the ordered reason codes
 `hosted-route-disabled`, `authorized-identities-unavailable`, and
 `quota-observation-unavailable`. Report the independently checked production
-quota as healthy context with `quotaObserved: false`: a quota snapshot is not
+quota as healthy context with `quotaObserved: false`. A quota snapshot is not
 an observed two-client traffic or degradation trace. Never perform production
 mutations merely to turn this partial run into a pass.

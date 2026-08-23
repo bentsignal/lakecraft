@@ -1,6 +1,9 @@
 # Isolated compact operator release
 
-Lakecraft needs a compact private stage because an ordinary Lakebed build includes enough repository source and inline source maps to exceed the deploy request limit. The checked-in audit helper proves the compact artifact but deliberately destroys the deployable stage, so production release must reproduce the same preparation inside a one-use operator transaction.
+An ordinary Lakebed build includes enough repository source and inline source
+maps to exceed the deploy request limit. The audit helper proves the compact
+artifact and then destroys its deployable stage. A production release must
+repeat that preparation inside a one-use operator transaction.
 
 ## Prepare the source
 
@@ -9,7 +12,8 @@ Lakecraft needs a compact private stage because an ordinary Lakebed build includ
 3. Export that exact commit with `git archive HEAD | tar -x -C "$release_source"`.
 4. If `.env.lakebed.server` exists, copy it into the private archive without printing it. Delete the temporary source after the transaction.
 
-Using a Git archive excludes the ignored live `.lakebed/deploy.json` file that the staging safety checks correctly reject. It also binds the release to committed bytes rather than a mutable checkout.
+A Git archive excludes the ignored live `.lakebed/deploy.json` file, which the
+staging checks reject. It also binds the release to committed bytes.
 
 ## Prepare the capsule
 
@@ -25,9 +29,11 @@ The operator-specific prepare callback must:
 2. Call `prepareLakebedStage(plan)`.
 3. Copy `.env.lakebed.server` into the owned capsule only when it exists.
 
-The transaction creates the isolated `.lakebed` workspace, seals payload files, validates their identities before and after consumption, and removes the stage afterward.
+The transaction creates an isolated `.lakebed` workspace and seals the payload
+files. It checks their identities before and after consumption, then removes the
+stage.
 
-## Invoke Lakebed
+## Run the deployment
 
 Inside the transaction consumer, spawn only:
 
@@ -35,9 +41,13 @@ Inside the transaction consumer, spawn only:
 npx lakebed deploy "$plan_capsule_root" --json
 ```
 
-Use the transaction root as the command working directory and add `LAKEBED_COMPACT_BUNDLE=1` to the inherited environment. Capture stdout and stderr without printing credentials.
+Use the transaction root as the command working directory. Add
+`LAKEBED_COMPACT_BUNDLE=1` to the inherited environment. Capture stdout and
+stderr without printing credentials.
 
-The compact client-bundle hash must match the hash from the preflight audit build. The claimed artifact hash can differ from the anonymous audit artifact hash, so obtain the final artifact hash from the post-deploy control plane.
+The compact client-bundle hash must match the preflight audit build. The claimed
+artifact hash can differ from the anonymous audit hash. Read the final artifact
+hash from the post-deploy control plane.
 
 ## Resolve the sealed-binding ambiguity
 
@@ -54,8 +64,14 @@ This does not prove the remote update failed. Do not issue a second deployment. 
 - `updatedAt` advanced past the preflight snapshot;
 - `clientBundleHash` equals the expected compact build hash.
 
-If those checks pass, treat the deployment as completed and use the observed claimed `artifactHash` for `scripts/audit-lakebed-production.mjs --expected-artifact ...`. If they do not pass, stop and report the ambiguous state; do not retry automatically.
+If those checks pass, treat the deployment as complete. Pass the observed
+`artifactHash` to
+`scripts/audit-lakebed-production.mjs --expected-artifact ...`. If a check
+fails, stop and report the ambiguous state. Do not retry.
 
 ## First deployment versus updates
 
-Routine releases update the deploy ID in `lakebed.json`; the public alias and database remain attached. Only a genuinely new deployment needs `npx lakebed claim` and `npx lakebed domains add craft.lakebed.app --json`. Never replace the production deploy as a shortcut around packaging or verification failures.
+Routine releases update the deploy ID in `lakebed.json`. The public alias and
+database remain attached. Only a new deployment needs `npx lakebed claim` and
+`npx lakebed domains add craft.lakebed.app --json`. Never replace production to
+work around packaging or verification failures.

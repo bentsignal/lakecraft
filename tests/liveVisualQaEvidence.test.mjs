@@ -45,11 +45,11 @@ import {
 const repositoryRoot = new URL("../", import.meta.url);
 const validatorPath = new URL("../scripts/validate-live-qa-evidence.mjs", import.meta.url);
 const runbook = [
-  "live-visual-qa.md",
-  "live-visual-qa-setup.md",
-  "live-visual-qa-worlds.md",
-  "live-visual-qa-routes.md",
-  "live-visual-qa-reports.md",
+  "quality/live-visual-qa/README.md",
+  "quality/live-visual-qa/setup.md",
+  "quality/live-visual-qa/worlds.md",
+  "quality/live-visual-qa/routes.md",
+  "quality/live-visual-qa/reports.md",
 ].map((name) => readFileSync(new URL(`../docs/${name}`, import.meta.url), "utf8")).join("\n");
 const probeSource = readFileSync(new URL("../scripts/task41-browser-probe.js", import.meta.url), "utf8");
 const PROJECT_ROOT = process.env.TASK41_TEST_REPO_ROOT ?? fileURLToPath(repositoryRoot);

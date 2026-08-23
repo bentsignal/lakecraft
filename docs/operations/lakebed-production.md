@@ -3,15 +3,15 @@
 This runbook covers the Lakebed capsule, which owns the player client, account
 identity, public server directory, registration, and short-lived join tickets.
 Realtime multiplayer worlds are separate Railway deployments with their own
-SQLite volumes; see `docs/railway-multiplayer-server.md`. The Lakebed release is
-deliberately fail-closed: a missing claim,
-private-inspection authorization failure, quota shortage, unexpected deploy,
-artifact mismatch, or compact-size regression stops the release.
+SQLite volumes. See `docs/architecture/railway-multiplayer.md`. A missing
+claim, private-inspection authorization failure, quota shortage, unexpected
+deployment, artifact mismatch, or compact-size regression stops a Lakebed
+release.
 
 The checked-in production identity is
-`docs/production-target.json`. The top-level `lakebed.json` must name the same
-deploy ID; it is the production binding and must not enter ordinary audit
-stages.
+`docs/operations/production-target.json`. The top-level `lakebed.json` must name
+the same deploy ID. It is the production binding and must not enter ordinary
+audit stages.
 The public player URL is <https://craft.lakebed.app>; the canonical Lakebed URL
 is recorded separately because the public alias is the durable user-facing
 address.
@@ -32,8 +32,9 @@ inspection, live canonical target, documented platform limits, and at least
 checked-in configuration; `deploy list` does not prove that the public alias
 maps to the canonical target. Explicitly archived historical entries with
 unique valid deploy IDs and canonical UTC archive timestamps are allowed. Every
-other extra entry—including active, pending, unknown, incompletely archived, or
-malformed lifecycle state—fails closed. Preserve the report's UTC timestamp,
+other extra entry fails closed. This includes active, pending, unknown,
+incompletely archived, and malformed lifecycle states. Preserve the report's
+UTC timestamp,
 artifact hashes, usage, limits, gates, and failures. Do not preserve claim tokens,
 cookies, `.lakebed/deploy.json`, `.env.lakebed.server`, raw identity rows, or
 full database dumps in git.
@@ -52,9 +53,9 @@ node scripts/audit-lakebed-production.mjs --deploy-list /absolute/path/deploy-li
 2. Run focused tests and the full repository suite. Record pre-existing
    failures separately and prove they reproduce on the base commit.
 3. Build the ordinary anonymous capsule.
-4. Run the transactional compact audit twice in distinct evidence directories. Both
-   artifact files, staged client files, staged server files, artifact hashes,
-   and client bundle hashes must match.
+4. Run the transactional compact audit twice in distinct evidence directories.
+   Both artifact files, staged client files, staged server files, artifact
+   hashes, and client bundle hashes must match.
 5. Run `scripts/check-lakebed-artifact-size.mjs` on the artifact and require at
    least 32,768 bytes of headroom.
 6. Run the production audit immediately before deployment. Stop if any gate
@@ -80,8 +81,7 @@ the anonymous build before exporting evidence under deliberately non-capsule
 filenames and deleting the transaction. The evidence has neither canonical
 client/server entrypoints nor the full artifact/client-bundle envelope needed
 as a release request body. Only redacted hashes, target, and byte counts leave
-the private transaction. A `.lakebed/deploy.json`
-file is an unexpected legacy
+the private transaction. A `.lakebed/deploy.json` file is an unexpected legacy
 credential path, not the production binding; staging fails closed if it or an
 unrecognized `.env.lakebed*` path exists. Never copy credentials into the
 repository, a PR, an evidence bundle, or another user's worktree. If hosted
@@ -89,20 +89,20 @@ inspection says authorization is required, stop and use an already-authorized
 operator checkout or an approved ephemeral credential mechanism. Do not make
 the inspection endpoint public.
 
-This contract protects against accidental contamination and other operating-
+This contract protects against accidental contamination and other operating
 system users, and detects persistent mutation. It cannot eliminate a malicious
-same-UID process that can chmod and transiently replace pathnames; Node does not
+same-UID process that can chmod and transiently replace pathnames. Node does not
 expose the directory-descriptor isolation required for that claim.
 
 ## Deploy and verify
 
-Deployment is an explicit operator action after review approval; this runbook
+Deployment is an explicit operator action after review approval. This runbook
 does not authorize an automated deploy. The audit helper has no release flag or
 deploy invocation and never exports a deployable capsule. Production deployment
 is blocked here until a separate reviewed operator transaction validates both
 audited manifests and safely handles Lakebed rewriting top-level `lakebed.json`
 after a successful network request. Do not reconstruct the removed manual
-stage-and-deploy handoff: a post-network local write failure could make the
+stage-and-deploy handoff. A post-network local write failure could make the
 release result ambiguous.
 
 Record the returned deploy ID, artifact hash, client bundle hash, URL, and UTC
@@ -114,7 +114,7 @@ node scripts/audit-lakebed-production.mjs \
 ```
 
 Probe <https://craft.lakebed.app> once after the audit and record the HTTP
-result; that probe consumes hosted request quota and is the step that verifies
+result. That probe consumes hosted request quota and verifies
 the configured public alias, independently of the control-plane canonical URL.
 With authorized private inspection, capture the manifest/schema, bounded table
 counts, quota snapshot, and logs once. Redact identity data and secrets. Do not

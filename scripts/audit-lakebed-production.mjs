@@ -231,7 +231,7 @@ export async function runAuditCli(args = process.argv.slice(2)) {
   const options = parseAuditArguments(args);
   const root = resolve(process.cwd());
   const [targetSource, lakebedSource, payload] = await Promise.all([
-    readFile(resolve(root, "docs/production-target.json"), "utf8"),
+    readFile(resolve(root, "docs/operations/production-target.json"), "utf8"),
     readFile(resolve(root, "lakebed.json"), "utf8"),
     options.deployListPath
       ? readFile(resolve(root, options.deployListPath), "utf8").then(JSON.parse)

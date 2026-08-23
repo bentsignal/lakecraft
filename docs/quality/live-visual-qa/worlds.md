@@ -1,6 +1,6 @@
-# Task 41 disposable worlds and browser route
+# Visual QA disposable worlds and browser route
 
-Return to [the visual-QA index](live-visual-qa.md) for run order and the
+Return to [the visual-QA index](README.md) for run order and the
 canonical case ledger. This guide covers the fixed browser-local fixtures,
 persistence checks, fault isolation, and deletion accessibility route.
 

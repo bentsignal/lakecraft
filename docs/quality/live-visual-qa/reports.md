@@ -1,6 +1,6 @@
-# Task 41 reports and deterministic artifact
+# Visual QA reports and deterministic artifact
 
-Return to [the visual-QA index](live-visual-qa.md) for run order and the
+Return to [the visual-QA index](README.md) for run order and the
 canonical case ledger. This guide covers collectors, report chronology,
 post-run packaging, and validation.
 
@@ -17,8 +17,8 @@ At the end of every measured interaction segment:
   zero Lakebed requests, and zero newly opened WebSockets. Keep the raw ordered
   CDP events so the validator can recompute every segment and aggregate.
 
-The reports list measured segments and explicit intervening navigation/reload
-gaps in chronological, contiguous order: each gap starts exactly when the
+The reports list measured segments and navigation or reload gaps in one
+contiguous chronology. Each gap starts exactly when the
 preceding segment completes, and the next segment starts exactly when that gap
 completes. No unclassified time may hide traffic. Only gaps may contain a
 reload or navigation; measured segments may not. Console and Network reports
@@ -113,6 +113,7 @@ node scripts/validate-live-qa-evidence.mjs \
 ```
 
 The command exits `0` only for complete evidence. With the current mandatory
-multiplayer deferrals it must identify `valid-partial` with process exit 2;
-keep that output with the run and leave Task 41 open. Process exit 1 means
+multiplayer deferrals it must identify `valid-partial` with process exit 2.
+Keep that output with the run and leave the multiplayer route incomplete.
+Process exit 1 means
 invalid evidence, not a deferral.

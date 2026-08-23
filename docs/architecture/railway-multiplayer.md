@@ -6,7 +6,7 @@ volume, and terminates HTTPS/WSS for the browser client. The URL players paste
 into Direct Connect is `wss://YOUR-DOMAIN/ws`.
 
 This beta uses one server process and one persistent volume. Do not add replicas
-or enable app sleeping: player sockets and authoritative tick state live in that
+or enable app sleeping. Player sockets and authoritative tick state live in that
 process, and SQLite lives on that process's volume.
 
 ## Deploy the current beta
@@ -53,7 +53,7 @@ GitHub Actions workflow.
 | `WORLD_PRESET` | `default` or `superflat` | Selects ordinary deterministic terrain or a flat building world. |
 | `SUPERFLAT_GROUND_Y` | `20` | Superflat grass height; bedrock remains at y=1, with three dirt layers and stone between. |
 | `DEFAULT_GAME_MODE` | `survival` or `creative` | First-join role for this server; stored per-player overrides remain authoritative. |
-| `SPAWN_X`, `SPAWN_Z` | World-space decimals; default `0.5`, `0.5` | Authoritative first-join and respawn center. Put a Creative showcase spawn outside its build footprint. |
+| `SPAWN_X`, `SPAWN_Z` | World-space decimals; default `0.5`, `0.5` | Authoritative first-join and respawn center. Put a Creative spawn outside its build footprint. |
 | `SPAWN_YAW_DEGREES` | `-360` through `360`; default `0` | Initial horizontal view direction. The server converts degrees to its wire yaw. |
 | `ACCESS_MODE` | `token`, `public`, `password`, `whitelist`, or `closed` | Persistent access policy seeded on first boot. |
 | `WHITELIST_USERNAMES` | Comma-separated usernames | Seeds the persistent whitelist. |
@@ -84,7 +84,7 @@ existing Survival service omits these variables and therefore retains its
 `default` + `survival` behavior.
 
 To allow trusted coding agents to build in that Creative service, generate a
-unique `AGENT_TOKEN` and follow [`tools/lakecraft-agent/README.md`](../tools/lakecraft-agent/README.md).
+unique `AGENT_TOKEN` and follow [`tools/lakecraft-agent/README.md`](../../tools/lakecraft-agent/README.md).
 The token travels only in an Authorization header. It must never be copied into
 the service URL, a command argument, screenshots, or logs. The agent API reads,
 renders, and mutates only this Railway world's exact SQLite/terrain authority;
@@ -99,7 +99,7 @@ The doctor reports missing names but never reads back or prints secret values.
 
 ## Per-server admin console and data ownership
 
-Every deployed server carries its own small admin surface at `/admin`; it is not
+Every deployed server has its own admin page at `/admin`. It is not
 part of `craft.lakebed.app` and adds nothing to the Lakebed capsule artifact.
 The Railway `ADMIN_TOKEN` is an operator credential and never enters the portal.
 Only a bearer-authenticated operator can mint a single-use, 10-character pairing
@@ -114,11 +114,11 @@ tickets. Do not copy per-tick movement or chat into the Lakebed database.
 ## Lakebed-authenticated mode
 
 `AUTH_MODE=lakebed` replaces the shared demo token with short-lived player
-tickets. It additionally requires:
+tickets. It requires:
 
 - `LAKEBED_TICKET_REDEEM_URL`
 - `LAKEBED_REGISTRATION_CREDENTIAL` (secret)
-- `SERVER_ID` — copy the exact registration row ID returned when this server is
+- `SERVER_ID`: copy the exact registration row ID returned when this server is
   registered in Lakebed. Do not use the unrelated random ID produced for
   `local-demo`; ticket redemption is deliberately scoped to this value.
 
@@ -222,9 +222,9 @@ or a data-aware migration instead.
 Lakebed's separate single-player snapshot codec remains ten-bit and currently
 uses 752 of its 1,023 non-air block codes.
 
-The server sends nearby players and events within 21 chunks. This is a feed
-limit, not a forced GPU setting: each browser retains its own saved 2–12 chunk
-terrain render distance and can lower it without changing server authority.
+The server sends nearby players and events within 21 chunks. This only limits
+the network feed. Each browser retains its own saved 2 through 12 chunk terrain
+render distance and can lower it without changing server authority.
 
 ## Repository and Lakebed artifact boundary
 

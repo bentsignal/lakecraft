@@ -60,7 +60,7 @@ valid.
 
 ### Bow draw, release, ammunition, and hits
 
-- Hold right click: the bow advances through its draw poses. Release early and
+- Hold right click. The bow advances through its draw poses. Release early and
   then at full draw; the full shot is faster and stronger.
 - Cancel one draw with `Escape` or a UI. Cancellation spends no arrow or bow
   durability.
@@ -101,9 +101,8 @@ node --experimental-transform-types --test \
   tests/singlePlayerDeathLifecycle.test.ts
 ```
 
-The command preset is executable documentation: the first test parses the
-marked block through the production command parser, applies every grant
-atomically to a starter inventory, equips the documented armor, switches back
-to Survival, and proves that the prepared carried state can settle into
-conserved death drops. The remaining tests own the detailed combat, cover, TNT,
-bow, durability, and respawn invariants.
+The first test parses the marked command block through the production parser.
+It applies each grant to a starter inventory, equips the documented armor,
+switches back to Survival, and settles the carried state into conserved death
+drops. The remaining tests cover combat, cover, TNT, bow, durability, and
+respawn.

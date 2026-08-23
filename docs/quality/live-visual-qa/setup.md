@@ -1,6 +1,6 @@
-# Task 41 setup and browser probe
+# Visual QA setup and browser probe
 
-Return to [the visual-QA index](live-visual-qa.md) for the runbook and the
+Return to [the visual-QA index](README.md) for the runbook and the
 parser-owned evidence-template marker. This document contains the setup,
 timing, evidence-boundary, and performance-probe requirements.
 
@@ -47,7 +47,7 @@ timing, evidence-boundary, and performance-probe requirements.
    intervening gap; after the new page is ready, clear and start the next
    segment at the exact gap completion time. A gap may contain its local
    document navigation request, but it must contain no app request or newly
-   opened app socket. Use 4–32 uniquely named, descriptive segments. Between
+   opened app socket. Use 4 through 32 uniquely named segments. Between
    every adjacent pair, record exactly one `navigation` or `reload` gap whose
    `afterSegmentId` and `beforeSegmentId` name those exact neighbors.
 
@@ -70,7 +70,7 @@ timing, evidence-boundary, and performance-probe requirements.
    differs from the trusted expected commit, restart the route. Also restart if
    any live evidence timestamp falls outside `runStartedAt` through
    `runCompletedAt`; post-run derived timestamps follow the packaging rules in
-   [the reports guide](live-visual-qa-reports.md) instead. The run must last at
+   [the reports guide](reports.md) instead. The run must last at
    least five minutes and no more than six hours. Finish evidence packaging
    within six hours after `runCompletedAt`. At validation,
    `packagedCompletedAt` may be no more than 60 seconds in the future and no

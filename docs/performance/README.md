@@ -1,13 +1,12 @@
 # Lakecraft performance contract
 
-Performance is a product feature and a release gate. Optimize measured player
-experience while preserving deterministic world results, authority, item
-conservation, and visual fidelity.
+Renderer changes must meet the budgets below without changing deterministic
+world results, authority, item conservation, or visual fidelity.
 
 ## Browser frame budgets
 
 Use the deterministic 25-second browser harness described in
-[`docs/performance-benchmark.md`](docs/performance-benchmark.md). Run render
+[`benchmark.md`](benchmark.md). Run render
 distances 6 and 12 three times each on the same browser, hardware, viewport,
 and device-pixel ratio, then compare the median run.
 
@@ -62,8 +61,8 @@ directory, registration, and scoped join-ticket operations.
 - Never trade replay safety, authoritative validation, or conservation for a
   lower message count.
 
-See [`docs/railway-multiplayer-server.md`](docs/railway-multiplayer-server.md)
-and [`docs/gameplay-authority-architecture.md`](docs/gameplay-authority-architecture.md)
+See [`../architecture/railway-multiplayer.md`](../architecture/railway-multiplayer.md)
+and [`../architecture/gameplay-authority.md`](../architecture/gameplay-authority.md)
 for the owning architecture.
 
 ## Compact-build safety
@@ -79,7 +78,7 @@ optimization is worthwhile only when paired real artifacts prove a net gain.
 The owning implementation and adversarial grammar/collision guards live in
 `scripts/client-property-compaction.mjs` and the matching tests under `tests/`.
 The transactional staging and path-containment boundary is documented in
-[`docs/production-operations.md`](docs/production-operations.md).
+[`../operations/lakebed-production.md`](../operations/lakebed-production.md).
 
 ## Focused checks
 
@@ -93,7 +92,7 @@ node --experimental-strip-types tests/fluidPerformance.test.ts
 
 For release work, also run the repository suite, the paired compact-build
 procedure, and the artifact headroom gate in
-[`docs/production-operations.md`](docs/production-operations.md). Keep at least
+[`../operations/lakebed-production.md`](../operations/lakebed-production.md). Keep at least
 32 KiB below the Lakebed capsule ceiling and require byte-identical independent
 compact builds.
 
@@ -102,5 +101,5 @@ compact builds.
 Do not append per-task benchmark narratives here. Git, pull requests, and test
 fixtures preserve historical measurements. Update only active budgets,
 hardware baselines, benchmark commands, or durable invariants; put detailed
-new reference results in `docs/performance-benchmark.md` and keep every
+new reference results in `docs/performance/benchmark.md` and keep every
 Markdown file within the 300-line repository limit.

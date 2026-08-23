@@ -1,47 +1,51 @@
 # Lakecraft documentation
 
-This directory contains current architecture, operations, quality, and design
-contracts. Code and tests remain the first source of truth for implementation;
-these documents preserve non-obvious rationale and repeatable procedures.
+Code and tests are authoritative for implemented behavior. These documents
+capture the decisions, constraints, and repeatable procedures that are costly to
+recover from implementation history.
 
-## Architecture and hosting
+## Start here
 
-- [Gameplay authority](gameplay-authority-architecture.md) explains the shared
-  client core, local authority, Railway authority, and Lakebed control plane.
-- [Railway multiplayer server](railway-multiplayer-server.md) covers the world
-  server, authentication modes, persistence, administration, and deployment.
-- [Railway template](railway-template-overview.md) describes the managed
-  community-server experience.
+- [Getting started](getting-started.md): local development, play modes, saves,
+  and controls
+- [Open work](https://github.com/bentsignal/lakecraft/issues): the project task
+  backlog
 
-## Production and performance
+## Architecture
 
-- [Production operations](production-operations.md) is the fail-closed Lakebed
-  capsule release and recovery runbook.
-- [Incident containment](incident-containment.md) records the narrow schema and
-  deployment safety boundary retained after the accidental cloud experiment.
-- [Performance](../PERFORMANCE.md) defines current budgets and the benchmark
-  workflow; [benchmark details](performance-benchmark.md) cover the harness.
-- [Artifact headroom](artifact-headroom-evidence.md) records the compact-build
-  size and reproducibility contract.
+- [Gameplay authority](architecture/gameplay-authority.md): shared client core
+  and local/Railway authority adapters
+- [Railway multiplayer](architecture/railway-multiplayer.md): hosting,
+  persistence, auth, administration, and protocol behavior
+- [Railway template](architecture/railway-template.md): generated resources and
+  connection steps
 
-## Visual and gameplay quality
+## Design
 
-- [Minecraft fidelity](../MINECRAFT_FIDELITY.md) defines the current player-facing target.
-- [Visual asset pipeline](reference-visual-asset-pipeline.md) and the
-  [texture pipeline](../TEXTURE_PIPELINE.md) define provenance and generation.
-- [Live visual QA](live-visual-qa.md) is the integrated evidence route.
-- [First-person reference](first-person-viewmodel-reference.md),
-  [pose tuning](first-person-pose-tuning.md), and
-  [held-item references](held-item-pose-references.md) cover viewmodel work.
-- [Creative combat QA](creative-combat-qa.md) and
-  [mob visual QA](mob-visual-qa-fixture.md) are focused repeatable routes.
+- [Minecraft fidelity](design/minecraft-fidelity.md): player-facing target
+- [Visual assets](design/visual-assets.md) and
+  [texture pipeline](design/texture-pipeline.md): provenance and generation
+- [First-person viewmodel](design/first-person-viewmodel.md),
+  [pose tuning](design/first-person-pose-tuning.md), and
+  [held-item references](design/held-item-pose-references.md): camera and item
+  presentation
 
-## Work tracking
+## Performance and operations
 
-- [Project backlog](backlog.md) is the bounded local list of unresolved work
-  recovered during the UAV migration. Completed work belongs in Git and pull
-  requests, not in an accumulating task-history document.
+- [Performance contract](performance/README.md) and
+  [benchmark](performance/benchmark.md): budgets and deterministic measurement
+- [Artifact headroom](performance/artifact-headroom.md): compact-build evidence
+- [Lakebed production](operations/lakebed-production.md): release and recovery
+- [Incident containment](operations/incident-containment.md): retained schema
+  safety boundary
 
-Do not add broad session journals or duplicate implementation summaries here.
-A new document should capture durable, non-obvious knowledge, link its owning
-code or test, and remain at or below the repository's 300-line Markdown limit.
+## Quality assurance
+
+- [Live visual QA](quality/live-visual-qa/README.md): integrated screenshot,
+  motion, and performance evidence
+- [Creative combat](quality/creative-combat.md): fast single-player combat route
+- [Mob fixture](quality/mob-fixture.md): repeatable mob-renderer inspection
+
+Keep this index small. Add a document only for durable, non-obvious knowledge;
+put actionable work in GitHub Issues and completed implementation history in Git
+and pull requests.

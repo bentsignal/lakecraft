@@ -295,12 +295,12 @@ test("CLI arguments reject ambiguity and missing values", () => {
   assert.throws(() => parseAuditArguments(["--unknown"]), /Unknown argument/);
 });
 
-test("checked-in target, Lakebed binding, audit transaction, README, and runbook remain aligned", async () => {
+test("checked-in target, Lakebed binding, concise README, and production runbook remain aligned", async () => {
   const [targetSource, lakebedSource, readme, runbook, script, transaction, prepare] = await Promise.all([
-    readFile(new URL("../docs/production-target.json", import.meta.url), "utf8"),
+    readFile(new URL("../docs/operations/production-target.json", import.meta.url), "utf8"),
     readFile(new URL("../lakebed.json", import.meta.url), "utf8"),
     readFile(new URL("../README.md", import.meta.url), "utf8"),
-    readFile(new URL("../docs/production-operations.md", import.meta.url), "utf8"),
+    readFile(new URL("../docs/operations/lakebed-production.md", import.meta.url), "utf8"),
     readFile(new URL("../scripts/audit-lakebed-production.mjs", import.meta.url), "utf8"),
     readFile(new URL("../scripts/lakebed-build-transaction.mjs", import.meta.url), "utf8"),
     readFile(new URL("../scripts/prepare-lakebed-deploy.mjs", import.meta.url), "utf8"),
@@ -311,10 +311,7 @@ test("checked-in target, Lakebed binding, audit transaction, README, and runbook
   assert.ok(runbook.includes(checkedIn.publicUrl));
   assert.ok(runbook.includes("32,768 bytes"));
   assert.ok(runbook.includes("does not prove that the public alias"));
-  assert.ok(readme.includes("scripts/build-lakebed-audit.mjs"));
   assert.ok(runbook.includes("scripts/build-lakebed-audit.mjs"));
-  assert.match(readme, /never returns a runnable stage/);
-  assert.match(readme, /intentionally unsupported by this\s+helper/);
   assert.match(runbook, /no release flag or\s+deploy invocation/);
   assert.match(runbook, /same-UID process/);
   assert.doesNotMatch(runbook, /\.lakebed\/deploy\.json` contains the claim binding/);

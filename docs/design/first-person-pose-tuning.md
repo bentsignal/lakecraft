@@ -1,6 +1,7 @@
 # First-person pose tuning
 
-This is the simple way to show the developer how the arm, block, tool, or bow should look.
+Use POSE LAB to tune the first-person arm, block, tool, or bow while it remains
+visible in the paused game.
 
 ## Before you start
 
@@ -9,7 +10,9 @@ This is the simple way to show the developer how the arm, block, tool, or bow sh
 3. Press **Escape** so the game is paused, or stay on **Click to Play**.
 4. Use the **POSE LAB** panel on the left side of the game.
 
-The active first-person presentation stays visible while **Game Menu** or **Click to Play** is on screen. An empty slot shows the arm; any selected item replaces it. Every number in POSE LAB updates the retained WebGL model directly. You do not need to save a file, unpause, click the game, or refresh the browser.
+The first-person model stays visible behind **Game Menu** and **Click to Play**.
+An empty slot shows the arm. A selected item replaces it. POSE LAB updates the
+retained WebGL model as soon as a value changes, with no save or refresh.
 
 ## Pick the right box
 
@@ -48,12 +51,14 @@ to:
 position: [0.02, 0, 0]
 ```
 
-Look at the paused pose immediately after changing a number. If it moved the wrong way, put the old number back or use **Reset this group**. Change only one number at a time so it is always clear what that number did.
+Look at the paused pose after each change. If it moved the wrong way, restore the
+old number or use **Reset this group**. Change one number at a time.
 
 ## When it looks right
 
 Use **Copy values**, then send the developer:
 
 1. Which box you changed (`block`, `tool`, `bow`, `arm`, or `otherItem`).
-2. The finished `position`, `rotationDegrees`, and `scale` values—or `center`, `rotationDegrees`, and `size` for a block.
+2. The finished `position`, `rotationDegrees`, and `scale` values. For a block,
+   send `center`, `rotationDegrees`, and `size`.
 3. A screenshot of the paused game.

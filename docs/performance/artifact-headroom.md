@@ -1,7 +1,7 @@
 # Compact artifact headroom evidence
 
-This branch starts from exact `origin/main` commit
-`c2330092bfa2a44333d049dbd3142d5d33eee3fd`. Its compact client transform
+This evidence records compact-build commit
+`c2330092bfa2a44333d049dbd3142d5d33eee3fd`. The client transform
 packs the reviewed literal game catalogs into one fingerprinted UTF-8 table.
 Fresh sequential A/B audit builds produced a 986,753-byte compact artifact,
 leaving 61,823 bytes below Lakebed's 1 MiB ceiling.
@@ -43,6 +43,6 @@ any reviewed literal changes. The adversarial checks cover changed mechanical
 values, presentation text, recipe text, smelting labels, removed rows, and
 injected identifier collisions. An ordinary Lakebed build also passed.
 
-This slice changes only deploy tooling, its evidence, and its tests. It does not
+That commit changed only deploy tooling, evidence, and tests. It did not
 touch `client/singleplayer/`, `shared/singlePlayerCloudBackups.ts`, or
 `server/index.ts`, so it has no source overlap with the cloud-backup feature.

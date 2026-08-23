@@ -77,7 +77,7 @@ function parseRunbookRoute(source: string) {
   return { setupCommands, handoff: parsedHandoff.command };
 }
 
-const runbook = readFileSync(new URL("../docs/creative-combat-qa.md", import.meta.url), "utf8");
+const runbook = readFileSync(new URL("../docs/quality/creative-combat.md", import.meta.url), "utf8");
 const route = parseRunbookRoute(runbook);
 const commands = route.setupCommands;
 

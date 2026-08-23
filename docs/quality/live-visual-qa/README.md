@@ -1,42 +1,39 @@
 # Integrated local-world visual QA
 
-This is the executable post-integration route for Task 41. It verifies the
-local-world browser, crash-safe saves, cave lighting, combat, frame/draw-call
-health, clean console, zero Singleplayer network traffic, and the Lakebed
-artifact reserve.
+This runbook checks the local-world browser, crash-safe saves, cave lighting,
+combat, frame and draw-call health, console output, Singleplayer network
+traffic, and Lakebed artifact reserve.
 
 Run the linked guides in order against one uninterrupted `npx lakebed dev`
-process. The three QA worlds are disposable browser-local data. This run has
-two independently reported scopes: the 18-case anonymous Singleplayer route
-and the multiplayer route, which is either fully passed or wholly deferred
-with allowlisted reason codes. This legacy Task 41 validator predates the
-current Railway authority route; until it is modernized, use
+process. The three QA worlds are disposable browser-local data. Report the
+18-case anonymous Singleplayer route separately from multiplayer. The
+multiplayer route either passes in full or is deferred with allowlisted reason
+codes. The legacy validator predates Railway authority. Until it is updated, use
 `hosted-route-disabled`, `authorized-identities-unavailable`, and
 `quota-observation-unavailable` as the ordered multiplayer reason codes.
 Production quota is healthy context, but it is not observed by this anonymous
 local run. Deferral is validator-accepted partial evidence, not a pass; the
-legacy Task 41 route remains open and the validator exits 2 for that state.
+multiplayer route remains incomplete and the validator exits 2 for that state.
 
-Do not capture final evidence from a branch that lacks the completed local-world
-browser. Rebase this evidence-only branch onto the integrated Task 135 commit
-and run the entire route against that integrated commit.
+Do not capture final evidence from a commit that lacks the completed local-world
+browser. Run the whole route against one integrated commit.
 
 ## Runbook
 
 Read these focused documents in order:
 
-1. [Setup and browser probe](live-visual-qa-setup.md) — trusted commit,
+1. [Setup and browser probe](setup.md): trusted commit,
    evidence-root rules, segment timing, collectors, and performance captures.
-2. [Disposable worlds and browser route](live-visual-qa-worlds.md) — world
+2. [Disposable worlds and browser route](worlds.md): world
    fixtures, persistence markers, corruption/capacity isolation, and modal
    keyboard/focus checks.
-3. [Cave, combat, and multiplayer routes](live-visual-qa-routes.md) — paired
+3. [Cave, combat, and multiplayer routes](routes.md): paired
    lighting evidence, combat regression, and multiplayer scope semantics.
-4. [Reports and deterministic artifact](live-visual-qa-reports.md) — console,
+4. [Reports and deterministic artifact](reports.md): console,
    network, packaging, validation, and artifact-reserve rules.
 
-Each companion is deliberately kept below 300 lines. Do not treat this index
-as a substitute for the requirements in those guides.
+Each file stays below 300 lines. The linked guides contain the actual
+requirements.
 
 ## Evidence manifest template
 

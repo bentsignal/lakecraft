@@ -37,9 +37,9 @@ in Railway SQLite. Lakebed provides a validated one-time seed on a player's
 first visit; ordinary multiplayer gameplay spends no Lakebed queries or
 mutations.
 
-Lakebed remains the account and control plane: authentication, usernames, and
-server registration/join tickets. It must not be used as the realtime world or
-multiplayer inventory transport.
+Lakebed remains the account and control plane. It owns authentication,
+usernames, server registration, and join tickets. It must not transport the
+realtime world or multiplayer inventory.
 
 ## Change rule
 
@@ -49,5 +49,5 @@ If a feature needs separate single-player and multiplayer presentation code,
 stop and move the shared behavior into `client/gameplay/` first.
 
 The architecture regression suite is `tests/gameplayAuthorityArchitecture.test.ts`.
-The Lakebed query-budget suite additionally fails if Railway gameplay re-adds a
+The Lakebed query-budget suite also fails if Railway gameplay re-adds a
 Lakebed world polling bridge.

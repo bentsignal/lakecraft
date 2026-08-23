@@ -14,7 +14,7 @@ import {
 import { BLOCK } from "../client/game/types.ts";
 
 const tuningSource = readFileSync(new URL("../client/game/firstPersonTuning.ts", import.meta.url), "utf8");
-const guide = readFileSync(new URL("../docs/first-person-pose-tuning.md", import.meta.url), "utf8");
+const guide = readFileSync(new URL("../docs/design/first-person-pose-tuning.md", import.meta.url), "utf8");
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 const singlePlayer = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const poseLab = readFileSync(new URL("../client/components/FirstPersonPoseLab.tsx", import.meta.url), "utf8");

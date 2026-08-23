@@ -20,7 +20,7 @@ automation. The harness is stripped from compact production builds.
 
 Compare results only on the same browser, hardware, viewport, and device pixel
 ratio. For a release comparison, run each distance three times and compare the
-median run. Treat idle, turn, and sprint separately: a fast idle average must
+median run. Treat idle, turn, and sprint separately. A fast idle average must
 not hide streaming stalls.
 
 Fluid changes also have a deterministic CPU regression check:
@@ -53,7 +53,7 @@ the streaming schedule while preserving the generated world and render path.
 | 12 | sprint | frames over 25 ms | 95 | 3 |
 | 12 | sprint | worst frame ms | 78.8 | 79.8 |
 
-Idle and turn p95 remained 14.8–14.9 ms in both candidates and both distances.
+Idle and turn p95 remained 14.8 to 14.9 ms in both candidates and both distances.
 The isolated maximum at distance 12 did not improve, so maximum-frame latency
 remains tracked separately from the large steady-state streaming improvement.
 
@@ -70,5 +70,5 @@ of three runs at each distance:
 
 The JSON also records update, render, terrain-streaming, and per-frame mesh-work
 time; pending load/unload/mesh queues; draw calls; visible/loaded chunks; world
-vertices; block count; and the final pose. These counters are diagnostic: the
-frame-time distribution is the performance source of truth.
+vertices; block count; and the final pose. Use those counters for diagnosis.
+The frame-time distribution decides whether a result passes.
