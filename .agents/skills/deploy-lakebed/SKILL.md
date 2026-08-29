@@ -1,11 +1,14 @@
 ---
 name: deploy-lakebed
-description: Use when releasing or verifying Lakecraft on Lakebed production.
+description: Use only when the user explicitly asks to release or verify Lakecraft on its main claimed Lakebed production deployment. Do not use for worktree previews, test links, or testing on another computer.
 ---
 
 # Deploy Lakecraft on Lakebed
 
 Release the compact Lakecraft capsule to its existing claimed deployment.
+For a temporary hosted build that the user will test, use the `preview` skill
+instead. A request for a test URL or access from another computer is not a
+production release request.
 
 ## Required context
 
