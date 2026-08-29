@@ -57,14 +57,14 @@ function parsePrivateIdentifierRows(rows) {
 // This fixed, reviewed live set contains only Lakecraft-owned CSS/DOM names.
 // Order is stable and assigns the shortest outputs to the most frequent names.
 const COMPACT_CLIENT_PRIVATE_IDENTIFIER_ROWS = parsePrivateIdentifierRows(`
-xe-window|56 xi-peek|17 xi-compose|8 xi-message|12 xw-button|17
+xe-window|58 xi-peek|17 xi-compose|8 xi-message|12 xw-button|17
 xc-inventory-slot|11 xj-glyph|15 xo-menu|12 xe-grid__slot|16 xj-icon__svg|17 xn-panel|11
 xlocal-world-dialog|9 xoptions|11 ysleep|1 xslot|14 xunsupported|8 xg__signal|8 xc-slot|8
 xm-slot|11 xp-logo|5 xq-icon|8 xr-slot|8 xclose|10 yquery-recovery|7 xq-population|7
 xworld-line|7 xc__header|7 xk-screen|7 xp-cloud|2 xe-grid|12 xlocal-world-header|6
 xlocal-world-search|6 xlocal-world-select|6 xoptions__slider|10 xgameplay-capture|0
 xe-titlebar|10 xcrosshair|3 xq-browser|6 xp-footer|9 xs-layer|8 xlocal-world-browser|5
-xlocal-world-delete|5 xq-browser__content|5 xselected-item-name|6 xi-dialog|5 xv-result|6
+xlocal-world-delete|5 xq-browser__content|5 xselected-item-name|6 xi-dialog|5 xv-result|7
 xe-upper|7 xo-layer|3 xz__slot|7 xo-help|5 xp-tree|2 xq-copy|7 xq-row|5 xlocal-world-titlebar|5
 xingredient__icon|4 xlocal-world-row|4 xcursor-stack|5 xs__heading|4 xf__output|4
 xj-tooltip|4 xq-actions|4 xc__arrow|4 xh__reset|4 xp-screen|6 xk-layer|4 xw-layer|4
@@ -90,7 +90,7 @@ xp-shade|4 xr-retry|2 xr-title|2 xv-arrow|3 xv-title|2 xkicker|2 xn-head|2
 xq-list|2 xr-grid|2 xv-grid|3 xp-sun|1 yshell|2 yworld|2 xt-in|2
 xworld-browser-title|1 xworld-dialog-title|1 xh__disconnect|1 xpencil-note|1
 xf__number|1 xp-loading|1 xf__arrow|1 xe-error|4 xf-list|1 xj-icon|1 xw-row|1
-xy-grid|8 xy-tabs|4 xy-search|3 xy-empty|2 xy-window|45 xy-workspace|3 xy-pane|7
+xy-grid|8 xy-tabs|4 xy-search|3 xy-empty|2 xy-window|46 xy-workspace|3 xy-pane|7
 xy-pane--player|3 xy-pane--catalog|1 xy-switch|6 xy-grid-wrap|3 xy-armor|3
 xy-catalog|2 xy-help|2 xy-player|2 xsilent-recapture|0
 xlocal-fps|0 xq-empty|4 xdirect-connect|11 xdirect-server|2
