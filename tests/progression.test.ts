@@ -31,6 +31,7 @@ import {
   type PlayerRespawnPoint,
   type Recipe,
 } from "../shared/game.ts";
+import { EXTRA_WOOD_FAMILIES } from "../shared/expandedBuildingCatalog.ts";
 
 function recipe(id: string): Recipe {
   const found = RECIPES.find((candidate) => candidate.id === id);
@@ -62,7 +63,8 @@ assert.deepEqual(recipe("torch_charcoal").ingredients, [
 ], "charcoal torches remain a separate, unambiguous economic recipe");
 assert.deepEqual(recipe("torch_charcoal").output, { itemId: "torch", count: 4 });
 
-const fieldRecipeIds = ["planks_from_log", "sticks_from_planks", "crafting_table", "torch", "torch_charcoal", "bone_meal", "stone_bricks", "bricks", "flint_and_steel", "shears"];
+const extraWoodPlankRecipeIds = EXTRA_WOOD_FAMILIES.map((family) => `${family}_planks_from_log`);
+const fieldRecipeIds = ["planks_from_log", ...extraWoodPlankRecipeIds, "sticks_from_planks", "crafting_table", "torch", "torch_charcoal", "bone_meal", "stone_bricks", "bricks", "flint_and_steel", "shears"];
 assert.deepEqual(availableRecipes("field").map(({ id }) => id), fieldRecipeIds, "the 2x2 field kit exposes only compact recipes");
 assert.deepEqual(availableRecipes("crafting_table").map(({ id }) => id), RECIPES.map(({ id }) => id), "a crafting table includes field recipes");
 for (const fieldRecipeId of fieldRecipeIds) {
@@ -91,6 +93,17 @@ assert.equal(allowedTableCraft.ok, true);
 const fieldIngredients = addItem(createEmptyInventory(), "log", 1).inventory;
 assert.equal(canCraft(fieldIngredients, recipe("planks_from_log"), "field"), true);
 assert.equal(craftRecipe(fieldIngredients, "planks_from_log", "field").ok, true);
+
+for (const family of EXTRA_WOOD_FAMILIES) {
+  const logId = `${family}_log` as const;
+  const planksId = `${family}_planks` as const;
+  const recipeId = `${family}_planks_from_log`;
+  const ingredients = addItem(createEmptyInventory(), logId, 1).inventory;
+  const result = craftRecipe(ingredients, recipeId, "field");
+  assert.equal(result.ok, true, `${logId} should craft into ${planksId}`);
+  assert.equal(countItem(result.inventory, logId), 0);
+  assert.equal(countItem(result.inventory, planksId), 4);
+}
 
 let woodInventory = addItem(createEmptyInventory(), "log", 3).inventory;
 woodInventory = craft(woodInventory, "planks_from_log");

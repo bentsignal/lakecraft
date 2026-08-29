@@ -68,7 +68,7 @@ const source = readFileSync(new URL("../shared/game.ts", import.meta.url), "utf8
 const transformed = stripServerGamePresentation(source);
 assert.throws(
   () => stripServerGamePresentation(source.replace('"label":"Granite Slab",', "")),
-  /RECIPES expected 218 presentation properties, received 217/,
+  /RECIPES expected 232 presentation properties, received 231/,
   "quoted generated recipe presentation removal fails closed before staging",
 );
 assert.throws(

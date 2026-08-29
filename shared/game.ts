@@ -904,6 +904,13 @@ const GENERATED_ARMOR_RECIPES = ([
 
 export const RECIPES: readonly Recipe[] = [
   { id: "planks_from_log", label: "Saw planks", note: "Split one log into four boards.", craftingContext: "field", ingredients: [{ itemId: "log", count: 1 }], output: { itemId: "planks", count: 4 } },
+  { id: "spruce_planks_from_log", label: "Saw spruce planks", note: "Split one spruce log into four spruce planks.", craftingContext: "field", ingredients: [{ itemId: "spruce_log", count: 1 }], output: { itemId: "spruce_planks", count: 4 } },
+  { id: "birch_planks_from_log", label: "Saw birch planks", note: "Split one birch log into four birch planks.", craftingContext: "field", ingredients: [{ itemId: "birch_log", count: 1 }], output: { itemId: "birch_planks", count: 4 } },
+  { id: "jungle_planks_from_log", label: "Saw jungle planks", note: "Split one jungle log into four jungle planks.", craftingContext: "field", ingredients: [{ itemId: "jungle_log", count: 1 }], output: { itemId: "jungle_planks", count: 4 } },
+  { id: "acacia_planks_from_log", label: "Saw acacia planks", note: "Split one acacia log into four acacia planks.", craftingContext: "field", ingredients: [{ itemId: "acacia_log", count: 1 }], output: { itemId: "acacia_planks", count: 4 } },
+  { id: "dark_oak_planks_from_log", label: "Saw dark oak planks", note: "Split one dark oak log into four dark oak planks.", craftingContext: "field", ingredients: [{ itemId: "dark_oak_log", count: 1 }], output: { itemId: "dark_oak_planks", count: 4 } },
+  { id: "mangrove_planks_from_log", label: "Saw mangrove planks", note: "Split one mangrove log into four mangrove planks.", craftingContext: "field", ingredients: [{ itemId: "mangrove_log", count: 1 }], output: { itemId: "mangrove_planks", count: 4 } },
+  { id: "cherry_planks_from_log", label: "Saw cherry planks", note: "Split one cherry log into four cherry planks.", craftingContext: "field", ingredients: [{ itemId: "cherry_log", count: 1 }], output: { itemId: "cherry_planks", count: 4 } },
   { id: "sticks_from_planks", label: "Whittle sticks", note: "Two boards make four handles.", craftingContext: "field", ingredients: [{ itemId: "planks", count: 2 }], output: { itemId: "stick", count: 4 } },
   { id: "crafting_table", label: "Crafting table", note: "Four boards make a proper workbench.", craftingContext: "field", ingredients: [{ itemId: "planks", count: 4 }], output: { itemId: "crafting_table", count: 1 } },
   { id: "torch", label: "Torches", note: "A lump of coal and a stick make four warm lights.", craftingContext: "field", ingredients: [{ itemId: "coal", count: 1 }, { itemId: "stick", count: 1 }], output: { itemId: "torch", count: 4 } },

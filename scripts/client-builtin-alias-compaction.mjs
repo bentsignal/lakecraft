@@ -76,7 +76,7 @@ const PROPERTY_ALIAS_COUNT_OVERRIDES = Object.freeze({
   createBuffer: 25, current: 864, currentTarget: 19, cycleLengthMs: 20, dayNight: 9, delete: 85, deleteBuffer: 43,
   deleteProgram: 18, deleteTexture: 14, documentElement: 9, drawArrays: 24, dropId: 29, endsWith: 28,
   drops: 25, DYNAMIC_DRAW: 17, enableVertexAttribArray: 27, equipment: 41,
-  elapsedSeconds: 39, every: 51, filter: 51, flatMap: 24, fromEntries: 10, getAttribLocation: 24,
+  elapsedSeconds: 39, every: 51, filter: 51, flatMap: 24, fromEntries: 11, getAttribLocation: 24,
   // Embedding the block atlas replaces the remote response dimensions/status
   // with the generated decoder's byte-array length checks.
   getUniformLocation: 69, health: 55, height: 35, includes: 52, inventory: 105, itemId: 182, length: 489,
@@ -101,9 +101,10 @@ export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_
 // destroy-stage texture rendering, textured depth-bearing dropped items,
 // retained streaming buffers, packed live-block coordinate access, and the
 // paired prompt/background fluid queues plus their bounded mesh lifecycle.
-// One shared leaf-family predicate adds the reviewed `endsWith` call.
-export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_443;
-export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "57d6557606dd1991d0d8247f89d60eb55aba225445b010a09af129e2670e0834";
+// Shared leaf culling adds the reviewed `endsWith` call, and generated wood
+// recipes add one reviewed `Object.fromEntries` call.
+export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_444;
+export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "ef6b848ee77a986548c4e4537cc5fc967802efec3870f8f9546c5aedd8bcbe27";
 const PROPERTY_ALIAS_INDEX = new Map(COMPACT_CLIENT_PROPERTY_KEY_ALIASES.map(([name], index) => [name, index]));
 const PROPERTY_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_PROPERTY_KEY_ALIASES)),

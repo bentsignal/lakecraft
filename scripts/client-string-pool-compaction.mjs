@@ -707,9 +707,19 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 616;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 183;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "63d6d9cdfd29f66da6aad4880913c96edd356d213a85727249db533848623ad5";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 619;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 184;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "d08837f2dabedaf2b208c5c9b33be24d3696b24d8ae78b1b9ce69d06c963fee9";
+export const COMPACT_CLIENT_LOW_FREQUENCY_WOOD_RECIPE_DELTA = Object.freeze({
+  previousOccurrences: 616,
+  previousUniqueValues: 183,
+  previousSourceFingerprint: "63d6d9cdfd29f66da6aad4880913c96edd356d213a85727249db533848623ad5",
+  occurrenceDelta: 3,
+  uniqueValueDelta: 1,
+  promotedValue: "shapeless",
+  source: "shared/craftingGrid.ts#wood-plank-recipes",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_LOW_FREQUENCY_MULTIPLAYER_AUTH_DELTA = Object.freeze({
   previousOccurrences: 608,
   previousUniqueValues: 180,
@@ -1097,17 +1107,17 @@ export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([
   "invalid_slot", "invalid_transaction_cleared", "miningHit", "mousemove",
   "nextContactDamageAtSeconds", "nextRangedAttackAtSeconds",
   "no_recipe", "noncanonical_envelope", "pointerlockerror",
-  "raw_chicken", "respawnPoint", "rotten_flesh", "selectedHotbar", "shapeless", "sheep_wool",
+  "raw_chicken", "respawnPoint", "rotten_flesh", "selectedHotbar", "sheep_wool",
   "spiderUntil", "stale_registry", "storage_verify_failed", "storage_write_failed", "sunDamageAt", "targetKind",
   "tnt_bottom", "unsafe_existing_data", "velocityX", "velocityZ", "world-mode", "world-seed", "world-title",
   "world_changed", "world_create_transaction_pending", "world_delete_cleanup_pending",
   "world_delete_transaction_pending",
 ]);
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES = 122;
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES = 61;
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES = 120;
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES = 60;
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCE_KIND = "StringLiteral";
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_PATH = "closed compact client bundle";
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT = "ed938b1207d89ebdd20d6da23b8b72a43697548d8cd2b5070855a6190ef24639";
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT = "13f405e53e691c68c14ca31939204b767b03b32985b68ea9f54424c76f482162";
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_MULTIPLAYER_AUTH_DELTA = Object.freeze({
   previousOccurrences: 124,
   previousUniqueValues: 62,
@@ -1116,6 +1126,16 @@ export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_MULTIPLAYER_AUTH_DELTA = Object.
   uniqueValueDelta: -1,
   promotedValue: "multiplayer",
   source: "client/runtimeMode.ts#dedicated-multiplayer-route",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_WOOD_RECIPE_DELTA = Object.freeze({
+  previousOccurrences: 122,
+  previousUniqueValues: 61,
+  previousSourceFingerprint: "ed938b1207d89ebdd20d6da23b8b72a43697548d8cd2b5070855a6190ef24639",
+  occurrenceDelta: -2,
+  uniqueValueDelta: -1,
+  promotedValue: "shapeless",
+  source: "shared/craftingGrid.ts#wood-plank-recipes",
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_TITLE_DELTA = Object.freeze({

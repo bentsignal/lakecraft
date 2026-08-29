@@ -86,7 +86,7 @@ const TUPLE_CATALOGS = [
 ];
 
 const OBJECT_CATALOGS = [
-  { name: "RECIPES", anchor: "export const RECIPES", properties: ["label", "note"], expectedMatches: 218 },
+  { name: "RECIPES", anchor: "export const RECIPES", properties: ["label", "note"], expectedMatches: 232 },
   { name: "SMELTING_RECIPES", anchor: "export const SMELTING_RECIPES", properties: ["label"], expectedMatches: 10 },
 ];
 
@@ -301,7 +301,7 @@ const SERVER_CRAFTING_TABLE_RECIPE = `function craftingTableRecipe(id: ItemId, i
 `;
 
 const CLIENT_CATALOG_IDENTIFIER = "__lakecraftGameCatalog";
-const CLIENT_CATALOG_FINGERPRINT = "aa3b7c33";
+const CLIENT_CATALOG_FINGERPRINT = "5df94cd8";
 
 function compressStaticBytes(bytes) {
   const packed = [];
@@ -414,7 +414,7 @@ export function compactClientGameCatalog(source) {
     fail("RECIPES generated spread anchor changed.");
   }
   const literalRecipeText = recipeRange.text.slice(1, recipeSpread);
-  const literalRecipes = parseObjectRows(literalRecipeText, "RECIPES", 109);
+  const literalRecipes = parseObjectRows(literalRecipeText, "RECIPES", 116);
   const recipeIndex = catalogs.length;
   catalogs.push(literalRecipes);
   replacements.push({

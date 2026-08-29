@@ -1,6 +1,6 @@
 import { ITEMS, RECIPES, createItemStack, maxItemDurability, type ItemId, type ItemQuantity, type ItemStack, type Recipe } from "./game.ts";
 import * as BS from "./bundleStrings.ts";
-import { STONE_SHAPE_FAMILIES } from "./expandedBuildingCatalog.ts";
+import { EXTRA_WOOD_FAMILIES, STONE_SHAPE_FAMILIES } from "./expandedBuildingCatalog.ts";
 
 export type CraftingGridSize = 2 | 3;
 export type CraftingGrid = ReadonlyArray<ItemStack | null>;
@@ -85,6 +85,11 @@ const GENERATED_EQUIPMENT_PATTERNS = Object.fromEntries(([
   ["diamond", "diamond", true],
 ] as const).flatMap(([prefix, material, armor]) => equipmentPatternEntries(prefix, material, armor)));
 
+const GENERATED_WOOD_PLANK_PATTERNS = Object.fromEntries(EXTRA_WOOD_FAMILIES.map((family) => [
+  `${family}_planks_from_log`,
+  { kind: "shapeless", ingredients: [`${family}_log` as ItemId] },
+] satisfies RecipePatternEntry));
+
 /**
  * Canonical, Minecraft-style layouts for every recipe currently exported by
  * shared/game.ts. Outputs remain sourced from RECIPES so the grid cannot drift
@@ -92,6 +97,7 @@ const GENERATED_EQUIPMENT_PATTERNS = Object.fromEntries(([
  */
 export const INITIAL_RECIPE_PATTERNS: Readonly<Record<string, RecipeShape>> = {
   planks_from_log: { kind: "shapeless", ingredients: ["log"] },
+  ...GENERATED_WOOD_PLANK_PATTERNS,
   sticks_from_planks: { kind: "shaped", pattern: [[P], [P]] },
   crafting_table: { kind: "shaped", pattern: [[P, P], [P, P]] },
   torch: { kind: "shaped", pattern: [[K], [S]] },

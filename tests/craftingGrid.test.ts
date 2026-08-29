@@ -19,6 +19,7 @@ import {
   type ShapedCraftingRecipe,
 } from "../shared/craftingGrid.ts";
 import { ITEMS, RECIPES, createItemStack, type ItemId, type ItemStack } from "../shared/game.ts";
+import { EXTRA_WOOD_FAMILIES } from "../shared/expandedBuildingCatalog.ts";
 
 function stack(itemId: ItemId, count = 1): ItemStack {
   return { itemId, count };
@@ -64,7 +65,7 @@ for (const recipe of RECIPES) {
 
 assert.equal(
   createHash("sha256").update(JSON.stringify(INITIAL_RECIPE_PATTERNS)).digest("hex"),
-  "220f47bf258870f222170652abee247c744bcd3b11d37b6b4566f7f5fbf5400b",
+  "8fc11c5a19ae1caacf1aa4c3356ae0092b581a40913e8f0a8767aaf1422a99d5",
   "generated recipe patterns preserve the exact serialized layout and insertion order",
 );
 assert.equal(adaptRecipesToGrid([{ ...RECIPES[0], id: "unmapped" }]).length, 0);
@@ -102,7 +103,7 @@ for (const recipe of CRAFTING_GRID_RECIPES) {
 }
 
 // Compact player crafting supports canonical field recipes, translated within the grid.
-for (const id of ["planks_from_log", "sticks_from_planks", "crafting_table", "torch", "torch_charcoal", "flint_and_steel", "shears"]) {
+for (const id of ["planks_from_log", ...EXTRA_WOOD_FAMILIES.map((family) => `${family}_planks_from_log`), "sticks_from_planks", "crafting_table", "torch", "torch_charcoal", "flint_and_steel", "shears"]) {
   const recipe = CRAFTING_GRID_RECIPES.find((candidate) => candidate.id === id)!;
   const grid = gridFromPattern(recipe, 2);
   assert.equal(matchCraftingGrid(grid, 2)?.recipe.id, id);
@@ -127,6 +128,21 @@ assert.equal(matchCraftingGrid(logAtEnd, 3), null);
 logAtEnd[0] = null;
 logAtEnd[8] = stack("planks");
 assert.equal(matchCraftingGrid(logAtEnd, 3), null);
+
+for (const family of EXTRA_WOOD_FAMILIES) {
+  const logId = `${family}_log` as ItemId;
+  const planksId = `${family}_planks` as ItemId;
+  const recipeId = `${family}_planks_from_log`;
+  const grid = createCraftingGrid(2).slice() as Array<ItemStack | null>;
+  grid[3] = stack(logId);
+  assert.deepEqual(previewCraftingResult(grid, 2), {
+    recipeId,
+    output: stack(planksId, 4),
+  }, `${logId} should preview four matching planks`);
+  const taken = takeCraftingResult({ grid, cursor: null }, 2);
+  assert.equal(taken.ok, true);
+  if (taken.ok) assert.deepEqual(taken.state.cursor, stack(planksId, 4));
+}
 
 // Left click: pick up, place, merge to capacity, leave remainder, and swap unlike stacks.
 let state: CraftingGridState = { grid: [stack("planks", 10), null, null, null], cursor: null };
