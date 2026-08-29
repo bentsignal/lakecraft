@@ -1,9 +1,10 @@
-export { LobbyScreen, validateLakecraftUsername } from "./LobbyScreen";
+export { LobbyScreen, TitleScreen, validateLakecraftUsername } from "./LobbyScreen";
 export type {
   LobbyAuthState,
   LobbyJoinPhase,
   LobbyScreenProps,
   LobbyWorldStatus,
+  TitleScreenProps,
   UsernameClaimState,
   UsernameValidationResult,
 } from "./LobbyScreen";
