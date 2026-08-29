@@ -13,6 +13,10 @@ const world = source("../apps/game-server/src/world.ts");
 
 assert.ok(options.includes('hudSize === "small" ? "medium" : hudSize === "medium" ? "large" : "small"'),
   "HUD size cycles monotonically from small to medium to large and back to small");
+assert.ok(hud.includes('import { useLayoutEffect } from "preact/hooks"')
+  && hud.includes("useLayoutEffect(() => {")
+  && !hud.includes("useEffect(() => {"),
+  "HUD scale variables update in the settings render cycle instead of waiting for a throttled post-paint effect");
 for (const contract of [
   'root.setProperty("--lc-hotbar-scale", small ? ".83" : medium ? "1" : "1.18")',
   'root.setProperty("--lc-inventory-scale", small ? ".67" : medium ? ".83" : ".94")',

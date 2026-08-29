@@ -20,7 +20,7 @@ import { PlayerList, type PlayerListEntry } from "./PlayerList";
 import { SurvivalHud } from "./StatusStrip";
 import { ToastSurface, type HudMessage } from "./ToastSurface";
 import type { ClientSettings } from "../settings.ts";
-import { useEffect } from "preact/hooks";
+import { useLayoutEffect } from "preact/hooks";
 
 export type GameHudProps = {
   inventory: Inventory;
@@ -142,7 +142,7 @@ export function GameHud({
   onDismissMessage,
   onContinueMobile,
 }: GameHudProps) {
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = document.documentElement.style;
     const small = settings.hudSize === "small";
     const medium = settings.hudSize === "medium";

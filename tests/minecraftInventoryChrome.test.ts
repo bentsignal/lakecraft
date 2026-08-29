@@ -53,8 +53,20 @@ assert.match(styles, /\.lc-armor-slot \.lc-item-glyph \{ inset:0;min-height:46px
   "armor labels cannot accidentally offset the centered item-glyph container");
 assert.match(styles, />\.lc-inventory-upper::after\{background:#c6c6c6;content:"";height:60px;left:228px;[^}]*top:183px;/,
   "the unsupported offhand slot and its one-pixel texture border are cleanly masked at 3x");
-assert.match(styles, /\.lc-crafting-arrow\{visibility:hidden;width:27px\}/,
-  "the DOM arrow is hidden because the canonical inventory texture already owns that arrow");
+assert.match(styles, /\.lc-crafting-panel\{left:291px;position:absolute;top:18px;width:225px\}/,
+  "the Crafting label begins at source coordinate 97,6 in the three-times inventory texture");
+assert.match(styles, /\.lc-crafting-panel h3\{font-size:15px;margin:0 0 21px\}/,
+  "the field label leaves the exact vertical gap to the crafting matrix at source y=18");
+assert.match(styles, /\.lc-crafting-workspace\{gap:18px;margin-left:3px\}/,
+  "the crafting matrix begins at source x=98 while preserving 18px slot tracks");
+assert.match(styles, /\.lc-crafting-result\{top:3px\}/,
+  "the result target aligns to source y=28 instead of sitting one source pixel high");
+assert.match(styles, /\.lc-crafting-arrow\{visibility:hidden;width:24px\}/,
+  "the hidden DOM arrow leaves the exact source-coordinate gap to the result slot at x=154");
+assert.match(styles, /\.lc-inventory-window\.is-crafting-table \.lc-crafting-workspace \{ justify-content: center; \}/,
+  "narrow crafting-table controls remain centered without shifting the survival inventory controls off their textured slots");
+assert.doesNotMatch(styles, /(?<!is-crafting-table )\.lc-crafting-workspace \{ justify-content: center; \}/,
+  "narrow survival crafting hit targets remain pinned to the fixed inventory texture");
 assert.match(styles, /\.lc-item-icon__svg\{height:42px;transform:translate\(-3px,-3px\);width:42px\}/,
   "inventory item cells preserve centered Minecraft-like padding inside the 48px slot interior");
 
