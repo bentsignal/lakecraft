@@ -5,10 +5,12 @@ const app = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8"
 const singleplayer = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const lobby = readFileSync(new URL("../client/lobby/LobbyScreen.tsx", import.meta.url), "utf8");
 
-assert.ok(app.includes("shouldRunSinglePlayer(window.location.hostname, window.location.search)"),
+assert.ok(app.includes("appRouteForLocation(window.location.hostname, window.location.pathname, window.location.search)"),
   "the route must apply the tested host policy before choosing an app tree");
-assert.ok(app.includes("? <SinglePlayerApp onExit={leaveSingleplayer} />\n    : <LakebedMultiplayerApp onJoinSingleplayer={joinSingleplayer} />"),
-  "the route must choose exactly one app tree");
+assert.ok(app.includes('if (route === "singleplayer") return <SinglePlayerApp onExit={leaveSingleplayer} />;')
+  && app.includes('if (route === "auth_callback") return <LakebedMultiplayerApp onBack={leaveMultiplayer} />;')
+  && app.includes('if (route === "multiplayer") return <LakebedMultiplayerApp onBack={leaveMultiplayer} />;'),
+  "the route must choose exactly one app tree, including the OAuth callback entry");
 assert.ok(app.includes("entryPointerLockHandoffRef.current = requestDocumentPointerLockHandoff()"),
   "multiplayer Play uses the same gesture-bound pointer/fullscreen handoff as single-player");
 assert.equal(singleplayer.includes("lakebed/client"), false, "single-player must not import the Lakebed client runtime");

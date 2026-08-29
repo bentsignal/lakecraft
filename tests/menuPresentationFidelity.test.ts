@@ -43,8 +43,8 @@ assert.ok(lobby.includes("<TitlePanorama />") && titlePanorama.includes("createT
   "the current WebGL title panorama remains the home screen behind normal title actions");
 assert.equal(app.includes("MULTIPLAYER ALPHA"), false, "the obsolete multiplayer alpha build label is removed");
 assert.equal(lobby.includes("props.buildLabel"), false, "footer rendering cannot append a build label");
-assert.equal((lobby.match(/<span>Lakecraft<\/span>/g) ?? []).length, 1,
-  "only the multiplayer directory retains its Lakecraft footer; the home footer label is removed");
+assert.equal((lobby.match(/<span>Lakecraft<\/span>/g) ?? []).length, 2,
+  "multiplayer auth and the server directory retain their Lakecraft footer; the home label is removed");
 const titleReturn = lobby.slice(lobby.lastIndexOf('return (\n    <main className="lc-title-screen">'));
 assert.ok(titleReturn.includes("lc-title-footer") && titleReturn.includes("craft.lakebed.app")
   && !titleReturn.includes("<span>Lakecraft</span>"),

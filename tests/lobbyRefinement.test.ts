@@ -6,11 +6,11 @@ const menuButton = readFileSync(new URL("../client/lobby/menuButton.tsx", import
 const styles = readFileSync(new URL("../client/lobby/LobbyStyles.tsx", import.meta.url), "utf8");
 const app = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 
-assert.ok(lobby.includes('useState<"title" | "multiplayer">("title")'), "the title and multiplayer directory are distinct screens");
-assert.ok(lobby.includes('setPage("multiplayer")'), "the Multiplayer title button opens the server directory without authenticating first");
-assert.equal(lobby.includes(">Sign In with Google<"), false, "Google branding is not presented as a main menu button");
-assert.ok(lobby.includes(">Sign In</button>"), "the multiplayer account panel exposes a compact sign-in action");
-assert.ok(lobby.includes(">Set Name</button>"), "signed-in accounts without a username expose concise name setup in the account panel");
+assert.ok(lobby.includes("export function TitleScreen") && lobby.includes("export function LobbyScreen"),
+  "the title and multiplayer directory are separate component trees");
+assert.ok(lobby.includes("props.onJoinMultiplayer"), "the Multiplayer title button delegates to the URL router");
+assert.ok(lobby.includes('menuButton("Continue with Google"'), "the multiplayer auth screen has a clear sign-in action");
+assert.ok(lobby.includes(">Sign Out</button>"), "the authenticated server directory keeps a concise account action");
 assert.ok(lobby.includes('role="listbox"') && lobby.includes('role="option"'), "the multiplayer screen exposes a semantic server list");
 assert.ok(lobby.includes("props.servers") && lobby.includes("server.onlinePlayers ?? 0"),
   "the multiplayer directory renders control-plane servers and live occupancy");
@@ -27,12 +27,16 @@ assert.ok((app.match(/setInWorld\(true\);[\s\S]{0,100}?setPauseOpen\(false\)/g) 
 assert.ok(lobby.includes("<OptionsDialog") && lobby.includes('"lc-title-options"')
   && menuButton.includes("id={id}"), "title Options opens the shared accessible settings screen");
 assert.equal(lobby.includes(">About<"), false, "the inert About action is removed from the title screen");
-assert.ok(lobby.includes('<AccountPanel onSignIn={() => setPage("multiplayer")}'),
-  "signed-out home identity routes its small Sign In action into multiplayer context");
-assert.ok(lobby.includes('<AccountPanel onSignIn={props.onSignInWithGoogle}'),
-  "Google authentication remains contextual to the multiplayer server browser");
-const titlePage = lobby.slice(lobby.indexOf('return (\n    <main className="lc-title-screen">'));
-assert.equal(titlePage.includes("onSignInWithGoogle"), false, "title screen never invokes Google authentication directly");
+assert.ok(lobby.includes("<AccountPanel props={props} />"),
+  "the ready server directory keeps authenticated account controls available");
+assert.ok(lobby.includes('if (props.authState !== "ready") return <MultiplayerAccess props={props} />;'),
+  "signed-out, loading, and unnamed players never mount the server browser");
+assert.ok(app.includes("if (!bootstrapReady || !profile || !serverProbeKey) return;"),
+  "server status traffic waits for the authenticated profile gate");
+const titlePage = lobby.slice(lobby.indexOf("export function TitleScreen"));
+assert.equal(titlePage.includes("onSignInWithGoogle"), false, "title screen has no authentication callback");
+assert.equal(titlePage.includes("AccountPanel"), false, "title screen has no account UI");
+assert.ok(lobby.includes("Singleplayer never needs an account."), "the auth gate explains the offline boundary");
 
 const validationSource = lobby.match(/export function validateLakecraftUsername\([\s\S]*?^}/m)?.[0];
 assert.ok(validationSource, "username behavior remains directly testable");
