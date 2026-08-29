@@ -1,0 +1,7 @@
+interface:
+  display_name: "Preview Lakecraft"
+  short_description: "Preview Lakecraft locally or on a hosted URL"
+  default_prompt: "Use $preview to publish this Lakecraft worktree for testing."
+
+policy:
+  allow_implicit_invocation: false

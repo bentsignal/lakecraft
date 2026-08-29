@@ -8,9 +8,19 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 544;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 479;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "96f307f2526c657d9801b1ab105e0c2d81ac7bb060f9e2358095ce5af8773c91";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 545;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 477;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "218e71e2f078f3e01d8aa41e0c2cccc73b0247049f559cbbf298300b4af565ad";
+export const COMPACT_CLIENT_HUMAN_MULTIPLAYER_AUTH_DELTA = Object.freeze({
+  previousOccurrences: 544,
+  previousUniqueValues: 479,
+  previousSourceFingerprint: "96f307f2526c657d9801b1ab105e0c2d81ac7bb060f9e2358095ce5af8773c91",
+  occurrenceDelta: 1,
+  uniqueValueDelta: -2,
+  sources: Object.freeze(["client/index.tsx", "client/lobby/LobbyScreen.tsx"]),
+  source: "auth-free title route and dedicated multiplayer sign-in gate",
+  exclusionChanges: 0,
+});
 // Counts are unchanged: the reviewed create-world hint now says blank seeds are random.
 export const COMPACT_CLIENT_HUMAN_DESTROY_STAGE_DELTA = Object.freeze({
   previousOccurrences: 543,
@@ -248,9 +258,19 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
   source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_380;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 138;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "dd60c2859ad1bb432040661c1d4bb30650e5e3fa8ec5962eb53e3a0d74b97cf5";
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_397;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 140;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "9db9973b1b8b14eab140ec64a97177a8092fe0a6ed3d69e476d920289a2ec95c";
+export const COMPACT_CLIENT_REPEATED_MULTIPLAYER_AUTH_DELTA = Object.freeze({
+  previousOccurrences: 1_380,
+  previousUniqueValues: 138,
+  previousSourceFingerprint: "dd60c2859ad1bb432040661c1d4bb30650e5e3fa8ec5962eb53e3a0d74b97cf5",
+  occurrenceDelta: 17,
+  uniqueValueDelta: 2,
+  sources: Object.freeze(["client/index.tsx", "client/lobby/LobbyScreen.tsx"]),
+  source: "auth-free title route and dedicated multiplayer sign-in gate",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_REPEATED_PICKUP_BIOME_DELTA = Object.freeze({
   previousOccurrences: 1_375,
   previousUniqueValues: 137,
@@ -687,9 +707,19 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 608;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 180;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "8c74e2967ca8a1c8bb6aebbda3e4d26faa44c030a32d68939d5dd5ea9e88d70c";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 616;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 183;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "63d6d9cdfd29f66da6aad4880913c96edd356d213a85727249db533848623ad5";
+export const COMPACT_CLIENT_LOW_FREQUENCY_MULTIPLAYER_AUTH_DELTA = Object.freeze({
+  previousOccurrences: 608,
+  previousUniqueValues: 180,
+  previousSourceFingerprint: "8c74e2967ca8a1c8bb6aebbda3e4d26faa44c030a32d68939d5dd5ea9e88d70c",
+  occurrenceDelta: 8,
+  uniqueValueDelta: 3,
+  sources: Object.freeze(["client/index.tsx", "client/lobby/LobbyScreen.tsx"]),
+  source: "auth-free title route and dedicated multiplayer sign-in gate",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_LOW_FREQUENCY_CUTOUT_LEAVES_DELTA = Object.freeze({
   previousOccurrences: 607,
   previousUniqueValues: 180,
@@ -1065,7 +1095,7 @@ export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([
   "furnace_side", "furnace_top", "fuseStartedAtSeconds", "fuseUntilSeconds",
   "ineligible", "invalid_coordinate", "invalid_count", "invalid_equipment", "invalid_grid",
   "invalid_slot", "invalid_transaction_cleared", "miningHit", "mousemove",
-  "multiplayer", "nextContactDamageAtSeconds", "nextRangedAttackAtSeconds",
+  "nextContactDamageAtSeconds", "nextRangedAttackAtSeconds",
   "no_recipe", "noncanonical_envelope", "pointerlockerror",
   "raw_chicken", "respawnPoint", "rotten_flesh", "selectedHotbar", "shapeless", "sheep_wool",
   "spiderUntil", "stale_registry", "storage_verify_failed", "storage_write_failed", "sunDamageAt", "targetKind",
@@ -1073,11 +1103,21 @@ export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([
   "world_changed", "world_create_transaction_pending", "world_delete_cleanup_pending",
   "world_delete_transaction_pending",
 ]);
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES = 124;
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES = 62;
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES = 122;
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES = 61;
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCE_KIND = "StringLiteral";
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_PATH = "closed compact client bundle";
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT = "dee0ce7f3ce28c9c9f951c5e1d14fa496b28498c150417914e736165eddb9d00";
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT = "ed938b1207d89ebdd20d6da23b8b72a43697548d8cd2b5070855a6190ef24639";
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_MULTIPLAYER_AUTH_DELTA = Object.freeze({
+  previousOccurrences: 124,
+  previousUniqueValues: 62,
+  previousSourceFingerprint: "dee0ce7f3ce28c9c9f951c5e1d14fa496b28498c150417914e736165eddb9d00",
+  occurrenceDelta: -2,
+  uniqueValueDelta: -1,
+  promotedValue: "multiplayer",
+  source: "client/runtimeMode.ts#dedicated-multiplayer-route",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_TITLE_DELTA = Object.freeze({
   previousOccurrences: 126,
   previousUniqueValues: 63,

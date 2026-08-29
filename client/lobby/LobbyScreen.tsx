@@ -41,7 +41,7 @@ export interface LobbyScreenProps {
   directConnectToken?: string;
   settings: ClientSettings;
   onSignInWithGoogle: () => void;
-  onJoinSingleplayer: () => void;
+  onBack: () => void;
   onSignOut?: () => void;
   onUsernameChange: (value: string) => void;
   onUsernameSubmit: (value: string) => void;
@@ -52,6 +52,13 @@ export interface LobbyScreenProps {
   onDirectConnectTokenChange?: (value: string) => void;
   onAddDirectServer?: () => void;
   onOpenHelp?: () => void;
+  onSettingsChange: (settings: ClientSettings) => void;
+}
+
+export interface TitleScreenProps {
+  settings: ClientSettings;
+  onJoinSingleplayer: () => void;
+  onJoinMultiplayer: () => void;
   onSettingsChange: (settings: ClientSettings) => void;
 }
 
@@ -140,32 +147,53 @@ function JoinLabel(props: LobbyScreenProps) {
   return <>Join Server</>;
 }
 
-function AccountPanel({ onSignIn, onChooseUsername, props }: {
-  onSignIn?: () => void;
-  onChooseUsername: () => void;
-  props: LobbyScreenProps;
-}) {
-  const signedOut = props.authState === "signed_out";
-  const loading = props.authState === "loading";
-  const needsUsername = props.authState === "needs_username";
-  const accountName = loading ? "Checking account…"
-    : signedOut ? "Offline player"
-      : needsUsername ? props.displayName || props.email || "Unnamed player"
-        : props.username || props.displayName || "Player";
+function AccountPanel({ props }: { props: LobbyScreenProps }) {
+  const accountName = props.username || props.displayName || "Player";
   return (
     <aside className="lc-account-panel" aria-label="Player account">
       <span className="lc-account-head" aria-hidden="true" />
       <div><small>Player</small><strong>{accountName}</strong></div>
-      {signedOut && onSignIn ? <button onClick={onSignIn} type="button">Sign In</button> : null}
-      {needsUsername ? <button onClick={onChooseUsername} type="button">Set Name</button> : null}
-      {!signedOut && !loading && !needsUsername && props.onSignOut ? <button onClick={props.onSignOut} type="button">Sign Out</button> : null}
+      {props.onSignOut ? <button onClick={props.onSignOut} type="button">Sign Out</button> : null}
     </aside>
   );
 }
 
-function ServerBrowser({ onBack, onChooseUsername, props }: {
+function MultiplayerAccess({ props }: { props: LobbyScreenProps }) {
+  const loading = props.authState === "loading";
+  const needsUsername = props.authState === "needs_username";
+
+  return (
+    <main className="lc-multiplayer-auth">
+      <LobbyStyles />
+      <div className="lc-dirt-background" aria-hidden="true" />
+      <section className="lc-multiplayer-auth__card" aria-busy={loading} aria-label="Multiplayer sign in">
+        {needsUsername ? (
+          <UsernameMenu {...props} onCancel={props.onBack} />
+        ) : (
+          <>
+            <span className="lc-multiplayer-auth__avatar" aria-hidden="true" />
+            <h1>Play Multiplayer</h1>
+            <p>{loading
+              ? "Checking your Lakebed account…"
+              : "Sign in with Google to browse servers and play online."}</p>
+            {props.usernameError ? <p className="lc-multiplayer-auth__error" role="alert">{props.usernameError}</p> : null}
+            <div className="lc-multiplayer-auth__actions">
+              {loading
+                ? <span className="lc-multiplayer-auth__loading" role="status">Connecting…</span>
+                : menuButton("Continue with Google", props.onSignInWithGoogle, false, 3)}
+              {menuButton("Back", props.onBack)}
+            </div>
+            <small>Singleplayer never needs an account.</small>
+          </>
+        )}
+      </section>
+      <footer className="lc-title-footer"><span>Lakecraft</span><span>craft.lakebed.app</span></footer>
+    </main>
+  );
+}
+
+function ServerBrowser({ onBack, props }: {
   onBack: () => void;
-  onChooseUsername: () => void;
   props: LobbyScreenProps;
 }) {
   const phase = props.joinPhase ?? "idle";
@@ -182,12 +210,9 @@ function ServerBrowser({ onBack, onChooseUsername, props }: {
   const joining = phase === "joining" || phase === "waiting" || phase === "ready";
   const canJoin = props.authState === "ready" && Boolean(selected)
     && status !== "maintenance" && status !== "offline" && !joining;
-  const accountHint = props.authState === "signed_out" ? "Sign in to join this server."
-    : props.authState === "needs_username" ? "Choose a player name before joining."
-      : props.authState === "loading" ? "Checking your Lakebed account…"
-        : status === "maintenance" ? "Server maintenance in progress."
-          : status === "offline" ? "The server is currently offline."
-            : "Select a server and click Join Server.";
+  const accountHint = status === "maintenance" ? "Server maintenance in progress."
+    : status === "offline" ? "The server is currently offline."
+      : "Select a server and click Join Server.";
 
   if (joining) {
     const detail = phase === "joining" ? `Connecting to ${selected?.name ?? "server"}…`
@@ -200,7 +225,7 @@ function ServerBrowser({ onBack, onChooseUsername, props }: {
     <main className="lc-server-browser">
       <LobbyStyles />
       <div className="lc-dirt-background" aria-hidden="true" />
-      <AccountPanel onSignIn={props.onSignInWithGoogle} onChooseUsername={onChooseUsername} props={props} />
+      <AccountPanel props={props} />
       <section className="lc-server-browser__content" aria-label="Multiplayer server list">
         <h1>Play Multiplayer</h1>
         <div className="lc-server-list" role="listbox" aria-label="Available servers">
@@ -272,37 +297,29 @@ function ServerBrowser({ onBack, onChooseUsername, props }: {
 }
 
 export function LobbyScreen(props: LobbyScreenProps) {
-  const [page, setPage] = useState<"title" | "multiplayer">("title");
-  const [editingUsername, setEditingUsername] = useState(false);
-  const [optionsOpen, setOptionsOpen] = useState(false);
-  const showUsername = editingUsername && props.authState === "needs_username";
+  if (props.authState !== "ready") return <MultiplayerAccess props={props} />;
 
-  if (page === "multiplayer") {
-    return (
-      <>
-        <ServerBrowser onBack={() => { setEditingUsername(false); setPage("title"); }} onChooseUsername={() => setEditingUsername(true)} props={props} />
-        {showUsername ? <div className="lc-username-layer" role="presentation"><UsernameMenu {...props} onCancel={() => setEditingUsername(false)} /></div> : null}
-      </>
-    );
-  }
+  return <ServerBrowser onBack={props.onBack} props={props} />;
+}
+
+export function TitleScreen(props: TitleScreenProps) {
+  const [optionsOpen, setOptionsOpen] = useState(false);
 
   return (
     <main className="lc-title-screen">
       <LobbyStyles />
       <TitlePanorama />
       <div className="lc-title-shade" aria-hidden="true" />
-      <AccountPanel onSignIn={() => setPage("multiplayer")} onChooseUsername={() => setEditingUsername(true)} props={props} />
       <section className="lc-title-content" aria-label="Lakecraft main menu">
         <TitleLogo />
 
         <div className="lc-title-menu">
           {menuButton("Singleplayer", props.onJoinSingleplayer, false, 2)}
-          {menuButton("Multiplayer", () => setPage("multiplayer"), false, 2)}
+          {menuButton("Multiplayer", props.onJoinMultiplayer, false, 2)}
           {menuButton("Options…", () => setOptionsOpen(true), false, 2, "lc-title-options")}
         </div>
       </section>
       <footer className="lc-title-footer"><span /><span>craft.lakebed.app</span></footer>
-      {showUsername ? <div className="lc-username-layer" role="presentation"><UsernameMenu {...props} onCancel={() => setEditingUsername(false)} /></div> : null}
       <OptionsDialog
         onBack={() => setOptionsOpen(false)}
         onSettingsChange={props.onSettingsChange}

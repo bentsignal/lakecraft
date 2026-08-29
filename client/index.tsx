@@ -16,9 +16,16 @@ import {
 } from "./game";
 import { createGameplaySessionEngine, createRailwayGameplayAuthority } from "./gameplay/index.ts";
 import type { WorldTerrainDescriptor } from "../shared/worldPreset.ts";
-import { LobbyScreen, type LobbyJoinPhase, type LobbyServerEntry, type UsernameClaimState } from "./lobby";
+import { LobbyScreen, TitleScreen, type LobbyJoinPhase, type LobbyServerEntry, type UsernameClaimState } from "./lobby";
 import { SinglePlayerApp } from "./singleplayer";
-import { shouldRunSinglePlayer, singlePlayerTitleUrl } from "./runtimeMode.ts";
+import {
+  AUTH_CALLBACK_PATH,
+  appRouteForLocation,
+  multiplayerUrl,
+  singlePlayerTitleUrl,
+  titleUrl,
+  type LakecraftAppRoute,
+} from "./runtimeMode.ts";
 import { releaseGameplayKeyboardCapture, requestGameplayKeyboardCapture, toggleGameplayFullscreen } from "./gameplayKeyboardCapture.ts";
 import { requestDocumentPointerLockHandoff } from "./pointerLockHandoff.ts";
 import { handleGameplayScreenshotKey } from "./gameplayDiagnostics.tsx";
@@ -308,11 +315,11 @@ function LobbyBootstrapQuery({
 function RailwayMultiplayerSession({
   inWorld,
   setInWorld,
-  onJoinSingleplayer,
+  onBack,
 }: {
   inWorld: boolean;
   setInWorld: (inWorld: boolean) => void;
-  onJoinSingleplayer: () => void;
+  onBack: () => void;
 }) {
   const auth = useAuth();
   const [clientSettings, setClientSettings] = useState(() => loadClientSettings(window.localStorage));
@@ -446,7 +453,8 @@ function RailwayMultiplayerSession({
   const playerHealthRef = useRef(20);
   const [deathScreenOpen, setDeathScreenOpen] = useState(false);
   const [respawning, setRespawning] = useState(false);
-  const lakebedIdentity = auth.isLoading ? "" : auth.userId ?? "guest";
+  const signedIn = auth.isAuthenticated && !auth.isGuest;
+  const lakebedIdentity = auth.isLoading || !signedIn ? "" : auth.userId ?? "";
   const bootstrapReady = lakebedIdentity !== "" && bootstrapIdentity === lakebedIdentity;
   const acceptBootstrap = (identity: string, result: ClientBootstrap) => {
     if (identity !== (auth.userId ?? "guest")) return;
@@ -510,7 +518,7 @@ function RailwayMultiplayerSession({
   }, [realtimeSession?.endpoint]);
 
   useEffect(() => {
-    if (!serverProbeKey) return;
+    if (!bootstrapReady || !profile || !serverProbeKey) return;
     const controller = new AbortController();
     for (const server of combinedServers.slice(0, 24)) {
       const statusUrl = multiplayerStatusUrl(server.endpoint);
@@ -542,7 +550,7 @@ function RailwayMultiplayerSession({
       });
     }
     return () => controller.abort();
-  }, [serverProbeKey]);
+  }, [bootstrapReady, profile?.id, serverProbeKey]);
 
   useEffect(() => {
     if (selectedServerId && combinedServers.some((server) => server.id === selectedServerId)) return;
@@ -1697,7 +1705,6 @@ function RailwayMultiplayerSession({
     void sink(value).catch(() => setChatError("Chat is reconnecting to this server."));
   }
 
-  const signedIn = auth.isAuthenticated && !auth.isGuest;
   const lobbyAuthState = auth.isLoading || (signedIn && profile === undefined)
     ? "loading"
     : !signedIn
@@ -1725,6 +1732,7 @@ function RailwayMultiplayerSession({
       </ErrorBoundary>
       <LobbyScreen
         authState={lobbyAuthState}
+        onBack={onBack}
         displayName={profile?.username ?? auth.displayName}
         email={auth.email}
         joinPhase={joinPhase}
@@ -1752,11 +1760,13 @@ function RailwayMultiplayerSession({
           setJoinPhase("idle");
           setJoinError("");
         }}
-        onJoinSingleplayer={onJoinSingleplayer}
         onSettingsChange={updateClientSettings}
         onSignInWithGoogle={() => {
           setUsernameError("");
-          void signInWithGoogle().catch(() => {
+          void signInWithGoogle({
+            callbackPath: AUTH_CALLBACK_PATH,
+            returnTo: multiplayerUrl(window.location.href),
+          }).catch(() => {
             setUsernameState("error");
             setUsernameError("Google sign-in could not start. Please try again.");
           });
@@ -2098,29 +2108,74 @@ function RailwayMultiplayerSession({
   );
 }
 
-function LakebedMultiplayerApp({ onJoinSingleplayer }: { onJoinSingleplayer: () => void }) {
+function LakebedMultiplayerApp({ onBack }: { onBack: () => void }) {
   const [inWorld, setInWorld] = useState(false);
-  return <RailwayMultiplayerSession inWorld={inWorld} setInWorld={setInWorld} onJoinSingleplayer={onJoinSingleplayer} />;
+  return <RailwayMultiplayerSession inWorld={inWorld} setInWorld={setInWorld} onBack={onBack} />;
+}
+
+function LakecraftTitleScreen({ onJoinSingleplayer, onJoinMultiplayer }: {
+  onJoinSingleplayer: () => void;
+  onJoinMultiplayer: () => void;
+}) {
+  const [settings, setSettings] = useState(() => loadClientSettings(window.localStorage));
+
+  function updateSettings(next: ClientSettings): void {
+    const normalized = normalizeClientSettings(next);
+    setSettings(normalized);
+    saveClientSettings(window.localStorage, normalized);
+  }
+
+  return <TitleScreen
+    onJoinMultiplayer={onJoinMultiplayer}
+    onJoinSingleplayer={onJoinSingleplayer}
+    onSettingsChange={updateSettings}
+    settings={settings}
+  />;
+}
+
+function currentAppRoute(): LakecraftAppRoute {
+  return appRouteForLocation(window.location.hostname, window.location.pathname, window.location.search);
 }
 
 export function App() {
-  const [singlePlayer, setSinglePlayer] = useState(
-    () => shouldRunSinglePlayer(window.location.hostname, window.location.search),
-  );
+  const [route, setRoute] = useState<LakecraftAppRoute>(currentAppRoute);
+
+  useEffect(() => {
+    const syncRoute = () => setRoute(currentAppRoute());
+    window.addEventListener("popstate", syncRoute);
+    return () => window.removeEventListener("popstate", syncRoute);
+  }, []);
 
   function joinSingleplayer(): void {
-    const url = new URL(window.location.href);
+    const url = new URL(titleUrl(window.location.href));
     url.searchParams.set("singleplayer", "1");
     window.history.replaceState(window.history.state, "", url);
-    setSinglePlayer(true);
+    setRoute("singleplayer");
+  }
+
+  function joinMultiplayer(): void {
+    const previousState = window.history.state;
+    const state = previousState && typeof previousState === "object" ? previousState : {};
+    window.history.pushState({ ...state, lakecraftMultiplayerEntry: true }, "", multiplayerUrl(window.location.href));
+    setRoute("multiplayer");
   }
 
   function leaveSingleplayer(): void {
     window.history.replaceState(window.history.state, "", singlePlayerTitleUrl(window.location.href));
-    setSinglePlayer(false);
+    setRoute("title");
   }
 
-  return singlePlayer
-    ? <SinglePlayerApp onExit={leaveSingleplayer} />
-    : <LakebedMultiplayerApp onJoinSingleplayer={joinSingleplayer} />;
+  function leaveMultiplayer(): void {
+    if (window.history.state?.lakecraftMultiplayerEntry === true) {
+      window.history.back();
+      return;
+    }
+    window.history.replaceState(window.history.state, "", titleUrl(window.location.href));
+    setRoute("title");
+  }
+
+  if (route === "singleplayer") return <SinglePlayerApp onExit={leaveSingleplayer} />;
+  if (route === "auth_callback") return <LakebedMultiplayerApp onBack={leaveMultiplayer} />;
+  if (route === "multiplayer") return <LakebedMultiplayerApp onBack={leaveMultiplayer} />;
+  return <LakecraftTitleScreen onJoinMultiplayer={joinMultiplayer} onJoinSingleplayer={joinSingleplayer} />;
 }
