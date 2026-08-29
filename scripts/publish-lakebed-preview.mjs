@@ -7,6 +7,7 @@ import { runStagedTransaction, verifyLakebedBuild } from "./lakebed-build-transa
 
 const PREVIEW_API = "https://api.lakebed.dev";
 const PREVIEW_METADATA = ".lakebed/preview.json";
+const PREVIEW_DEPLOY_ID = /^[A-Za-z0-9_-]{8,128}$/;
 
 function parseObject(source, label) {
   try {
@@ -48,7 +49,7 @@ export function parsePreviewMetadata(source) {
   const value = parseObject(source, "Lakebed preview metadata");
   if (value.api !== PREVIEW_API
     || typeof value.claimToken !== "string" || value.claimToken.length < 16
-    || typeof value.deployId !== "string" || !/^dep_[A-Za-z0-9]+$/.test(value.deployId)
+    || typeof value.deployId !== "string" || !PREVIEW_DEPLOY_ID.test(value.deployId)
     || typeof value.url !== "string") {
     throw new Error("Lakebed preview metadata has an unexpected shape.");
   }
@@ -110,9 +111,16 @@ async function responseJson(response, label) {
 }
 
 function validateDeployResponse(value) {
-  if (typeof value.deployId !== "string" || !/^dep_[A-Za-z0-9]+$/.test(value.deployId)
+  if (typeof value.deployId !== "string" || !PREVIEW_DEPLOY_ID.test(value.deployId)
     || typeof value.url !== "string" || typeof value.expiresAt !== "string") {
-    throw new Error("Lakebed returned incomplete preview deployment metadata.");
+    const keys = Object.keys(value).sort().join(", ") || "none";
+    const shape = [
+      `deployId=${typeof value.deployId}/${typeof value.deployId === "string" && PREVIEW_DEPLOY_ID.test(value.deployId) ? "valid" : "invalid"}`,
+      `url=${typeof value.url}`,
+      `expiresAt=${value.expiresAt === null ? "null" : typeof value.expiresAt}`,
+      `claimed=${String(value.claimed)}`,
+    ].join(", ");
+    throw new Error(`Lakebed returned incomplete preview deployment metadata (response fields: ${keys}; shape: ${shape}).`);
   }
   const url = new URL(value.url);
   if (url.protocol !== "https:" || !url.hostname.endsWith(".lakebed.app")) {
