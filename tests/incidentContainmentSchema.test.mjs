@@ -125,10 +125,13 @@ for (const path of runtimeFiles) {
 // bounded skylight exposure into both dropped-block and dropped-tool geometry,
 // darkens targeting feedback, softens destroy-stage compositing, and retains
 // the first-person Pose Lab alongside the broader Visual Lab only in local
-// development; compact production strips both reviewed editor surfaces.
+// development; compact production strips both reviewed editor surfaces. The
+// water pass keeps fall momentum on entry, preserves passive sinking, and
+// gives ascent and sneak descent separate reviewed caps without changing
+// gameplay authority.
 assert.equal(runtimeFiles.length, 200, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "40a59f350d83d41eb530483c79ba81f0ebcec463afb4861dd209148e84efdabc",
+  "47b0b4a2cf6d8a14be014b2f2980fa2750d4b6759b407e28cc13001723cb020f",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))
