@@ -34,9 +34,12 @@ assert.ok(chatStyles.includes("font-size:var(--lc-chat-font-size)")
 "chat typography still follows the selected HUD size independently of its width");
 assert.ok(chatStyles.includes("max-width:100%") && chatStyles.includes("width:fit-content"),
   "full chat messages wrap within the viewport while short messages retain compact backgrounds");
-assert.ok(chatStyles.includes(".lc-chat-peek span{min-width:0;overflow-wrap:anywhere;white-space:pre-wrap}")
+assert.ok(chatStyles.includes(".lc-chat-peek span{overflow-wrap:anywhere;white-space:pre-wrap}")
   && !chatStyles.includes("text-overflow:ellipsis"),
 "closed-chat messages wrap across lines instead of clipping behind an ellipsis");
+assert.ok(chatStyles.includes(".lc-chat-peek li{display:block}")
+  && chatStyles.includes(".lc-chat-peek strong{margin-right:5px}"),
+"warning and sender labels stay inline so wrapped text can continue beneath them");
 assert.ok(!chat.includes('type="submit">') && !chatStyles.includes("focus-within")
   && !chatStyles.includes("lc-chat-compose input:focus-visible"),
 "Enter is the only chat submit affordance and the input has no focus highlight ring");

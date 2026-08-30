@@ -41,6 +41,7 @@ assert.ok(pauseMenu.indexOf("Back to Game") < pauseMenu.indexOf("Options…")
 assert.equal(styles.includes(".lc-game-menu__save"), false, "the separated manual-save block is removed");
 assert.ok(styles.includes('min-height: 16px'), "status feedback reserves space instead of shifting the overlay");
 assert.ok(styles.includes('.lc-game-menu__last-autosaved { color: #aaa; }'), "secondary timestamp text stays visually subordinate");
+assert.ok(styles.includes("margin-top: 4px"), "save status has a small visual gap after Save and Quit");
 assert.equal(styles.includes(".lc-game-menu__disconnect { margin-top"), false, "Save and Quit has no separated top spacing");
 assert.ok(styles.includes('overflow-y: auto'), "the taller pause menu remains reachable on short viewports");
 
