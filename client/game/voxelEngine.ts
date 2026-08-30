@@ -710,10 +710,12 @@ const LOCAL_FALL_LANDING_EPSILON = 0.05;
 export const LADDER_CLIMB_SPEED = 3.2;
 export const LADDER_DESCEND_SPEED = -3.2;
 export const LADDER_IDLE_SLIDE_SPEED = -1.2;
-export const WATER_SWIM_SPEED = 0.72;
+export const WATER_SWIM_SPEED = 3.2;
+export const WATER_DIVE_SPEED = 1.3;
 export const WATER_SURFACE_BOB_SPEED = 3.2;
 export const WATER_EXIT_SPEED = 5;
 export const WATER_SURFACE_RECOVERY_SECONDS = 1.35;
+const WATER_SURFACE_TRIGGER_MIN_VELOCITY = -0.72;
 
 export type MobTorchLightCache = Float64Array;
 
@@ -1027,18 +1029,25 @@ export function ladderVerticalVelocity(
   return Math.max(PLAYER_TERMINAL_VELOCITY, boundedVelocity - PLAYER_GRAVITY * dt);
 }
 
-/** Bounded buoyancy: jump rises, sneak dives, and idle players slowly sink. */
+/** Water drag preserves entry momentum, then settles toward the held swim input. */
 export function waterVerticalVelocity(
   currentVelocity: number, ascend: boolean, descend: boolean, elapsedSeconds: number,
   surfaceExit: boolean | number = false,
 ): number {
   const exitSpeed = surfaceExit === true ? WATER_EXIT_SPEED
     : typeof surfaceExit === "number" ? Math.max(0, surfaceExit) : 0;
-  if (ascend && !descend && exitSpeed > 0) return Math.max(currentVelocity, exitSpeed);
+  if (ascend && !descend && exitSpeed > 0 && currentVelocity >= WATER_SURFACE_TRIGGER_MIN_VELOCITY) {
+    return Math.max(currentVelocity, exitSpeed);
+  }
   const target = ascend && !descend ? WATER_SWIM_SPEED
-    : descend && !ascend ? -WATER_SWIM_SPEED : -0.45;
-  const amount = Math.min(1, Math.max(0, Number.isFinite(elapsedSeconds) ? elapsedSeconds * 8 : 0));
-  const current = Number.isFinite(currentVelocity) ? clampNumber(currentVelocity, -WATER_SWIM_SPEED, WATER_EXIT_SPEED) : 0;
+    : descend && !ascend ? -WATER_DIVE_SPEED : -0.45;
+  const dt = Number.isFinite(elapsedSeconds)
+    ? Math.min(0.05, Math.max(0, elapsedSeconds))
+    : 0;
+  const amount = 1 - 0.8 ** (dt * 20);
+  const current = Number.isFinite(currentVelocity)
+    ? clampNumber(currentVelocity, PLAYER_TERMINAL_VELOCITY, PLAYER_JUMP_SPEED)
+    : 0;
   return current + (target - current) * amount;
 }
 
@@ -3842,6 +3851,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const shoreExitAhead = inWater && waterAtFeet && jumpHeld
       && waterShoreExitAhead(pose.x, pose.y, pose.z, dx, dz, getBlock);
     const surfaceBob = inWater && waterAtFeet && !waterAtBody && jumpHeld && !shoreExitAhead
+      && velocity[1] >= WATER_SURFACE_TRIGGER_MIN_VELOCITY
       && waterSurfaceLiftCooldownSeconds <= 0;
     if (surfaceBob) waterSurfaceLiftCooldownSeconds = WATER_SURFACE_RECOVERY_SECONDS;
     const recoveringFromSurfaceBob = waterSurfaceLiftCooldownSeconds > 0 && !surfaceBob;

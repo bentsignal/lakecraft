@@ -127,10 +127,13 @@ for (const path of runtimeFiles) {
 // the first-person Pose Lab alongside the broader Visual Lab only in local
 // development; compact production strips both reviewed editor surfaces. The
 // current recipe delta adds matching planks for every registered log family
-// without changing the Lakebed gameplay-authority boundary.
+// without changing the Lakebed gameplay-authority boundary. The water pass
+// keeps fall momentum on entry, preserves passive sinking, and
+// gives ascent and sneak descent separate reviewed caps without changing
+// gameplay authority.
 assert.equal(runtimeFiles.length, 200, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "1fbfe79088d97a3f7a34c5d7953b1031ca7a4945fad13570e64f7c37a0eb44c1",
+  "cf0f07b4e8e4beb578d6b1e308445c67c26572cdd055ab7a3f49b309fe594387",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

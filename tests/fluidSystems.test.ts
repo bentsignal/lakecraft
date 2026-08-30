@@ -19,6 +19,7 @@ import {
   takeFluidQueueBatch,
 } from "../client/game/fluids.ts";
 import {
+  WATER_DIVE_SPEED,
   WATER_EXIT_SPEED,
   WATER_SURFACE_BOB_SPEED,
   WATER_SURFACE_RECOVERY_SECONDS,
@@ -147,12 +148,62 @@ appendFluidBlockMesh(slopedMesh, 1, 8, 0, BLOCK.WATER_FLOW_3, get, 1, 15);
 const slopedSurfaceY = [...new Set(slopedMesh.filter((_value, index) => index % 6 === 1)
   .filter((value) => value > 8.01).map((value) => value.toFixed(6)))];
 assert.ok(slopedSurfaceY.length >= 2, "flow top vertices form a slope rather than a flat Riemann-sum step");
-assert.equal(waterVerticalVelocity(0, true, false, 1, false), WATER_SWIM_SPEED);
+let risingVelocity = 0;
+for (let tick = 0; tick < 200; tick += 1) {
+  risingVelocity = waterVerticalVelocity(risingVelocity, true, false, 0.05, false);
+}
+close(risingVelocity, WATER_SWIM_SPEED);
 assert.equal(waterVerticalVelocity(0, true, false, 1, true), WATER_EXIT_SPEED);
-assert.ok(WATER_SWIM_SPEED < 1.5 && WATER_EXIT_SPEED > WATER_SWIM_SPEED * 2,
-  "held jump bobs slowly unless a real shore exit is detected");
-assert.ok(WATER_SURFACE_BOB_SPEED > WATER_SWIM_SPEED * 4 && WATER_SURFACE_RECOVERY_SECONDS >= 1.25,
+assert.ok(WATER_SWIM_SPEED >= 3 && WATER_EXIT_SPEED > WATER_SWIM_SPEED,
+  "held jump reaches the surface promptly while a real shore exit remains stronger");
+assert.ok(WATER_SURFACE_BOB_SPEED >= WATER_SWIM_SPEED && WATER_SURFACE_RECOVERY_SECONDS >= 1.25,
   "a surface jump clears the water, then has a deliberate sink/recovery interval before another rise");
+const shortFallEntry = waterVerticalVelocity(-4, false, false, 1 / 60);
+const longFallEntry = waterVerticalVelocity(-12, false, false, 1 / 60);
+assert.ok(longFallEntry < shortFallEntry && longFallEntry < -10,
+  "water keeps the stronger downward momentum from a higher fall on entry");
+assert.ok(waterVerticalVelocity(-12, true, false, 1 / 60, WATER_SURFACE_BOB_SPEED) < -10,
+  "holding jump during a fast entry cannot replace the fall with an instant surface bob");
+let settlingVelocity = longFallEntry;
+for (let frame = 0; frame < 120; frame += 1) {
+  const previousVelocity = settlingVelocity;
+  settlingVelocity = waterVerticalVelocity(settlingVelocity, false, false, 1 / 60);
+  assert.ok(settlingVelocity > previousVelocity, "fall momentum decays smoothly instead of snapping to a swim speed");
+}
+assert.ok(settlingVelocity < -0.45 && settlingVelocity > -0.47,
+  "an idle swimmer settles into a gentle downward drift");
+let idleSinkVelocity = 0; let sneakSinkVelocity = 0;
+for (let tick = 0; tick < 200; tick += 1) {
+  idleSinkVelocity = waterVerticalVelocity(idleSinkVelocity, false, false, 0.05);
+  sneakSinkVelocity = waterVerticalVelocity(sneakSinkVelocity, false, true, 0.05);
+}
+close(sneakSinkVelocity, -WATER_DIVE_SPEED);
+assert.ok(WATER_DIVE_SPEED > 1 && WATER_DIVE_SPEED < WATER_SWIM_SPEED,
+  "sneak dives faster than passive sinking without matching the faster ascent cap");
+assert.ok(sneakSinkVelocity < idleSinkVelocity,
+  "holding sneak settles into a faster dive than leaving vertical input idle");
+const waterTravelAfterTwoSeconds = (ascend: boolean, descend: boolean) => {
+  let velocity = 0; let distance = 0;
+  for (let frame = 0; frame < 120; frame += 1) {
+    velocity = waterVerticalVelocity(velocity, ascend, descend, 1 / 60);
+    distance += velocity / 60;
+  }
+  return distance;
+};
+assert.ok(waterTravelAfterTwoSeconds(true, false) > 5,
+  "held jump climbs over five blocks in two seconds so surfacing does not create a drowning trap");
+assert.ok(waterTravelAfterTwoSeconds(false, true) < -2,
+  "held sneak dives over two blocks in two seconds");
+assert.ok(waterTravelAfterTwoSeconds(false, false) > -1,
+  "passive sinking remains gentle while the active controls get faster");
+let twentyFpsVelocity = -12; let sixtyFpsVelocity = -12;
+for (let tick = 0; tick < 20; tick += 1) {
+  twentyFpsVelocity = waterVerticalVelocity(twentyFpsVelocity, false, false, 1 / 20);
+}
+for (let frame = 0; frame < 60; frame += 1) {
+  sixtyFpsVelocity = waterVerticalVelocity(sixtyFpsVelocity, false, false, 1 / 60);
+}
+close(twentyFpsVelocity, sixtyFpsVelocity);
 assert.equal(waterShoreExitAhead(0.5, 65.75, 0.5, 1, 0,
   (x, y, z) => x === 1 && y === 65 && z === 0 ? BLOCK.STONE : BLOCK.AIR), true,
 "a coast block at the swimmer's feet triggers the dedicated shore-clearing impulse");

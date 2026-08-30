@@ -1,6 +1,6 @@
 ---
 name: preview
-description: Use when the user asks to preview Lakecraft live, and after each completed revision in an established hosted-preview review cycle.
+description: Use when the user asks to put the current Lakecraft worktree online for testing, share a test URL, make it available on another computer, or after each completed revision in an established hosted-preview review cycle.
 ---
 
 # Preview Lakecraft

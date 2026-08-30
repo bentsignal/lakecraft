@@ -49,7 +49,7 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["JSON", "parse", 12]),
 ]);
 export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 2_177;
-export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "f57f0e0dc871ee373a3c772ab5ba8db6fff921cf270273f73a5cc975cff59c73";
+export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "a5870fecccab44a0fc357b604e88035d04cad0eb4191e609658466d79452a049";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [
     `${receiver}.${method}`, count,
