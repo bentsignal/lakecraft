@@ -13,7 +13,6 @@ for (const prop of [
   "disconnectDisabled?: boolean",
   "onResetWorld?: () => void",
   "disconnectLabel?: string",
-  "backLabel?: string",
 ]) {
   assert.ok(pauseMenu.includes(prop), `PauseMenu exposes the optional ${prop} seam`);
   assert.ok(gameHud.includes(prop), `GameHud forwards the optional ${prop} seam`);
@@ -34,7 +33,7 @@ assert.ok(pauseMenu.includes('aria-live="polite"'), "save feedback is announced 
 assert.ok(pauseMenu.includes('aria-atomic="true"'), "saving and last-saved feedback is announced together");
 assert.ok(pauseMenu.includes('aria-describedby={showAutosaveStatus ? "lc-game-menu-autosave-status" : undefined}'),
   "Save and Quit directly references its autosave timestamp and failure feedback");
-assert.ok(pauseMenu.indexOf("{backLabel}") < pauseMenu.indexOf("Options…")
+assert.ok(pauseMenu.indexOf("Back to Game") < pauseMenu.indexOf("Options…")
   && pauseMenu.indexOf("Options…") < pauseMenu.indexOf("{disconnectLabel}")
   && pauseMenu.indexOf("{disconnectLabel}") < pauseMenu.indexOf("lastAutosavedText ?"),
   "Back, Options, and Save and Quit stay together with the timestamp immediately after them");
@@ -46,8 +45,8 @@ assert.equal(styles.includes(".lc-game-menu__disconnect { margin-top"), false, "
 assert.ok(styles.includes('overflow-y: auto'), "the taller pause menu remains reachable on short viewports");
 
 assert.ok(singlePlayer.includes("loadSinglePlayerSave(storage"), "the journal is loaded before local engine state is created");
-assert.ok(singlePlayer.includes("saveSinglePlayerSnapshot(storage"), "autosave and exit saves share the verified journal writer");
-const snapshotCommit = singlePlayer.indexOf("saveSinglePlayerSnapshot(storage, snapshot, now, { worldId: world.id })");
+assert.ok(singlePlayer.includes("saveSinglePlayerSnapshot(saveStorage"), "autosave and exit saves share the verified journal writer");
+const snapshotCommit = singlePlayer.indexOf("saveSinglePlayerSnapshot(saveStorage, snapshot, now, { worldId: world.id })");
 const firstPlayCommit = singlePlayer.indexOf("recordFirstLocalWorldPlay(storage, world, now)");
 assert.ok(snapshotCommit >= 0 && firstPlayCommit > snapshotCommit,
   "first-play metadata is attempted only after the namespaced snapshot journal commit");
@@ -77,14 +76,16 @@ assert.ok(singlePlayer.includes("useState<number | null>(null)"),
   "creation and loaded journal saves do not masquerade as periodic autosaves");
 assert.ok(singlePlayer.includes('if (reason === "autosave") setLastAutosavedAt(now)'),
   "only a successful periodic autosave advances the displayed autosave timestamp");
-assert.ok(singlePlayer.includes('backLabel={saveFailureActive ? "Retry Save" : "Back to Game"}'),
-  "an autosave failure replaces resume with a verified save retry");
-assert.ok(singlePlayer.includes('pauseTitle={saveFailureActive ? "World Save Failed" : "Game Menu"}'),
-  "the pause screen immediately names a save failure");
-assert.match(singlePlayer, /if \(reason === "autosave"\) \{\s+releasePointerLockForUi\(\);\s+setGamePauseOpen\(true\);\s+\}/,
-  "autosave failure releases gameplay input and opens the blocking pause screen");
-assert.ok(singlePlayer.includes('if (saveFailureActive && !persist("autosave")) return;'),
-  "gameplay cannot resume until a retry commits and verifies successfully");
+assert.ok(singlePlayer.includes("Autosave failed. Your last save is safe, but new changes will not be saved."),
+  "autosave failure tells the player what is safe and what will be lost");
+assert.ok(singlePlayer.includes('appendCommandMessage(') && singlePlayer.includes('"warning"'),
+  "save failure uses the senderless warning path in chat");
+assert.ok(singlePlayer.includes("saveFailedRef.current = true"),
+  "the session stops writing after a failure so the last verified journal remains untouched");
+assert.doesNotMatch(singlePlayer, /saveFailureActive|World Save Failed|Retry Save/,
+  "save failure does not trap the player behind a blocking pause screen");
+assert.ok(singlePlayer.includes('normalized === "/savetest fail"') && singlePlayer.includes('includes("save-test=1")'),
+  "the opt-in preview route can trigger a non-mutating save failure for testing");
 assert.match(singlePlayer, /const returnToTitle = \(\) => \{\s+if \(!persist\("quit"\) && !confirm\([\s\S]*?\)\) return;\s+quitSavedRef\.current = true;[\s\S]*?onExit\(\);/,
   "Save and Quit offers an explicit last-verified-save exit when the latest commit fails");
 assert.ok(singlePlayer.includes("Quit to the title screen anyway?"),

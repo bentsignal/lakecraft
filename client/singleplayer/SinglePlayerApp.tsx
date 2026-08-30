@@ -98,6 +98,8 @@ import {
   markSaveCadenceDirty,
   sampleSaveCadence,
 } from "./saveCadence.ts";
+
+const SAVE_FAILURE_WARNING = "Autosave failed. Your last save is safe, but new changes will not be saved. Return to the title screen and reopen this world to continue from that save.";
 import {
   createLocalContainers,
   exportLocalContainersSnapshot,
@@ -347,9 +349,10 @@ function LocalGameplaySession({
           ? "This local world could not be read. Saving is disabled; reset it to start fresh."
           : "";
   const [autosaveStatusText, setAutosaveStatusText] = useState(initialSaveText);
-  const [saveFailureActive, setSaveFailureActive] = useState(initial.current.saveLocked);
   const [lastAutosavedAt, setLastAutosavedAt] = useState<number | null>(null);
   const pointerUiBlockedRef = useRef(false);
+  const saveFailedRef = useRef(false);
+  const forceNextSaveFailureRef = useRef(false);
   pointerUiBlockedRef.current = inventoryOpen || uiModalOpen || deathScreenOpen
     || document.visibilityState !== "visible";
 
@@ -575,21 +578,27 @@ function LocalGameplaySession({
   }
 
   function persist(reason: "autosave" | "quit"): boolean {
-    if (saveLockedRef.current || saveInProgressRef.current) return false;
+    if (saveLockedRef.current || saveFailedRef.current || saveInProgressRef.current) return false;
     const action = reason === "quit" ? "Save and Quit" : "Autosave";
     const snapshot = buildSnapshot();
     if (!snapshot) {
       setAutosaveStatusText(`${action} failed: invalid local container state.`);
-      setSaveFailureActive(true);
-      if (reason === "autosave") {
-        releasePointerLockForUi();
-        setGamePauseOpen(true);
-      }
+      saveFailedRef.current = true;
+      appendCommandMessage(
+        SAVE_FAILURE_WARNING,
+        "warning",
+      );
       return false;
     }
     saveInProgressRef.current = true;
     const now = Date.now();
-    const result = saveSinglePlayerSnapshot(storage, snapshot, now, { worldId: world.id });
+    const forceFailure = forceNextSaveFailureRef.current;
+    forceNextSaveFailureRef.current = false;
+    const saveStorage = forceFailure ? {
+      getItem: (key: string) => storage.getItem(key),
+      setItem: () => { throw null; },
+    } : storage;
+    const result = saveSinglePlayerSnapshot(saveStorage, snapshot, now, { worldId: world.id });
     if (!result.ok) {
       saveInProgressRef.current = false;
       console.error("[Lakecraft save] Snapshot commit rejected.", {
@@ -602,11 +611,11 @@ function LocalGameplaySession({
           : result.path?.startsWith("$.runtime") ? `${action} failed: player state could not be validated. Your previous save is safe.`
             : `${action} failed. Your previous save is safe.`);
       if (result.reason === "unsafe_existing_data") saveLockedRef.current = true;
-      setSaveFailureActive(true);
-      if (reason === "autosave") {
-        releasePointerLockForUi();
-        setGamePauseOpen(true);
-      }
+      saveFailedRef.current = true;
+      appendCommandMessage(
+        SAVE_FAILURE_WARNING,
+        "warning",
+      );
       return false;
     }
     let firstPlayMetadataPending = false;
@@ -628,7 +637,6 @@ function LocalGameplaySession({
     initialRuntimeRef.current = snapshot.runtime;
     saveCadenceRef.current = commitSaveCadence(saveCadenceRef.current, performance.now(), !engineRef.current?.isPaused());
     if (reason === "autosave") setLastAutosavedAt(now);
-    setSaveFailureActive(false);
     setAutosaveStatusText(firstPlayMetadataPending
       ? `${action} complete. World activity will update on the next save or entry.`
       : "");
@@ -712,6 +720,11 @@ function LocalGameplaySession({
     commandHistoryIndexRef.current = commandHistoryRef.current.length;
     appendCommandMessage(normalized, "player");
     setCommandDraft("");
+    if (normalized === "/savetest fail" && window.location.search.includes("save-test=1")) {
+      forceNextSaveFailureRef.current = true;
+      persist("autosave");
+      return;
+    }
     const parsed = parseLocalCommand(normalized, SINGLE_PLAYER_COMMAND_PERMISSIONS);
     if (!parsed.ok) {
       appendCommandMessage(parsed.message, "error");
@@ -2108,7 +2121,6 @@ function LocalGameplaySession({
         onCloseInventory={closeInventoryAndResume}
         onCrafted={() => undefined}
         disconnectLabel="Save and Quit to Title"
-        backLabel={saveFailureActive ? "Retry Save" : "Back to Game"}
         lastAutosavedText={lastAutosavedText}
         autosaveStatusText={autosaveStatusText}
         disconnectDisabled={false}
@@ -2132,15 +2144,11 @@ function LocalGameplaySession({
         settings={clientSettings}
         onSettingsChange={updateClientSettings}
         onRespawn={respawnLocally}
-        onResume={() => {
-          setOptionsOpen(false);
-          if (saveFailureActive && !persist("autosave")) return;
-          requestGameplayPointerLock();
-        }}
+        onResume={() => { setOptionsOpen(false); requestGameplayPointerLock(); }}
         onResetWorld={saveLockedRef.current ? resetUnreadableWorld : undefined}
         onSelectHotbar={selectHotbar}
         onTitleScreen={returnToTitle}
-        pauseTitle={saveFailureActive ? "World Save Failed" : "Game Menu"}
+        pauseTitle="Game Menu"
         pauseOpen={pauseOpen}
         playerName="Player"
         selectedIndex={selected}

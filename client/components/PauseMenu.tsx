@@ -9,7 +9,6 @@ export type PauseMenuProps = {
   onDisconnect?: () => void;
   title?: string;
   disconnectLabel?: string;
-  backLabel?: string;
 };
 
 export function PauseMenu({
@@ -23,7 +22,6 @@ export function PauseMenu({
   onDisconnect,
   title = "Game Menu",
   disconnectLabel = "Disconnect",
-  backLabel = "Back to Game",
 }: PauseMenuProps) {
   if (!open) return null;
   const showAutosaveStatus = Boolean(autosaveStatusText || lastAutosavedText);
@@ -32,7 +30,7 @@ export function PauseMenu({
       <section className="lc-game-menu" role="dialog" aria-modal="true" aria-labelledby="lc-game-menu-title">
         <h2 id="lc-game-menu-title">{title}</h2>
         <div className="lc-game-menu__buttons">
-          <button autoFocus onClick={onBack} type="button">{backLabel}</button>
+          <button autoFocus onClick={onBack} type="button">Back to Game</button>
           <button disabled={!onOptions} id="lc-game-menu-options" onClick={onOptions} type="button">Options…</button>
           <button
             aria-describedby={showAutosaveStatus ? "lc-game-menu-autosave-status" : undefined}
