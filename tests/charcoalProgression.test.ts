@@ -39,6 +39,7 @@ import {
   type ItemStack,
   type Recipe,
 } from "../shared/game.ts";
+import { EXTRA_WOOD_FAMILIES } from "../shared/expandedBuildingCatalog.ts";
 import {
   PLAYER_STATE_VERSION,
   validatePlayerStateJson,
@@ -113,8 +114,13 @@ for (const run of charcoalArt.runs) {
 
 assert.deepEqual(
   SMELTING_RECIPES.filter(({ id, input, output }) => id === "charcoal" || input === "log" || output === "charcoal"),
-  [{ id: "charcoal", label: "Make charcoal", input: "log", output: "charcoal" }],
-  "one log has one exact one-to-one charcoal smelting recipe",
+  [
+    { id: "charcoal", label: "Make charcoal", input: "log", output: "charcoal" },
+    ...EXTRA_WOOD_FAMILIES.map((family) => ({
+      id: `charcoal_from_${family}_log`, label: "Make charcoal", input: `${family}_log`, output: "charcoal",
+    })),
+  ],
+  "every log family has one exact one-to-one charcoal smelting recipe",
 );
 
 // Both fuels survive the same canonical JSON boundary and burn for the same

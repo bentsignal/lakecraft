@@ -3,6 +3,44 @@ export const EXTRA_WOOD_FAMILIES = [
   "spruce", "birch", "jungle", "acacia", "dark_oak", "mangrove", "cherry",
 ] as const;
 export type ExtraWoodFamily = typeof EXTRA_WOOD_FAMILIES[number];
+
+function defineStandardWoodFamily<const Family extends ExtraWoodFamily>(family: Family) {
+  return {
+    id: family,
+    log: `${family}_log` as const,
+    planks: `${family}_planks` as const,
+    leaves: `${family}_leaves` as const,
+    slab: `${family}_slab` as const,
+    stairs: `${family}_stairs` as const,
+    door: `${family}_door` as const,
+    plankRecipeId: `${family}_planks_from_log` as const,
+    charcoalRecipeId: `charcoal_from_${family}_log` as const,
+  } as const;
+}
+
+/**
+ * Single source of truth for wood capabilities and recipe relationships.
+ * Standard tree families follow one naming convention. Oak keeps its legacy
+ * item ids, while bamboo explicitly has no log, leaves, door, or charcoal path.
+ */
+export const WOOD_FAMILY_DEFINITIONS = [
+  {
+    id: "oak", log: "log", planks: "planks", leaves: "leaves",
+    slab: "oak_slab", stairs: "oak_stairs", door: "door",
+    plankRecipeId: "planks_from_log", charcoalRecipeId: "charcoal",
+  },
+  ...EXTRA_WOOD_FAMILIES.map(defineStandardWoodFamily),
+  {
+    id: "bamboo", log: null, planks: "bamboo_planks", leaves: null,
+    slab: "bamboo_slab", stairs: "bamboo_stairs", door: null,
+    plankRecipeId: null, charcoalRecipeId: null,
+  },
+] as const;
+export type WoodFamilyDefinition = typeof WOOD_FAMILY_DEFINITIONS[number];
+export type WoodFamilyId = WoodFamilyDefinition["id"];
+export type WoodLogItemId = Exclude<WoodFamilyDefinition["log"], null>;
+export type WoodPlankItemId = WoodFamilyDefinition["planks"];
+
 export const BUILDING_DIRECTIONS = ["east", "north", "south", "west"] as const;
 export type BuildingDirection = typeof BUILDING_DIRECTIONS[number];
 export const BUILDING_COLORS = [
@@ -10,6 +48,14 @@ export const BUILDING_COLORS = [
   "light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black",
 ] as const;
 export type BuildingColor = typeof BUILDING_COLORS[number];
+export const WOOD_LOG_ITEM_IDS = WOOD_FAMILY_DEFINITIONS.flatMap(({ log }) => log ? [log] : []) as readonly WoodLogItemId[];
+export const WOOD_PLANK_ITEM_IDS = WOOD_FAMILY_DEFINITIONS.map(({ planks }) => planks) as readonly WoodPlankItemId[];
+export const WOOL_ITEM_IDS = [
+  "wool", ...BUILDING_COLORS.filter((color) => color !== "white").map((color) => `${color}_wool` as const),
+] as const;
+export const CRAFTABLE_WOOD_SHAPE_FAMILIES = WOOD_FAMILY_DEFINITIONS
+  .filter(({ id }) => id !== "oak")
+  .map(({ id }) => id) as readonly Exclude<WoodFamilyId, "oak">[];
 export const LUMINOUS_BLOCK_ITEMS = [
   "glowstone", "sea_lantern", "shroomlight", "ochre_froglight", "verdant_froglight",
   "pearlescent_froglight", "magma_block",

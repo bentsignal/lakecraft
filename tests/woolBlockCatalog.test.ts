@@ -57,8 +57,8 @@ if (snapshot.ok) {
 
 const bedRecipe = RECIPES.find(({ id }) => id === "bed");
 assert.deepEqual(bedRecipe?.ingredients, [
-  { itemId: "wool", count: 3 },
-  { itemId: "planks", count: 3 },
+  { itemId: "wool", count: 3, tag: "wool" },
+  { itemId: "planks", count: 3, tag: "wooden_planks" },
 ]);
 let inventory = addItem(createEmptyInventory(), "wool", 3).inventory;
 inventory = addItem(inventory, "planks", 3).inventory;

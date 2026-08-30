@@ -49,7 +49,7 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["JSON", "parse", 12]),
 ]);
 export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 2_177;
-export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "0293fe40b5f9108f3b0d148d6ac4faa13c31d8c6da2689088e4ac72debb4c21e";
+export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "a5870fecccab44a0fc357b604e88035d04cad0eb4191e609658466d79452a049";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [
     `${receiver}.${method}`, count,
@@ -76,16 +76,16 @@ const PROPERTY_ALIAS_COUNT_OVERRIDES = Object.freeze({
   createBuffer: 25, current: 864, currentTarget: 19, cycleLengthMs: 20, dayNight: 9, delete: 85, deleteBuffer: 43,
   deleteProgram: 18, deleteTexture: 14, documentElement: 9, drawArrays: 24, dropId: 29, endsWith: 28,
   drops: 25, DYNAMIC_DRAW: 17, enableVertexAttribArray: 27, equipment: 41,
-  elapsedSeconds: 39, every: 51, filter: 51, flatMap: 24, fromEntries: 10, getAttribLocation: 24,
+  elapsedSeconds: 39, every: 51, filter: 54, flatMap: 28, fromEntries: 12, getAttribLocation: 24,
   // Embedding the block atlas replaces the remote response dimensions/status
   // with the generated decoder's byte-array length checks.
-  getUniformLocation: 69, health: 55, height: 35, includes: 52, inventory: 105, itemId: 182, length: 489,
+  getUniformLocation: 69, health: 55, height: 35, includes: 53, inventory: 105, itemId: 182, length: 489,
   indexOf: 27, localStorage: 13, maxHealth: 13, maxStack: 23, operationId: 43, options: 69, pixelStorei: 15, preventDefault: 54,
   ONE_MINUS_SRC_ALPHA: 7, pendingBlocks: 11, pendingSelfDamage: 10, pitch: 43, pointerLockElement: 24, position: 16,
   previousBlock: 19, previousX: 19, previousY: 16, previousYaw: 10, previousZ: 19, projectiles: 22,
   prototype: 17, randomUUID: 10, readyState: 10, reject: 24, removeEventListener: 41,
   mouseSensitivity: 4, renderDistance: 11, repeat: 32, resolve: 19, revision: 32, rotationDegrees: 22, selectedHotbar: 15,
-  remainder: 17, sequence: 47, setTimeout: 22, sheared: 16, slice: 111, sourceSlot: 10, startsWith: 35,
+  remainder: 17, sequence: 47, setTimeout: 22, sheared: 16, slice: 112, sourceSlot: 10, startsWith: 36,
   state: 73, STATIC_DRAW: 8, status: 20, stopImmediatePropagation: 8, subarray: 19, terrain: 23, texImage2D: 15,
   texParameteri: 32, TEXTURE_2D: 74, TEXTURE_MAG_FILTER: 8, TEXTURE_MIN_FILTER: 8,
   TRIANGLES: 22, uniform1f: 41, uniform3fv: 11, uniformMatrix4fv: 12,
@@ -101,9 +101,10 @@ export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_
 // destroy-stage texture rendering, textured depth-bearing dropped items,
 // retained streaming buffers, packed live-block coordinate access, and the
 // paired prompt/background fluid queues plus their bounded mesh lifecycle.
-// One shared leaf-family predicate adds the reviewed `endsWith` call.
-export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_443;
-export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "57d6557606dd1991d0d8247f89d60eb55aba225445b010a09af129e2670e0834";
+// Shared leaf culling adds the reviewed `endsWith` call, and generated wood
+// recipes add one reviewed `Object.fromEntries` call.
+export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_455;
+export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "84f656eb5e7b42cc0f4ced6b44c9ee9f939301c637b343c063f41355fcf6235f";
 const PROPERTY_ALIAS_INDEX = new Map(COMPACT_CLIENT_PROPERTY_KEY_ALIASES.map(([name], index) => [name, index]));
 const PROPERTY_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_PROPERTY_KEY_ALIASES)),
