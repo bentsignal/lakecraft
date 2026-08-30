@@ -25,6 +25,7 @@ import {
   COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES,
   COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES,
+  COMPACT_CLIENT_HUMAN_LOCAL_COMMAND_DELTA,
   COMPACT_CLIENT_HUMAN_MULTIPLAYER_AUTH_DELTA,
   COMPACT_CLIENT_HUMAN_DESTROY_STAGE_DELTA,
   COMPACT_CLIENT_HUMAN_FLUID_SYSTEM_DELTA,
@@ -721,10 +722,19 @@ assert.deepEqual(COMPACT_CLIENT_HUMAN_MULTIPLAYER_AUTH_DELTA, {
   source: "auth-free title route and dedicated multiplayer sign-in gate",
   exclusionChanges: 0,
 });
-assert.equal(COMPACT_CLIENT_HUMAN_MULTIPLAYER_AUTH_DELTA.previousOccurrences
-  + COMPACT_CLIENT_HUMAN_MULTIPLAYER_AUTH_DELTA.occurrenceDelta, COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES);
-assert.equal(COMPACT_CLIENT_HUMAN_MULTIPLAYER_AUTH_DELTA.previousUniqueValues
-  + COMPACT_CLIENT_HUMAN_MULTIPLAYER_AUTH_DELTA.uniqueValueDelta, COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES);
+assert.deepEqual(COMPACT_CLIENT_HUMAN_LOCAL_COMMAND_DELTA, {
+  previousOccurrences: 545,
+  previousUniqueValues: 477,
+  previousSourceFingerprint: "0feb860ba0b69b374dbb48e98e1d6846e28c137c322818003a429a9a4ca0e0d8",
+  occurrenceDelta: -1,
+  uniqueValueDelta: -1,
+  source: "single-player item catalog command and senderless warning/error prefixes",
+  exclusionChanges: 0,
+});
+assert.equal(COMPACT_CLIENT_HUMAN_LOCAL_COMMAND_DELTA.previousOccurrences
+  + COMPACT_CLIENT_HUMAN_LOCAL_COMMAND_DELTA.occurrenceDelta, COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES);
+assert.equal(COMPACT_CLIENT_HUMAN_LOCAL_COMMAND_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_HUMAN_LOCAL_COMMAND_DELTA.uniqueValueDelta, COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES);
 
 assert.deepEqual(COMPACT_CLIENT_REPEATED_VISUAL_DESCRIPTOR_DELTA.removedThresholdValues,
   ["left", "right", "back", "top"], "only packed mob face names left the repeated-string boundary");
@@ -1321,7 +1331,7 @@ assert.deepEqual(COMPACT_CLIENT_REPEATED_MULTIPLAYER_AUTH_DELTA, {
   previousOccurrences: 1_380,
   previousUniqueValues: 138,
   previousSourceFingerprint: "dd60c2859ad1bb432040661c1d4bb30650e5e3fa8ec5962eb53e3a0d74b97cf5",
-  occurrenceDelta: 17,
+  occurrenceDelta: 15,
   uniqueValueDelta: 2,
   sources: ["client/index.tsx", "client/lobby/LobbyScreen.tsx"],
   source: "auth-free title route and dedicated multiplayer sign-in gate",

@@ -1,7 +1,7 @@
 import { ErrorBoundary, signInWithGoogle, signOut, useAuth, useMutation, useQuery } from "lakebed/client";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { ChatOverlay, type LakecraftChatMessage } from "./chat";
-import { GameHud, type HudMessage } from "./components";
+import { GameHud } from "./components";
 import { isCraftingTableWithinReach as isWorkstationWithinReach, type CraftingTablePosition as WorkstationPosition } from "./crafting";
 import {
   BLOCK,
@@ -363,7 +363,7 @@ function RailwayMultiplayerSession({
   const authoritativeWorldEditRef = useRef(new Map<string, EngineWorldEdit>());
   const latestSavedInventoryRef = useRef<PersistedInventory | null | undefined>(undefined);
   const activeWorkstationRef = useRef<{ kind: "crafting_table" | "furnace"; position: WorkstationPosition } | null>(null);
-  const toastCounter = useRef(0);
+  const notificationCounter = useRef(0);
   const droppedItemBusyRef = useRef(false);
   const intentionalPointerUnlockRef = useRef(false);
   const pointerSessionRef = useRef(createGameplayPointerSessionState(false));
@@ -400,7 +400,7 @@ function RailwayMultiplayerSession({
   const [pauseOpen, setPauseOpen] = useState(false);
   const [showPlayerList, setShowPlayerList] = useState(false);
   const [mobileUnsupported, setMobileUnsupported] = useState(false);
-  const [messages, setMessages] = useState<HudMessage[]>([]);
+  const [notificationMessages, setNotificationMessages] = useState<LakecraftChatMessage[]>([]);
   const [diagnosticPose, setDiagnosticPose] = useState<PlayerPose>({ ...DEFAULT_PLAYER_POSE });
   const [performanceStats, setPerformanceStats] = useState<VoxelPerformanceStats | null>(null);
   const [debugOverlayVisible, setDebugOverlayVisible] = useState(false);
@@ -511,6 +511,7 @@ function RailwayMultiplayerSession({
 
   useEffect(() => {
     setRealtimeChatMessages([]);
+    setNotificationMessages([]);
     setLastSeenChatSequence(0);
     setChatError("");
     realtimeGameModeRef.current = "survival";
@@ -612,10 +613,15 @@ function RailwayMultiplayerSession({
     };
   }, []);
 
-  function notify(text: string, detail?: string, tone: HudMessage["tone"] = "info") {
-    const id = `note-${++toastCounter.current}`;
-    setMessages((current) => [...current.slice(-2), { id, text, detail, tone }]);
-    window.setTimeout(() => setMessages((current) => current.filter((message) => message.id !== id)), 3_500);
+  function notify(text: string, detail?: string, tone: "info" | "success" | "warning" | "error" = "info") {
+    const sentAt = Date.now();
+    setNotificationMessages((current) => [...current.slice(-79), {
+      id: `notice-${++notificationCounter.current}`,
+      username: "",
+      body: detail ? `${text}: ${detail}` : text,
+      sentAt,
+      tone: tone === "warning" || tone === "error" ? tone : "system",
+    }]);
   }
 
   function settleRealtimeDeath(eventId: string): Promise<boolean> {
@@ -664,7 +670,7 @@ function RailwayMultiplayerSession({
       void pointerLock;
     }).catch(() => {
       void pointerLock.then((locked) => { if (locked) exitPointerLockForUi(); });
-      notify("Respawn rejected", "The realtime server could not move this player safely.", "warning");
+      notify("Respawn rejected", "The realtime server could not move this player safely.", "error");
     }).finally(() => {
       respawnRequestInFlightRef.current = false;
       setRespawning(false);
@@ -870,7 +876,7 @@ function RailwayMultiplayerSession({
           lastCommittedPlayerJsonRef.current = result.inventory.inventoryJson;
         }
         if (inventoryActionQueueRef.current.length === 0 && !loadCanonicalPlayer(result.inventory)) {
-          notify("Pack reconciliation failed", "Lakebed returned a damaged canonical inventory.", "warning");
+          notify("Pack reconciliation failed", "Lakebed returned a damaged canonical inventory.", "error");
           return false;
         }
       }
@@ -1712,7 +1718,7 @@ function RailwayMultiplayerSession({
       : profile
         ? "ready"
         : "needs_username";
-  const chatMessages: LakecraftChatMessage[] = realtimeChatMessages.map((message) => ({
+  const chatMessages: LakecraftChatMessage[] = [...realtimeChatMessages.map((message) => ({
     id: message.id,
     username: message.username,
     body: message.message,
@@ -1720,7 +1726,7 @@ function RailwayMultiplayerSession({
     own: message.userId === (realtimeSession?.demo?.userId ?? auth.userId),
     tone: message.userId === "server" ? "system" : undefined,
     delivery: message.delivery,
-  }));
+  })), ...notificationMessages].sort((left, right) => new Date(left.sentAt).getTime() - new Date(right.sentAt).getTime());
   const unreadChat = chatOpen ? 0 : countUnreadRealtimeChat(realtimeChatMessages, lastSeenChatSequence);
   if (!inWorld) {
     return (
@@ -1863,7 +1869,7 @@ function RailwayMultiplayerSession({
               initialWorldChunksReadyRef.current = false;
               setWorldReady(false);
             }
-            if (phase === "error" && detail) notify("Server connection rejected", detail, "warning");
+            if (phase === "error" && detail) notify("Server connection rejected", detail, "error");
           }}
           onReconcilePose={(pose) => {
             poseRef.current = pose;
@@ -2013,7 +2019,6 @@ function RailwayMultiplayerSession({
         creativeInventory={Boolean(realtimeSession) && realtimeGameMode === "creative"}
         inventoryOpen={inventoryOpen}
         modalOpen={chatOpen}
-        messages={messages}
         mobileUnsupported={mobileUnsupported}
         onlineCount={Math.max(1, segmentRemotePlayers.length + 1)}
         showSurvivalStatus={realtimeGameMode !== "creative"}
@@ -2023,7 +2028,6 @@ function RailwayMultiplayerSession({
         }}
         onContinueMobile={() => setMobileUnsupported(false)}
         onCrafted={handleCrafted}
-        onDismissMessage={(id) => setMessages((current) => current.filter((message) => message.id !== id))}
         onDisconnect={() => {
           void flushInventoryActions();
           exitPointerLockForUi();

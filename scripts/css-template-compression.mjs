@@ -38,7 +38,6 @@ export const COMPACT_CLIENT_IDENTIFIER_FAMILIES = Object.freeze([
   ["lc-drawer", "xs"],
   ["lc-hotbar", "xz"],
   ["lc-title", "xp"],
-  ["lc-toast", "xt"],
   ["lc-chat", "xi"],
   ["lc-item", "xj"],
   ["lc-menu", "xw"],
@@ -57,7 +56,7 @@ function parsePrivateIdentifierRows(rows) {
 // This fixed, reviewed live set contains only Lakecraft-owned CSS/DOM names.
 // Order is stable and assigns the shortest outputs to the most frequent names.
 const COMPACT_CLIENT_PRIVATE_IDENTIFIER_ROWS = parsePrivateIdentifierRows(`
-xe-window|58 xi-peek|17 xi-compose|8 xi-message|12 xw-button|17
+xe-window|58 xi-peek|19 xi-compose|8 xi-message|15 xi-prefix|7 xw-button|17
 xc-inventory-slot|11 xj-glyph|15 xo-menu|12 xe-grid__slot|16 xj-icon__svg|17 xn-panel|11
 xlocal-world-dialog|9 xoptions|11 ysleep|1 xslot|14 xunsupported|8 xg__signal|8 xc-slot|8
 xm-slot|11 xp-logo|5 xq-icon|8 xr-slot|8 xclose|10 yquery-recovery|7 xq-population|7
@@ -87,7 +86,7 @@ xc__source|2 xf__action|2 xh-options|2 xi-history|2 xp-options|2 xi-unread|2
 xl__empty|0 xl__sprite|3 xl__sprite--empty|2 xl__sprite--fill|2 xm-column|3 xp-ground|1 xc-title|2 xe-title|4 xg__head|2
 xh-title|2 xi-input|2 xk-cause|2 xk-score|2 xk-title|2 xl__fill|0 xp-error|2
 xp-shade|4 xr-retry|2 xr-title|2 xv-arrow|3 xv-title|2 xkicker|2 xn-head|2
-xq-list|2 xr-grid|2 xv-grid|3 xp-sun|1 yshell|2 yworld|2 xt-in|2
+xq-list|2 xr-grid|2 xv-grid|3 xp-sun|1 yshell|2 yworld|2
 xworld-browser-title|1 xworld-dialog-title|1 xh__disconnect|1 xpencil-note|1
 xf__number|1 xp-loading|1 xf__arrow|1 xe-error|4 xf-list|1 xj-icon|1 xw-row|1
 xy-grid|8 xy-tabs|4 xy-search|3 xy-empty|2 xy-window|46 xy-workspace|3 xy-pane|7
@@ -98,8 +97,8 @@ xoptions__control|7 xoptions__controls|2 xoptions__tabs|3 xlocal-world-create|2
 `);
 
 const COMPACT_CLIENT_PRIVATE_CUSTOM_PROPERTY_ROWS = parsePrivateIdentifierRows(`
-xpixel-font|68 xnote|16 xy-slot|13 xc-slot|10 xe-height-scale|8 xinput-vpad|6 xr-slot|6 xpaper|6 xmoss|6 xink|6 xamber|5
-xrust|5 xt-edge|4 xe-width-scale|4 xcharcoal|2 xdisplay|2 xmoss-bright|1 xpaper-deep|1 xshadow|1 xline|1
+xpixel-font|68 xnote|15 xy-slot|13 xc-slot|10 xe-height-scale|8 xinput-vpad|6 xr-slot|6 xpaper|6 xmoss|6 xink|6 xamber|5
+xrust|5 xe-width-scale|4 xcharcoal|2 xdisplay|2 xmoss-bright|1 xpaper-deep|1 xshadow|1 xline|1
 xz-scale|3 xe-scale|3 xi-font-size|3 xi-input-font-size|3
 `);
 
@@ -128,7 +127,6 @@ export const COMPACT_CLIENT_PRIVATE_IDENTIFIER_PREFIXES = Object.freeze([
   Object.freeze(["xc-slot--", "Yq0", 1]),
   Object.freeze(["xj-glyph--", "Yq1", 4]),
   Object.freeze(["xl--", "Yq2", 5]),
-  Object.freeze(["xt--", "Yq3", 3]),
 ]);
 
 const REVIEWED_COMPACT_IDENTIFIER_EXEMPTIONS = Object.freeze([

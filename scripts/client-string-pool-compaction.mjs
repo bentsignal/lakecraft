@@ -8,9 +8,18 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 545;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 477;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "218e71e2f078f3e01d8aa41e0c2cccc73b0247049f559cbbf298300b4af565ad";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 544;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 476;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "7f726d7357b6333fae0df2593cc3423393b500caaa333926f619bd50f20b6eb2";
+export const COMPACT_CLIENT_HUMAN_LOCAL_COMMAND_DELTA = Object.freeze({
+  previousOccurrences: 545,
+  previousUniqueValues: 477,
+  previousSourceFingerprint: "0feb860ba0b69b374dbb48e98e1d6846e28c137c322818003a429a9a4ca0e0d8",
+  occurrenceDelta: -1,
+  uniqueValueDelta: -1,
+  source: "single-player item catalog command and senderless warning/error prefixes",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_HUMAN_MULTIPLAYER_AUTH_DELTA = Object.freeze({
   previousOccurrences: 544,
   previousUniqueValues: 479,
@@ -258,14 +267,14 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
   source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_397;
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_395;
 export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 140;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "9db9973b1b8b14eab140ec64a97177a8092fe0a6ed3d69e476d920289a2ec95c";
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "650bc2cfcca523821dd9a386b774ca2310a1d2935b77ba15ed6b2e6d8d6c60fa";
 export const COMPACT_CLIENT_REPEATED_MULTIPLAYER_AUTH_DELTA = Object.freeze({
   previousOccurrences: 1_380,
   previousUniqueValues: 138,
   previousSourceFingerprint: "dd60c2859ad1bb432040661c1d4bb30650e5e3fa8ec5962eb53e3a0d74b97cf5",
-  occurrenceDelta: 17,
+  occurrenceDelta: 15,
   uniqueValueDelta: 2,
   sources: Object.freeze(["client/index.tsx", "client/lobby/LobbyScreen.tsx"]),
   source: "auth-free title route and dedicated multiplayer sign-in gate",
@@ -709,7 +718,7 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
 });
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 616;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 183;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "63d6d9cdfd29f66da6aad4880913c96edd356d213a85727249db533848623ad5";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "cd2a1c2573f506df17836250a762faa81f30535d96f70b77cade78ddf07deb8a";
 export const COMPACT_CLIENT_LOW_FREQUENCY_MULTIPLAYER_AUTH_DELTA = Object.freeze({
   previousOccurrences: 608,
   previousUniqueValues: 180,

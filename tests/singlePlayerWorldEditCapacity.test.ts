@@ -82,7 +82,7 @@ assert.doesNotMatch(app, /slice\(-SINGLEPLAYER_SAVE_LIMITS\.edits/, "no local ed
 assert.match(app, /acceptWorldEdits: acceptLocalWorldEdits/, "one engine boundary owns local journal reservation");
 assert.match(app, /if \(!localEngine\.applyWorldEdits\(growthEdits\)\) return true;[\s\S]*?updateInventory\(nextInventory\)/,
   "tree capacity rejects before bone meal is consumed");
-assert.match(app, /id: "local-world-edit-capacity"/, "capacity feedback is stable and deduplicated");
+assert.match(app, /"local-world-edit-capacity"/, "capacity feedback is stable and deduplicated");
 assert.doesNotMatch(multiplayer, /acceptWorldEdits:/, "Lakebed multiplayer authority remains unchanged");
 
 const emit = engine.slice(engine.indexOf("function emitEdit"), engine.indexOf("function onKeyDown"));
