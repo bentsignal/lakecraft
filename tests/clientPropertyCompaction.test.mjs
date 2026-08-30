@@ -38,10 +38,10 @@ const manifestNames = Object.keys(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 const compactNames = Object.values(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 
 assert.deepEqual(manifestNames, [...manifestNames].sort(), "reviewed property manifest stays sorted");
-assert.equal(manifestNames.length, 646, "reviewed compatibility boundary changes only intentionally");
+assert.equal(manifestNames.length, 642, "reviewed compatibility boundary changes only intentionally");
 assert.equal(
   createHash("sha256").update(JSON.stringify(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE)).digest("hex"),
-  "69bcb431d5209f1d19cc2bde6b46d5d8918507336beceb931ec3589d6536401a",
+  "5aa8e56270dfc32454ad916ad82df1eab2522f58b87377e1d837bb713bb32d6e",
   "the reviewed source-to-alias manifest changes only with an explicit fingerprint update",
 );
 assert.equal(new Set(manifestNames).size, manifestNames.length, "source property names stay unique");
@@ -130,7 +130,7 @@ const reviewedPrivatePropertyPaths = {
 const privateNames = Object.keys(COMPACT_CLIENT_PRIVATE_PROPERTY_MANGLE_CACHE);
 assert.deepEqual(privateNames, [...privateNames].sort(), "private property namespace stays sorted");
 assert.deepEqual(privateNames, Object.keys(reviewedPrivatePropertyPaths), "each private property has one path fingerprint");
-assert.equal(manifestNames.length, 600 + privateNames.length, "private names cannot shadow the reviewed public candidate manifest");
+assert.equal(manifestNames.length, 596 + privateNames.length, "private names cannot shadow the reviewed public candidate manifest");
 for (const [name, paths] of Object.entries(reviewedPrivatePropertyPaths)) {
   assert.deepEqual(
     (analysis.declarationPaths[name] ?? []).filter((path) => path.startsWith("client/")),
@@ -238,6 +238,7 @@ const expectedCandidateNames = [
   "meanUpdateMs",
   "meanVisibleChunks",
   "medianFrameMs",
+  "onDismiss",
   "onDismissControls",
   "onOpenHelp",
   "onePercentLowFps",
@@ -281,13 +282,6 @@ const reviewedRuntimePaths = {
   deathScreenOpen: ["client/components/GameHud.tsx", "client/gameplay/pointerSession.ts", "client/singleplayer/SinglePlayerApp.tsx"],
   inventoryOpen: ["client/components/GameHud.tsx", "client/gameplay/pointerSession.ts", "client/singleplayer/SinglePlayerApp.tsx"],
   isRangedWeaponSelected: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
-  messages: [
-    "client/chat/ChatOverlay.tsx",
-    "client/components/GameHud.tsx",
-    "client/components/ToastSurface.tsx",
-    "client/realtimeChat.ts",
-    "client/realtimeMultiplayer.ts",
-  ],
   mobileUnsupported: ["client/components/GameHud.tsx", "client/gameplay/pointerSession.ts", "client/index.tsx", "client/multiplayerGameplay.ts"],
   normalized: ["client/lobby/LobbyScreen.tsx"],
   offsetZ: ["client/game/mobKnockback.ts", "client/game/voxelEngine.ts"],

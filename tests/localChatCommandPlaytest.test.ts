@@ -101,6 +101,7 @@ if (!deniedTime.ok) assert.equal(deniedTime.code, "permission");
 assert.ok(LOCAL_COMMAND_HELP.includes("/time set <day|night>"));
 assert.ok(LOCAL_COMMAND_HELP.includes("/gamerule doDaylightCycle <true|false>"));
 assert.ok(LOCAL_COMMAND_HELP.includes("/locate cave"));
+assert.ok(LOCAL_COMMAND_HELP.includes("/items"));
 
 const worldTimeMs = 1_750_000_123_456;
 const clientNowMs = 1_750_000_000_000;

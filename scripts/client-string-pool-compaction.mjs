@@ -8,26 +8,25 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 549;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 480;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "fb550fec5287ae7ff05d3ec93e5ea08f171719d5a7bb1f20f1b9391d2e39d1d5";
-export const COMPACT_CLIENT_HUMAN_SAVE_BLOCK_DELTA = Object.freeze({
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 545;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 477;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "f287755f71e61d9b99e1096016baae816b80217d17120d45f30af42a0d10f800";
+export const COMPACT_CLIENT_HUMAN_CHAT_NOTIFICATION_DELTA = Object.freeze({
   previousOccurrences: 546,
   previousUniqueValues: 478,
-  previousSourceFingerprint: "05549d3bacb11f485ce13271cb4bc87801eedf1faad49379864996ab8e662480",
-  occurrenceDelta: 3,
-  uniqueValueDelta: 2,
-  sources: Object.freeze(["client/components/PauseMenu.tsx", "client/singleplayer/SinglePlayerApp.tsx"]),
-  source: "blocking autosave failure and retry copy",
+  previousSourceFingerprint: "fb089d6dd3c635d729087ea28c9cd6161804668f545e11c176c7e77325ecd770",
+  occurrenceDelta: -1,
+  uniqueValueDelta: -1,
+  source: "senderless chat notifications and dedicated item catalog command",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_HUMAN_SAVE_FAILSAFE_DELTA = Object.freeze({
+export const COMPACT_CLIENT_HUMAN_WOOD_FAMILY_REGISTRY_DELTA = Object.freeze({
   previousOccurrences: 545,
   previousUniqueValues: 477,
   previousSourceFingerprint: "218e71e2f078f3e01d8aa41e0c2cccc73b0247049f559cbbf298300b4af565ad",
   occurrenceDelta: 1,
   uniqueValueDelta: 1,
-  source: "client/singleplayer/SinglePlayerApp.tsx#failed-save-title-exit",
+  source: "shared/game.ts#wood-family-capability-guard",
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_HUMAN_MULTIPLAYER_AUTH_DELTA = Object.freeze({
@@ -277,9 +276,36 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
   source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_397;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 140;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "9db9973b1b8b14eab140ec64a97177a8092fe0a6ed3d69e476d920289a2ec95c";
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_404;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 141;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "fca95c96b62965218fc364cb6615e31168fab574368ee3e3623cce41c952bc0c";
+export const COMPACT_CLIENT_REPEATED_CHAT_NOTIFICATION_DELTA = Object.freeze({
+  previousOccurrences: 1_406,
+  previousUniqueValues: 141,
+  previousSourceFingerprint: "949fdbe5f92bacfeae4b8077993d8ca5e007c3114db6a6dc9a64e5e6be8461df",
+  occurrenceDelta: -2,
+  uniqueValueDelta: 0,
+  source: "senderless warning and error chat presentation",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_WOOD_FAMILY_REGISTRY_DELTA = Object.freeze({
+  previousOccurrences: 1_406,
+  previousUniqueValues: 141,
+  previousSourceFingerprint: "a7dbe47637d3be2f2e5308a7e98a42c1fa6b6adf74d5dc33b2b2a185aea071e2",
+  occurrenceDelta: 0,
+  uniqueValueDelta: 0,
+  source: "capability-aware wood-family recipe generation",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_RECIPE_TAG_DELTA = Object.freeze({
+  previousOccurrences: 1_397,
+  previousUniqueValues: 140,
+  previousSourceFingerprint: "9db9973b1b8b14eab140ec64a97177a8092fe0a6ed3d69e476d920289a2ec95c",
+  occurrenceDelta: 9,
+  uniqueValueDelta: 1,
+  source: "shared wooden-plank recipe tags and family-specific wood recipes",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_REPEATED_MULTIPLAYER_AUTH_DELTA = Object.freeze({
   previousOccurrences: 1_380,
   previousUniqueValues: 138,
@@ -726,9 +752,46 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 616;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 183;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "63d6d9cdfd29f66da6aad4880913c96edd356d213a85727249db533848623ad5";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 623;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 184;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "5f19c1e4511524d71379d42ccffcca53c2e15e189d07f16bfc4c171218e1ece5";
+export const COMPACT_CLIENT_LOW_FREQUENCY_CHAT_NOTIFICATION_DELTA = Object.freeze({
+  previousOccurrences: 623,
+  previousUniqueValues: 184,
+  previousSourceFingerprint: "99bd30868dfbd622283f6dcc3273ae38b9533c772e59521d4880238ca6bdaaf6",
+  occurrenceDelta: 0,
+  uniqueValueDelta: 0,
+  source: "warning and error chat prefix presentation",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_WOOD_FAMILY_REGISTRY_DELTA = Object.freeze({
+  previousOccurrences: 617,
+  previousUniqueValues: 183,
+  previousSourceFingerprint: "f56d6b1e4cd2f5f1a6def9807234296d860f087cbb2b8f9f9aa7f133866c18d9",
+  occurrenceDelta: 6,
+  uniqueValueDelta: 1,
+  source: "capability-aware wood-family recipe generation",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_RECIPE_TAG_DELTA = Object.freeze({
+  previousOccurrences: 619,
+  previousUniqueValues: 184,
+  previousSourceFingerprint: "d08837f2dabedaf2b208c5c9b33be24d3696b24d8ae78b1b9ce69d06c963fee9",
+  occurrenceDelta: -2,
+  uniqueValueDelta: -1,
+  source: "shared wooden-plank recipe tags and family-specific wood recipes",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_WOOD_RECIPE_DELTA = Object.freeze({
+  previousOccurrences: 616,
+  previousUniqueValues: 183,
+  previousSourceFingerprint: "63d6d9cdfd29f66da6aad4880913c96edd356d213a85727249db533848623ad5",
+  occurrenceDelta: 3,
+  uniqueValueDelta: 1,
+  promotedValue: "shapeless",
+  source: "shared/craftingGrid.ts#wood-plank-recipes",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_LOW_FREQUENCY_MULTIPLAYER_AUTH_DELTA = Object.freeze({
   previousOccurrences: 608,
   previousUniqueValues: 180,
@@ -1116,17 +1179,17 @@ export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([
   "invalid_slot", "invalid_transaction_cleared", "miningHit", "mousemove",
   "nextContactDamageAtSeconds", "nextRangedAttackAtSeconds",
   "no_recipe", "noncanonical_envelope", "pointerlockerror",
-  "raw_chicken", "respawnPoint", "rotten_flesh", "selectedHotbar", "shapeless", "sheep_wool",
+  "raw_chicken", "respawnPoint", "rotten_flesh", "selectedHotbar", "sheep_wool",
   "spiderUntil", "stale_registry", "storage_verify_failed", "storage_write_failed", "sunDamageAt", "targetKind",
   "tnt_bottom", "unsafe_existing_data", "velocityX", "velocityZ", "world-mode", "world-seed", "world-title",
   "world_changed", "world_create_transaction_pending", "world_delete_cleanup_pending",
   "world_delete_transaction_pending",
 ]);
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES = 122;
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES = 61;
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES = 120;
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES = 60;
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCE_KIND = "StringLiteral";
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_PATH = "closed compact client bundle";
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT = "ed938b1207d89ebdd20d6da23b8b72a43697548d8cd2b5070855a6190ef24639";
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT = "13f405e53e691c68c14ca31939204b767b03b32985b68ea9f54424c76f482162";
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_MULTIPLAYER_AUTH_DELTA = Object.freeze({
   previousOccurrences: 124,
   previousUniqueValues: 62,
@@ -1135,6 +1198,16 @@ export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_MULTIPLAYER_AUTH_DELTA = Object.
   uniqueValueDelta: -1,
   promotedValue: "multiplayer",
   source: "client/runtimeMode.ts#dedicated-multiplayer-route",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_WOOD_RECIPE_DELTA = Object.freeze({
+  previousOccurrences: 122,
+  previousUniqueValues: 61,
+  previousSourceFingerprint: "ed938b1207d89ebdd20d6da23b8b72a43697548d8cd2b5070855a6190ef24639",
+  occurrenceDelta: -2,
+  uniqueValueDelta: -1,
+  promotedValue: "shapeless",
+  source: "shared/craftingGrid.ts#wood-plank-recipes",
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_TITLE_DELTA = Object.freeze({

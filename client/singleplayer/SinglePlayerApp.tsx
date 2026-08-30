@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { ChestDrawer, FurnaceDrawer, GameHud, type ChestTransferDirection, type HudMessage } from "../components";
+import { ChestDrawer, FurnaceDrawer, GameHud, type ChestTransferDirection } from "../components";
 /* @lakecraft-development:imports:start */
 import { FirstPersonPoseLab, VisualLab } from "../components";
 import { SinglePlayerPerformanceBenchmark } from "./PerformanceBenchmark.tsx";
@@ -336,7 +336,6 @@ function LocalGameplaySession({
   const worldModalOpen = containerOpen || sleepingBed !== null;
   const uiModalOpen = worldModalOpen || commandOpen/* @lakecraft-development:modal:start */ || visualLabOpen/* @lakecraft-development:modal:end */;
   const [craftingContext, setCraftingContext] = useState<CraftingContext>("field");
-  const [messages, setMessages] = useState<HudMessage[]>([]);
   const [coordinates, setCoordinates] = useState({ x: 0, y: 0, z: 0 });
   const [performanceStats, setPerformanceStats] = useState<VoxelPerformanceStats | null>(null);
   const [debugOverlayVisible, setDebugOverlayVisible] = useState(false);
@@ -479,15 +478,20 @@ function LocalGameplaySession({
     );
   }
 
+  function notify(text: string, detail?: string, tone: "info" | "success" | "warning" = "info", id = `notice-${Date.now()}`): void {
+    setCommandMessages((current) => [...current.slice(-79), {
+      id,
+      username: "",
+      body: detail ? `${text}: ${detail}` : text,
+      sentAt: Date.now(),
+      tone: tone === "warning" ? "warning" : "system",
+    }]);
+  }
+
   function warnWorldEditCapacity(): void {
     if (editCapacityWarningRef.current) return;
     editCapacityWarningRef.current = true;
-    setMessages((current) => [...current.slice(-2), {
-      id: "local-world-edit-capacity",
-      text: "World save full",
-      detail: "New terrain changes are blocked; existing saved coordinates remain editable.",
-      tone: "warning",
-    }]);
+    notify("World save full", "New terrain changes are blocked; existing saved coordinates remain editable.", "warning", "local-world-edit-capacity");
   }
 
   function acceptLocalWorldEdits(edits: readonly WorldEdit[]): boolean {
@@ -656,12 +660,12 @@ function LocalGameplaySession({
 
   function appendCommandMessage(
     body: string,
-    tone: "player" | "system" | "warning",
+    tone: "player" | "system" | "warning" | "error",
   ): void {
     const sequence = ++commandMessageSequenceRef.current;
     setCommandMessages((current) => [...current.slice(-59), {
       id: `local-command-${sequence}`,
-      username: tone === "player" ? "Command" : tone === "warning" ? "Error" : "Game",
+      username: tone === "player" ? "Command" : "",
       body,
       sentAt: Date.now(),
       own: tone === "player",
@@ -710,11 +714,14 @@ function LocalGameplaySession({
     setCommandDraft("");
     const parsed = parseLocalCommand(normalized, SINGLE_PLAYER_COMMAND_PERMISSIONS);
     if (!parsed.ok) {
-      appendCommandMessage(parsed.message, "warning");
+      appendCommandMessage(parsed.message, "error");
       return;
     }
     if (parsed.command.kind === "help") {
       appendCommandMessage(`Commands: ${LOCAL_COMMAND_HELP.join(" · ")}`, "system");
+      return;
+    }
+    if (parsed.command.kind === "items") {
       appendCommandMessage(`Item IDs: ${canonicalLocalItemIds().join(", ")}`, "system");
       return;
     }
@@ -860,12 +867,7 @@ function LocalGameplaySession({
       Date.now(),
     );
     if (!recovered.ok) {
-      setMessages((current) => [...current.slice(-2), {
-        id: `container-protected-${coordKey}-${Date.now()}`,
-        text: "Container contents protected",
-        detail: "The saved contents will return if you place the same container at this coordinate.",
-        tone: "warning",
-      }]);
+      notify("Container contents protected", "The saved contents will return if you place the same container at this coordinate.", "warning", `container-protected-${coordKey}-${Date.now()}`);
       return;
     }
     const droppedAt = Date.now();
@@ -884,12 +886,7 @@ function LocalGameplaySession({
     syncLocalDropGravity();
     engineRef.current?.setDroppedItems(dropsRef.current);
     containersRef.current = recovered.containers;
-    setMessages((current) => [...current.slice(-2), {
-      id: `container-recovered-${coordKey}-${droppedAt}`,
-      text: "Container emptied safely",
-      detail: recovered.overflow.length > 0 ? "Contents moved to your pack and the ground." : "Contents moved into your pack.",
-      tone: "success",
-    }]);
+    notify("Container emptied safely", recovered.overflow.length > 0 ? "Contents moved to your pack and the ground." : "Contents moved into your pack.", "success", `container-recovered-${coordKey}-${droppedAt}`);
     markWorldDirty();
   }
 
@@ -898,12 +895,7 @@ function LocalGameplaySession({
     if (!engine || !respawnPointMatchesBed(engine.getRespawnPoint(), x, y, z)) return;
     engine.setRespawnPoint(singlePlayerWorldSpawn(worldRef.current.seed));
     setSleepingBed(null);
-    setMessages((current) => [...current.slice(-2), {
-      id: `bed-broken-${x}:${y}:${z}-${Date.now()}`,
-      text: "Respawn point lost",
-      detail: "Your bed was destroyed. World spawn is active again.",
-      tone: "warning",
-    }]);
+    notify("Respawn point lost", "Your bed was destroyed. World spawn is active again.", "warning", `bed-broken-${x}:${y}:${z}-${Date.now()}`);
     markWorldDirty();
   }
 
@@ -916,12 +908,7 @@ function LocalGameplaySession({
     markWorldDirty();
     const runtime = engine.exportRuntimeSnapshot();
     if (!canSleepAtPhase(phaseAtTime(runtime.worldTimeMs, runtime.dayNight))) {
-      setMessages((current) => [...current.slice(-2), {
-        id: `bed-day-${Date.now()}`,
-        text: "Respawn point set",
-        detail: "You can sleep only at night.",
-        tone: "info",
-      }]);
+      notify("Respawn point set", "You can sleep only at night.", "info", `bed-day-${Date.now()}`);
       return true;
     }
     setSleepingBed(anchor);
@@ -1479,12 +1466,7 @@ function LocalGameplaySession({
           SINGLEPLAYER_SAVE_LIMITS.drops,
         );
         if (!appended.ok) {
-          setMessages((current) => [...current.slice(-2), {
-            id: `mob-loot-full-${event.eventId}`.slice(0, 96),
-            text: "Too many items nearby",
-            detail: "Pick up some world drops before finishing this mob.",
-            tone: "warning",
-          }]);
+          notify("Too many items nearby", "Pick up some world drops before finishing this mob.", "warning", `mob-loot-full-${event.eventId}`.slice(0, 96));
           return false;
         }
         dropsRef.current = appended.drops;
@@ -1530,12 +1512,7 @@ function LocalGameplaySession({
           updateInventory(acceptedInventory);
           audio.play("pickup", { seed: `${target.id}:${result.woolCount}`, intensity: 0.58 });
         } else if (result.reason === "rejected") {
-          setMessages((current) => [...current.slice(-2), {
-            id: `shear-full-${target.id}`,
-            text: "Inventory full",
-            detail: "Make room for the sheep's wool.",
-            tone: "warning",
-          }]);
+          notify("Inventory full", "Make room for the sheep's wool.", "warning", `shear-full-${target.id}`);
         }
         return true;
       },
@@ -1657,12 +1634,7 @@ function LocalGameplaySession({
             },
           });
           if (!plan.ok) {
-            setMessages((current) => [...current.slice(-2), {
-              id: `oak-blocked-${x}:${y}:${z}`,
-              text: "The sapling cannot grow",
-              detail: plan.reason === "invalid_support" ? "Oak saplings need dirt or grass beneath them." : "Clear some room around and above it.",
-              tone: "warning",
-            }]);
+            notify("The sapling cannot grow", plan.reason === "invalid_support" ? "Oak saplings need dirt or grass beneath them." : "Clear some room around and above it.", "warning", `oak-blocked-${x}:${y}:${z}`);
             return true;
           }
 
@@ -1937,7 +1909,7 @@ function LocalGameplaySession({
         && !pointerSessionRef.current.pauseOpen && !inventoryOpen && !worldModalOpen && !deathScreenOpen;
       if (globalGameplayShortcutAllowed) {
         if (handleGameplayScreenshotKey(event, engineRef.current, (text, detail, tone) => {
-          setMessages((current) => [...current.slice(-2), { id: `screenshot-${Date.now()}`, text, detail, tone }]);
+          notify(text, detail, tone, `screenshot-${Date.now()}`);
         }, clientSettingsRef.current.keyBindings.screenshot)) return;
         if (action === "debug" && !event.repeat) {
           event.preventDefault();
@@ -2133,10 +2105,8 @@ function LocalGameplaySession({
         inventoryAuthorityEpoch={0}
         inventoryOpen={inventoryOpen}
         modalOpen={uiModalOpen || !worldReady}
-        messages={messages}
         onCloseInventory={closeInventoryAndResume}
         onCrafted={() => undefined}
-        onDismissMessage={(id) => setMessages((current) => current.filter((message) => message.id !== id))}
         disconnectLabel="Save and Quit to Title"
         backLabel={saveFailureActive ? "Retry Save" : "Back to Game"}
         lastAutosavedText={lastAutosavedText}
@@ -2196,8 +2166,6 @@ function LocalGameplaySession({
         placeholder="/help"
         playerSender="[Command]"
         surfaceLabel="Local command console"
-        systemSender="[Game]"
-        warningSender="[Error]"
       /> : null}
       <FurnaceDrawer
         busy={false}

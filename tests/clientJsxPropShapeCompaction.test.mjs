@@ -13,15 +13,15 @@ assert.equal(Object.keys(COMPACT_CLIENT_JSX_PROP_SHAPE_COUNTS).length, 13,
   "the production transform stays limited to the thirteen reviewed generated-JSX shapes");
 assert.equal(COMPACT_CLIENT_JSX_PROP_SHAPE_INPUT_BOUNDARY, "raw-pre-jsx-v1");
 assert.equal(COMPACT_CLIENT_JSX_PROP_SHAPE_SOURCE_FINGERPRINT,
-  "e8643e69055d25f0ac3f9ed11af496e2e2a8da368f85e61ee115ed0e56a7b27e",
+  "8880fc0c03b4c547c762a6a8dab42b6bf47af6673cdfa7f3ac85e53942cfdb84",
   "the production fingerprint is sampled at the raw pre-JSX, pre-string-pool boundary");
 assert.deepEqual(COMPACT_CLIENT_JSX_PROP_SHAPE_COUNTS, {
   "className,aria-hidden": 11,
   "className,aria-hidden,children": 3,
   "className,aria-label,children": 11,
-  "className,children": 61,
+  "className,children": 63,
   "className,id,children": 4,
-  "className,onClick,type,children": 7,
+  "className,onClick,type,children": 6,
   "className,role,aria-label,children": 9,
   "className,role,aria-live,children": 3,
   "className,role,aria-modal,aria-labelledby,children": 5,

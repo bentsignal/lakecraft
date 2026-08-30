@@ -30,7 +30,7 @@ assert.ok(client.includes("death: deathScreenOpen") && multiplayerGameplay.inclu
 assert.ok(client.includes("setFirstPersonFeedbackHidden(multiplayerAuthorityPaused || !worldReady || !hudVisible)"),
   "death, authority loss, loading, and F1 all remove the multiplayer WebGL viewmodel");
 assert.ok(singlePlayer.includes("pauseOpen || inventoryOpen || worldModalOpen || deathScreenOpen"), "single-player removes the WebGL viewmodel under the death UI");
-assert.ok(gameHud.includes("!deathScreenOpen ? <ToastSurface"), "gameplay notifications do not show through the translucent death tint");
+assert.equal(gameHud.includes("ToastSurface"), false, "the HUD has no separate notification surface");
 assert.match(gameHud, /<DeathScreen[^>]*respawnError=\{respawnError\}[^>]*respawnStatus=\{respawnStatus\}/, "GameHud forwards both optional feedback channels into the blocking modal");
 assert.ok(exportsSource.includes("DeathScreenProps"), "death screen is exported for focused reuse and testing");
 

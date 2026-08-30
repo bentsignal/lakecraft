@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 
 const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 const singleplayer = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
-const toastSurface = readFileSync(new URL("../client/components/ToastSurface.tsx", import.meta.url), "utf8");
+const gameHud = readFileSync(new URL("../client/components/GameHud.tsx", import.meta.url), "utf8");
+const chat = readFileSync(new URL("../client/chat/ChatOverlay.tsx", import.meta.url), "utf8");
 
 const routineGameplayToastText = [
   "TNT primed",
@@ -52,11 +53,13 @@ for (const retired of ["TNT did not ignite", "Oak growth lost contact", "Presenc
   assert.equal(multiplayer.includes(retired), false, `${retired} belonged to the retired Lakebed world path`);
 }
 
-assert.ok(singleplayer.includes("const [messages, setMessages] = useState<HudMessage[]>([])")
-  && multiplayer.includes("const [messages, setMessages] = useState<HudMessage[]>([])")
-  && toastSurface.includes("export function ToastSurface"),
-"achievement-ready toast infrastructure remains intact even though routine gameplay producers are removed");
-assert.ok(singleplayer.includes("messages={messages}") && multiplayer.includes("messages={messages}"),
-  "both game modes retain the shared HUD toast surface for future achievements and real recovery feedback");
+for (const source of [singleplayer, multiplayer, gameHud, chat]) {
+  assert.equal(source.includes("ToastSurface"), false, "toast rendering and producers are removed");
+  assert.equal(source.includes("HudMessage"), false, "the retired toast message type is removed");
+}
+assert.ok(singleplayer.includes("setCommandMessages") && multiplayer.includes("setNotificationMessages"),
+  "both game modes route local notifications into chat messages");
+assert.ok(chat.includes('tone === "player" ? labels.player ?? `<${message.username}>` : ""'),
+  "system and warning chat messages render without a sender");
 
-console.log("routine gameplay toast producers removed; recovery and future achievement surface preserved: ok");
+console.log("gameplay notifications use senderless chat messages and the toast system is absent: ok");
