@@ -98,6 +98,8 @@ import {
   markSaveCadenceDirty,
   sampleSaveCadence,
 } from "./saveCadence.ts";
+
+const SAVE_FAILURE_WARNING = "Autosave failed. Your last save is safe, but new changes will not be saved. Return to the title screen and reopen this world to continue from that save.";
 import {
   createLocalContainers,
   exportLocalContainersSnapshot,
@@ -349,6 +351,7 @@ function LocalGameplaySession({
   const [autosaveStatusText, setAutosaveStatusText] = useState(initialSaveText);
   const [lastAutosavedAt, setLastAutosavedAt] = useState<number | null>(null);
   const pointerUiBlockedRef = useRef(false);
+  const saveFailedRef = useRef(false);
   pointerUiBlockedRef.current = inventoryOpen || uiModalOpen || deathScreenOpen
     || document.visibilityState !== "visible";
 
@@ -574,11 +577,16 @@ function LocalGameplaySession({
   }
 
   function persist(reason: "autosave" | "quit"): boolean {
-    if (saveLockedRef.current || saveInProgressRef.current) return false;
+    if (saveLockedRef.current || saveFailedRef.current || saveInProgressRef.current) return false;
     const action = reason === "quit" ? "Save and Quit" : "Autosave";
     const snapshot = buildSnapshot();
     if (!snapshot) {
       setAutosaveStatusText(`${action} failed: invalid local container state.`);
+      saveFailedRef.current = true;
+      appendCommandMessage(
+        SAVE_FAILURE_WARNING,
+        "warning",
+      );
       return false;
     }
     saveInProgressRef.current = true;
@@ -596,6 +604,11 @@ function LocalGameplaySession({
           : result.path?.startsWith("$.runtime") ? `${action} failed: player state could not be validated. Your previous save is safe.`
             : `${action} failed. Your previous save is safe.`);
       if (result.reason === "unsafe_existing_data") saveLockedRef.current = true;
+      saveFailedRef.current = true;
+      appendCommandMessage(
+        SAVE_FAILURE_WARNING,
+        "warning",
+      );
       return false;
     }
     let firstPlayMetadataPending = false;
@@ -653,7 +666,7 @@ function LocalGameplaySession({
     const sequence = ++commandMessageSequenceRef.current;
     setCommandMessages((current) => [...current.slice(-59), {
       id: `local-command-${sequence}`,
-      username: tone === "player" ? "Command" : "",
+      username: "",
       body,
       sentAt: Date.now(),
       own: tone === "player",
@@ -2040,7 +2053,9 @@ function LocalGameplaySession({
   }, []);
   /* @lakecraft-development:callback:end */
   const returnToTitle = () => {
-    if (!persist("quit")) return;
+    if (!persist("quit") && !confirm(
+      "Lakecraft could not save your latest changes. You can reopen this world from your last verified save. Quit to the title screen now?",
+    )) return;
     quitSavedRef.current = true;
     if (document.pointerLockElement) document.exitPointerLock();
     releaseGameplayKeyboardCapture();
@@ -2096,7 +2111,7 @@ function LocalGameplaySession({
         disconnectLabel="Save and Quit to Title"
         lastAutosavedText={lastAutosavedText}
         autosaveStatusText={autosaveStatusText}
-        disconnectDisabled={saveLockedRef.current}
+        disconnectDisabled={false}
         onDisconnect={returnToTitle}
         onInventoryWorkspaceChange={(snapshot: StowedInventorySnapshot, _epoch: number, _recipes: readonly InventoryRecipeBatch[]) => {
           inventoryRef.current = snapshot.inventory;
@@ -2145,7 +2160,7 @@ function LocalGameplaySession({
         onSubmit={submitLocalCommand}
         open={commandOpen}
         placeholder="/help"
-        playerSender="[Command]"
+        playerSender=""
         surfaceLabel="Local command console"
       /> : null}
       <FurnaceDrawer

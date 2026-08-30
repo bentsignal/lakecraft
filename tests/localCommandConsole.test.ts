@@ -138,6 +138,8 @@ assert.ok(app.includes("localCommandShortcutDraft(event, clientSettingsRef.curre
 assert.ok(app.includes('event.code === "ArrowUp" || event.code === "ArrowDown"'));
 assert.ok(app.includes('surfaceLabel="Local command console"'));
 assert.ok(app.includes('historyLabel="Command history"'));
+assert.ok(app.includes('playerSender=""') && !app.includes('[Command]'),
+  "entered local commands render without a redundant sender prefix");
 assert.equal(app.includes("warningSender"), false, "system and warning messages do not claim a sender");
 assert.ok(chat.includes('tone === "player" ? labels.player ?? `<${message.username}>` : ""'), "only player chat renders a sender");
 const helpExecution = app.slice(app.indexOf('parsed.command.kind === "help"'), app.indexOf('parsed.command.kind === "items"'));

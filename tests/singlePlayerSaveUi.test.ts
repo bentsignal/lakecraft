@@ -41,6 +41,7 @@ assert.ok(pauseMenu.indexOf("Back to Game") < pauseMenu.indexOf("Options…")
 assert.equal(styles.includes(".lc-game-menu__save"), false, "the separated manual-save block is removed");
 assert.ok(styles.includes('min-height: 16px'), "status feedback reserves space instead of shifting the overlay");
 assert.ok(styles.includes('.lc-game-menu__last-autosaved { color: #aaa; }'), "secondary timestamp text stays visually subordinate");
+assert.ok(styles.includes("margin-top: 4px"), "save status has a small visual gap after Save and Quit");
 assert.equal(styles.includes(".lc-game-menu__disconnect { margin-top"), false, "Save and Quit has no separated top spacing");
 assert.ok(styles.includes('overflow-y: auto'), "the taller pause menu remains reachable on short viewports");
 
@@ -76,10 +77,22 @@ assert.ok(singlePlayer.includes("useState<number | null>(null)"),
   "creation and loaded journal saves do not masquerade as periodic autosaves");
 assert.ok(singlePlayer.includes('if (reason === "autosave") setLastAutosavedAt(now)'),
   "only a successful periodic autosave advances the displayed autosave timestamp");
-assert.match(singlePlayer, /const returnToTitle = \(\) => \{\s+if \(!persist\("quit"\)\) return;\s+quitSavedRef\.current = true;[\s\S]*?onExit\(\);/,
-  "Save and Quit cannot navigate until the synchronous verified journal commit succeeds");
-assert.ok(singlePlayer.includes('disconnectDisabled={saveLockedRef.current}'),
-  "Save and Quit is disabled when the app cannot truthfully finalize a save");
+assert.ok(singlePlayer.includes("Autosave failed. Your last save is safe, but new changes will not be saved."),
+  "autosave failure tells the player what is safe and what will be lost");
+assert.ok(singlePlayer.includes('appendCommandMessage(') && singlePlayer.includes('"warning"'),
+  "save failure uses the senderless warning path in chat");
+assert.ok(singlePlayer.includes("saveFailedRef.current = true"),
+  "the session stops writing after a failure so the last verified journal remains untouched");
+assert.doesNotMatch(singlePlayer, /saveFailureActive|World Save Failed|Retry Save/,
+  "save failure does not trap the player behind a blocking pause screen");
+assert.doesNotMatch(singlePlayer, /savetest|save-test|forceNextSaveFailure/,
+  "the temporary save-failure preview command is absent from production");
+assert.match(singlePlayer, /const returnToTitle = \(\) => \{\s+if \(!persist\("quit"\) && !confirm\([\s\S]*?\)\) return;\s+quitSavedRef\.current = true;[\s\S]*?onExit\(\);/,
+  "Save and Quit offers an explicit last-verified-save exit when the latest commit fails");
+assert.ok(singlePlayer.includes("You can reopen this world from your last verified save. Quit to the title screen now?"),
+  "failed saves explain the safe exit instead of trapping the player in-world");
+assert.ok(singlePlayer.includes('disconnectDisabled={false}'),
+  "the title-screen exit remains available even when saving is locked to protect existing data");
 assert.ok(singlePlayer.includes("Last autosaved "), "the pause timestamp uses autosave-only language");
 assert.doesNotMatch(singlePlayer, /persist\("manual"\)|"manual" \|/, "single-player exposes no manual-save code path");
 assert.ok(singlePlayer.includes("engineRef.current?.setPaused(paused)"), "menus and backgrounding pause the local engine");

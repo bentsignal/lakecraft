@@ -42,10 +42,10 @@ assert.ok(app.includes("onExit: () => void")
   "the browser Back action crosses the isolated single-player root explicitly");
 const leaveSingleplayer = root.slice(
   root.indexOf("  function leaveSingleplayer"),
-  root.indexOf("\n  return singlePlayer", root.indexOf("  function leaveSingleplayer")),
+  root.indexOf('\n  if (route === "singleplayer")', root.indexOf("  function leaveSingleplayer")),
 );
 assert.ok(leaveSingleplayer.includes("singlePlayerTitleUrl(window.location.href)")
-  && leaveSingleplayer.includes("setSinglePlayer(false)"),
+  && leaveSingleplayer.includes('setRoute("title")'),
   "Back removes the single-player route flag before restoring the main menu");
 
 const header = browser.slice(
@@ -285,7 +285,7 @@ assert.ok(browser.includes("browserSinglePlayerStorage()") && browser.includes("
 
 assert.ok(app.includes("<LocalWorldBrowser"), "single-player enters the world browser before constructing gameplay");
 assert.ok(app.includes("<LocalGameplaySession"), "only an activated local session mounts the voxel engine");
-assert.ok(app.includes("saveSinglePlayerSnapshot(storage, snapshot, now, { worldId: world.id })"),
+assert.ok(app.includes("saveSinglePlayerSnapshot(saveStorage, snapshot, now, { worldId: world.id })"),
   "autosave/quit commits stay in the active world namespace");
 assert.ok(app.includes("resetSinglePlayerSave(storage, { worldId: world.id })"),
   "in-game recovery can reset only the active world");

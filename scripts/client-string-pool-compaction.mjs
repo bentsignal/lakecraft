@@ -8,9 +8,36 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 545;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 477;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "f287755f71e61d9b99e1096016baae816b80217d17120d45f30af42a0d10f800";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 546;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 478;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "b88e2aef475704f2c6860cd0e96840fe6da624a053dad9f1df801a806c6801bb";
+export const COMPACT_CLIENT_HUMAN_COMMAND_SENDER_REMOVAL_DELTA = Object.freeze({
+  previousOccurrences: 547,
+  previousUniqueValues: 479,
+  previousSourceFingerprint: "f6f2381f6a2ba2661a1a22dbb4b9424b57fe91357a5c152ac30433a1725fc635",
+  occurrenceDelta: -1,
+  uniqueValueDelta: -1,
+  source: "single-player command history no longer prefixes entered commands with [Command]",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_HUMAN_QUIT_RECOVERY_COPY_DELTA = Object.freeze({
+  previousOccurrences: 547,
+  previousUniqueValues: 479,
+  previousSourceFingerprint: "4df24cd644ba2d7eba7c1f30444abc9bdf0fb36be39b8dda17d5c04312ef3d82",
+  occurrenceDelta: 0,
+  uniqueValueDelta: 0,
+  source: "single-player failed-save confirmation names reopening the last verified save",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_HUMAN_SAVE_WARNING_DELTA = Object.freeze({
+  previousOccurrences: 545,
+  previousUniqueValues: 477,
+  previousSourceFingerprint: "f287755f71e61d9b99e1096016baae816b80217d17120d45f30af42a0d10f800",
+  occurrenceDelta: 2,
+  uniqueValueDelta: 2,
+  source: "client/singleplayer/SinglePlayerApp.tsx#chat-save-failure-warning-and-test-command",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_HUMAN_CHAT_NOTIFICATION_DELTA = Object.freeze({
   previousOccurrences: 546,
   previousUniqueValues: 478,
@@ -276,9 +303,18 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
   source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_404;
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_406;
 export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 141;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "fca95c96b62965218fc364cb6615e31168fab574368ee3e3623cce41c952bc0c";
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "0d7649cc20fd22300ddc6d44bcc2a87e86bd8a59ec31e2b8bc2b851ef517f2db";
+export const COMPACT_CLIENT_REPEATED_SAVE_WARNING_DELTA = Object.freeze({
+  previousOccurrences: 1_404,
+  previousUniqueValues: 141,
+  previousSourceFingerprint: "fca95c96b62965218fc364cb6615e31168fab574368ee3e3623cce41c952bc0c",
+  occurrenceDelta: 2,
+  uniqueValueDelta: 0,
+  source: "single-player save failure latch and opt-in test command",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_REPEATED_CHAT_NOTIFICATION_DELTA = Object.freeze({
   previousOccurrences: 1_406,
   previousUniqueValues: 141,
