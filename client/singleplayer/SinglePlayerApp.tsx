@@ -2066,7 +2066,7 @@ function LocalGameplaySession({
   /* @lakecraft-development:callback:end */
   const returnToTitle = () => {
     if (!persist("quit") && !confirm(
-      "Lakecraft could not save your latest changes. Your last verified save is still safe. Quit to the title screen anyway?",
+      "Lakecraft could not save your latest changes. You can reopen this world from your last verified save. Quit to the title screen now?",
     )) return;
     quitSavedRef.current = true;
     if (document.pointerLockElement) document.exitPointerLock();

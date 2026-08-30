@@ -10,7 +10,16 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // application copy or making a new literal eligible requires human review.
 export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 547;
 export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 479;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "4df24cd644ba2d7eba7c1f30444abc9bdf0fb36be39b8dda17d5c04312ef3d82";
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "f6f2381f6a2ba2661a1a22dbb4b9424b57fe91357a5c152ac30433a1725fc635";
+export const COMPACT_CLIENT_HUMAN_QUIT_RECOVERY_COPY_DELTA = Object.freeze({
+  previousOccurrences: 547,
+  previousUniqueValues: 479,
+  previousSourceFingerprint: "4df24cd644ba2d7eba7c1f30444abc9bdf0fb36be39b8dda17d5c04312ef3d82",
+  occurrenceDelta: 0,
+  uniqueValueDelta: 0,
+  source: "single-player failed-save confirmation names reopening the last verified save",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_HUMAN_SAVE_WARNING_DELTA = Object.freeze({
   previousOccurrences: 545,
   previousUniqueValues: 477,

@@ -88,7 +88,7 @@ assert.ok(singlePlayer.includes('normalized === "/savetest fail"') && singlePlay
   "the opt-in preview route can trigger a non-mutating save failure for testing");
 assert.match(singlePlayer, /const returnToTitle = \(\) => \{\s+if \(!persist\("quit"\) && !confirm\([\s\S]*?\)\) return;\s+quitSavedRef\.current = true;[\s\S]*?onExit\(\);/,
   "Save and Quit offers an explicit last-verified-save exit when the latest commit fails");
-assert.ok(singlePlayer.includes("Quit to the title screen anyway?"),
+assert.ok(singlePlayer.includes("You can reopen this world from your last verified save. Quit to the title screen now?"),
   "failed saves explain the safe exit instead of trapping the player in-world");
 assert.ok(singlePlayer.includes('disconnectDisabled={false}'),
   "the title-screen exit remains available even when saving is locked to protect existing data");
