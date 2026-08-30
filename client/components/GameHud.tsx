@@ -18,7 +18,6 @@ import { OptionsDialog } from "./OptionsDialog";
 import { PauseMenu } from "./PauseMenu";
 import { PlayerList, type PlayerListEntry } from "./PlayerList";
 import { SurvivalHud } from "./StatusStrip";
-import { ToastSurface, type HudMessage } from "./ToastSurface";
 import type { ClientSettings } from "../settings.ts";
 import { useLayoutEffect } from "preact/hooks";
 
@@ -30,7 +29,6 @@ export type GameHudProps = {
   modalOpen?: boolean;
   hudVisible?: boolean;
   craftingContext: CraftingContext;
-  messages?: readonly HudMessage[];
   health?: number;
   maxHealth?: number;
   hunger?: number;
@@ -74,7 +72,6 @@ export type GameHudProps = {
   disconnectLabel?: string;
   onRespawn?: () => void;
   onTitleScreen?: () => void;
-  onDismissMessage?: (id: string) => void;
   onContinueMobile?: () => void;
   /** Backward-compatible world metadata; normal gameplay deliberately does not render it. */
   connected?: boolean;
@@ -99,7 +96,6 @@ export function GameHud({
   modalOpen = false,
   hudVisible = true,
   craftingContext,
-  messages = [],
   health = 20,
   maxHealth = 20,
   hunger = 20,
@@ -139,7 +135,6 @@ export function GameHud({
   disconnectLabel,
   onRespawn,
   onTitleScreen,
-  onDismissMessage,
   onContinueMobile,
 }: GameHudProps) {
   useLayoutEffect(() => {
@@ -165,7 +160,6 @@ export function GameHud({
           </div>
         ) : null}
         <PlayerList players={players} visible={showPlayerList && !pauseOpen && !modalOpen && !deathScreenOpen} />
-        {!deathScreenOpen ? <ToastSurface messages={messages} onDismiss={onDismissMessage} /> : null}
       </div> : null}
       <PauseMenu
         autosaveStatusText={autosaveStatusText}

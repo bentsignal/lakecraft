@@ -18,4 +18,3 @@ export { FirstPersonPoseLab } from "./FirstPersonPoseLab";
 export { VisualLab } from "./VisualLab";
 export { MobileUnsupportedOverlay, type MobileUnsupportedOverlayProps } from "./MobileUnsupportedOverlay";
 export { StatusStrip, SurvivalHud, type StatusStripProps, type SurvivalHudProps } from "./StatusStrip";
-export { ToastSurface, type HudMessage, type ToastSurfaceProps } from "./ToastSurface";

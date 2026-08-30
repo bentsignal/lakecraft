@@ -29,6 +29,8 @@ import {
 import { stripClientDevelopmentSurfaces } from "../scripts/client-development-surface-transform.mjs";
 
 assert.deepEqual(parseLocalCommand("/help"), { ok: true, command: { kind: "help" } });
+assert.deepEqual(parseLocalCommand("/items"), { ok: true, command: { kind: "items" } });
+assert.equal(parseLocalCommand("/items extra").ok, false);
 assert.deepEqual(parseLocalCommand(" /GaMeMoDe creative "), {
   ok: true,
   command: { kind: "gamemode", mode: "creative" },
@@ -61,7 +63,7 @@ assert.equal(parseLocalCommand("/gamemode creative", { changeGameMode: false, gi
 assert.equal(parseLocalCommand("/give dirt", { changeGameMode: true, giveItems: false, setTime: true }).ok, false);
 assert.ok(canonicalLocalItemIds().includes("tnt"));
 assert.ok(canonicalLocalItemIds().includes("bow"));
-assert.deepEqual([...canonicalLocalItemIds()].sort(), canonicalLocalItemIds(), "help catalog ordering is stable");
+assert.deepEqual([...canonicalLocalItemIds()].sort(), canonicalLocalItemIds(), "item catalog ordering is stable");
 
 const empty = createEmptyInventory();
 const tntGrant = giveLocalItem(empty, "tnt", 64);
@@ -136,7 +138,14 @@ assert.ok(app.includes("localCommandShortcutDraft(event, clientSettingsRef.curre
 assert.ok(app.includes('event.code === "ArrowUp" || event.code === "ArrowDown"'));
 assert.ok(app.includes('surfaceLabel="Local command console"'));
 assert.ok(app.includes('historyLabel="Command history"'));
-assert.ok(app.includes('warningSender="[Error]"'));
+assert.equal(app.includes("warningSender"), false, "system and warning messages do not claim a sender");
+assert.ok(chat.includes('tone === "player" ? labels.player ?? `<${message.username}>` : ""'), "only player chat renders a sender");
+const helpExecution = app.slice(app.indexOf('parsed.command.kind === "help"'), app.indexOf('parsed.command.kind === "items"'));
+assert.equal(helpExecution.includes("canonicalLocalItemIds"), false, "/help does not dump every item ID");
+assert.ok(app.includes('parsed.command.kind === "items"') && app.includes('Item IDs: ${canonicalLocalItemIds().join(", ")}'), "/items owns the item ID catalog");
+assert.equal(app.includes("testnotification"), false, "the temporary notification test command is absent from production");
+assert.ok(chat.includes('"[WARNING]"') && chat.includes('"[ERROR]"'), "warning and error messages have explicit prefixes");
+assert.ok(chat.includes('className="lc-chat-prefix"'), "only the prefix receives warning or error color");
 assert.ok(app.includes("const worldModalOpen = containerOpen || sleepingBed !== null;"),
   "the command console does not freeze the live local simulation");
 const uiModalDeclaration = app.match(/^\s*const uiModalOpen = [^\n]+;$/m)?.[0].trim();

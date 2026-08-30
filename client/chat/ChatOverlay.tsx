@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { ChatStyles } from "./ChatStyles";
 import { CHAT_PEEK_MAX_AGE_MS, chatPeekMessageFading, nextChatPeekExpiryDelay, visibleChatPeekMessages } from "./chatPeek.ts";
 
-export type ChatMessageTone = "player" | "system" | "warning";
+export type ChatMessageTone = "player" | "system" | "warning" | "error";
 export type ChatDeliveryState = "sending" | "sent" | "failed";
 
 export interface LakecraftChatMessage {
@@ -29,8 +29,6 @@ export interface ChatOverlayProps {
   historyLabel?: string;
   inputLabel?: string;
   playerSender?: string;
-  systemSender?: string;
-  warningSender?: string;
   peekMaxAgeMs?: number;
   onDraftChange: (value: string) => void;
   onSubmit: (value: string) => void;
@@ -41,13 +39,15 @@ export interface ChatOverlayProps {
 
 interface ChatSenderLabels {
   player?: string;
-  system: string;
-  warning: string;
 }
 
 function senderForMessage(message: LakecraftChatMessage, labels: ChatSenderLabels): string {
   const tone = message.tone ?? "player";
-  return tone === "player" ? labels.player ?? `<${message.username}>` : tone === "warning" ? labels.warning : labels.system;
+  return tone === "player" ? labels.player ?? `<${message.username}>` : "";
+}
+
+function prefixForMessage(message: LakecraftChatMessage): string {
+  return message.tone === "warning" ? "[WARNING]" : message.tone === "error" || message.delivery === "failed" ? "[ERROR]" : "";
 }
 
 function ChatMessageRow({
@@ -61,9 +61,10 @@ function ChatMessageRow({
 }) {
   const tone = message.tone ?? "player";
   const sender = senderForMessage(message, senderLabels);
+  const prefix = prefixForMessage(message);
   return (
     <li className={`lc-chat-message is-${tone}${message.own ? " is-own" : ""}${message.delivery ? ` is-${message.delivery}` : ""}`}>
-      <p><strong>{sender}</strong> <span>{message.body}</span></p>
+      <p>{sender ? <><strong>{sender}</strong>{" "}</> : null}{prefix ? <><strong className="lc-chat-prefix">{prefix}</strong>{" "}</> : null}<span>{message.body}</span></p>
       {message.delivery === "sending" ? <small>Sending…</small> : null}
       {message.delivery === "failed" ? (
         onRetry ? <button type="button" onClick={() => onRetry(message)}>Not sent — click to retry</button> : <small>Not sent</small>
@@ -86,8 +87,6 @@ export function ChatOverlay({
   historyLabel = "Chat messages",
   inputLabel = "Chat message",
   playerSender,
-  systemSender = "[Server]",
-  warningSender = "[Warning]",
   peekMaxAgeMs = CHAT_PEEK_MAX_AGE_MS,
   onDraftChange,
   onSubmit,
@@ -97,7 +96,7 @@ export function ChatOverlay({
   const historyRef = useRef<HTMLUListElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [peekNow, setPeekNow] = useState(Date.now());
-  const senderLabels = { player: playerSender, system: systemSender, warning: warningSender };
+  const senderLabels = { player: playerSender };
 
   useEffect(() => {
     if (open || !Number.isFinite(peekMaxAgeMs)) return;
@@ -139,7 +138,8 @@ export function ChatOverlay({
         <ol aria-live="polite" aria-relevant="additions">
           {recent.map((message) => (
             <li className={`is-${message.tone ?? "player"}${chatPeekMessageFading(message, peekNow, peekMaxAgeMs) ? " is-fading" : ""}`} key={message.id}>
-              <strong>{senderForMessage(message, senderLabels)}</strong>
+              {senderForMessage(message, senderLabels) ? <strong>{senderForMessage(message, senderLabels)}</strong> : null}
+              {prefixForMessage(message) ? <strong className="lc-chat-prefix">{prefixForMessage(message)}</strong> : null}
               <span>{message.body}</span>
             </li>
           ))}

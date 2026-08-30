@@ -253,12 +253,12 @@ assert.ok(
 );
 assert.deepEqual(
   COMPACT_CLIENT_PRIVATE_IDENTIFIER_PREFIXES.map(([readable, compact, count]) => [readable, compact, count]),
-  [["xc-slot--", "Yq0", 1], ["xj-glyph--", "Yq1", 4], ["xl--", "Yq2", 5], ["xt--", "Yq3", 3]],
-  "only the four reviewed runtime-composed modifier families may use prefix compaction",
+  [["xc-slot--", "Yq0", 1], ["xj-glyph--", "Yq1", 4], ["xl--", "Yq2", 5]],
+  "only the three reviewed runtime-composed modifier families may use prefix compaction",
 );
 assert.equal(
-  compactClientIdentifiers('className={`lc-furnace-slot--${kind} lc-item-glyph--${category} lc-meter--${meter} lc-toast--${tone}`}'),
-  'className={`Yq0${kind} Yq1${category} Yq2${meter} Yq3${tone}`}',
+  compactClientIdentifiers('className={`lc-furnace-slot--${kind} lc-item-glyph--${category} lc-meter--${meter}`}'),
+  'className={`Yq0${kind} Yq1${category} Yq2${meter}`}',
   "runtime-composed private modifiers must retain matching stable prefixes",
 );
 

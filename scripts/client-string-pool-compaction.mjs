@@ -8,9 +8,18 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 546;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 478;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "fb089d6dd3c635d729087ea28c9cd6161804668f545e11c176c7e77325ecd770";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 545;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 477;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "f287755f71e61d9b99e1096016baae816b80217d17120d45f30af42a0d10f800";
+export const COMPACT_CLIENT_HUMAN_CHAT_NOTIFICATION_DELTA = Object.freeze({
+  previousOccurrences: 546,
+  previousUniqueValues: 478,
+  previousSourceFingerprint: "fb089d6dd3c635d729087ea28c9cd6161804668f545e11c176c7e77325ecd770",
+  occurrenceDelta: -1,
+  uniqueValueDelta: -1,
+  source: "senderless chat notifications and dedicated item catalog command",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_HUMAN_WOOD_FAMILY_REGISTRY_DELTA = Object.freeze({
   previousOccurrences: 545,
   previousUniqueValues: 477,
@@ -267,9 +276,18 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
   source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_406;
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_404;
 export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 141;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "949fdbe5f92bacfeae4b8077993d8ca5e007c3114db6a6dc9a64e5e6be8461df";
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "fca95c96b62965218fc364cb6615e31168fab574368ee3e3623cce41c952bc0c";
+export const COMPACT_CLIENT_REPEATED_CHAT_NOTIFICATION_DELTA = Object.freeze({
+  previousOccurrences: 1_406,
+  previousUniqueValues: 141,
+  previousSourceFingerprint: "949fdbe5f92bacfeae4b8077993d8ca5e007c3114db6a6dc9a64e5e6be8461df",
+  occurrenceDelta: -2,
+  uniqueValueDelta: 0,
+  source: "senderless warning and error chat presentation",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_REPEATED_WOOD_FAMILY_REGISTRY_DELTA = Object.freeze({
   previousOccurrences: 1_406,
   previousUniqueValues: 141,
@@ -736,7 +754,16 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
 });
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 623;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 184;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "99bd30868dfbd622283f6dcc3273ae38b9533c772e59521d4880238ca6bdaaf6";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "5f19c1e4511524d71379d42ccffcca53c2e15e189d07f16bfc4c171218e1ece5";
+export const COMPACT_CLIENT_LOW_FREQUENCY_CHAT_NOTIFICATION_DELTA = Object.freeze({
+  previousOccurrences: 623,
+  previousUniqueValues: 184,
+  previousSourceFingerprint: "99bd30868dfbd622283f6dcc3273ae38b9533c772e59521d4880238ca6bdaaf6",
+  occurrenceDelta: 0,
+  uniqueValueDelta: 0,
+  source: "warning and error chat prefix presentation",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_LOW_FREQUENCY_WOOD_FAMILY_REGISTRY_DELTA = Object.freeze({
   previousOccurrences: 617,
   previousUniqueValues: 183,

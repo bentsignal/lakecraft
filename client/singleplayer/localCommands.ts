@@ -30,6 +30,7 @@ export const LOCAL_COMMAND_PEEK_MS = 10_000;
 export const LOCAL_TIME_PHASES = Object.freeze({ day: 0.5, night: 0 });
 export const LOCAL_COMMAND_HELP = [
   "/help",
+  "/items",
   "/gamemode <survival|creative>",
   "/give <item> [count]",
   "/time set <day|night>",
@@ -41,6 +42,7 @@ export type LocalTimePreset = keyof typeof LOCAL_TIME_PHASES;
 
 export type ParsedLocalCommand =
   | { kind: "help" }
+  | { kind: "items" }
   | { kind: "gamemode"; mode: LocalGameMode }
   | { kind: "give"; itemId: ItemId; count: number }
   | { kind: "time"; time: LocalTimePreset }
@@ -83,6 +85,11 @@ export function parseLocalCommand(
       ? { ok: true, command: { kind: "help" } }
       : { ok: false, code: "usage", message: "Usage: /help" };
   }
+  if (name === "items") {
+    return tokens.length === 0
+      ? { ok: true, command: { kind: "items" } }
+      : { ok: false, code: "usage", message: "Usage: /items" };
+  }
   if (name === "gamemode") {
     if (!permissions.changeGameMode) {
       return { ok: false, code: "permission", message: "You do not have permission to change game mode." };
@@ -101,7 +108,7 @@ export function parseLocalCommand(
     }
     const itemId = tokens[0] as ItemId;
     if (!Object.prototype.hasOwnProperty.call(ITEMS, itemId)) {
-      return { ok: false, code: "unknown_item", message: `Unknown item "${tokens[0]}". Use /help for command syntax.` };
+      return { ok: false, code: "unknown_item", message: `Unknown item "${tokens[0]}". Use /items to list item IDs.` };
     }
     const countSource = tokens[1] ?? "1";
     if (!/^[1-9]\d*$/.test(countSource)) {
