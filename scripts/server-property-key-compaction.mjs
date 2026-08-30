@@ -157,10 +157,10 @@ export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3
 // Derivation is deterministic, but the exact reviewed live set is hash-pinned
 // so source drift fails closed instead of silently broadening the transform.
 export const COMPACT_SERVER_EXTENDED_KEY_MINIMUM_GAIN = 10;
-export const COMPACT_SERVER_EXTENDED_KEY_COUNT = 98;
-// The positional clientBootstrap query and expanded wood recipes reorder
-// existing high-gain server keys without adding a new compact wire property.
-export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "526348c9bea246364c8cb50a472ef8db37517d4f1ff0af596f0314a319bc4db4";
+export const COMPACT_SERVER_EXTENDED_KEY_COUNT = 99;
+// The wood-family registry adds the internal plank and charcoal recipe-id
+// capabilities. Neither property crosses a Lakebed, database, or wire boundary.
+export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "2ae1991a0afed71b0b2c84d0934de49183ce114cbeb3c2149655560fbd21dd4e";
 // Keep the post-shared-gameplay checkpoint reconstructable. The only reviewed
 // source drift here removes owner-specific pickup filtering while leaving the
 // serialized Railway/Lakebed property spellings unchanged.

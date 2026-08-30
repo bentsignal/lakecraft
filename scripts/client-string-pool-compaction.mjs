@@ -8,9 +8,18 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 545;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 477;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "218e71e2f078f3e01d8aa41e0c2cccc73b0247049f559cbbf298300b4af565ad";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 546;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 478;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "fb089d6dd3c635d729087ea28c9cd6161804668f545e11c176c7e77325ecd770";
+export const COMPACT_CLIENT_HUMAN_WOOD_FAMILY_REGISTRY_DELTA = Object.freeze({
+  previousOccurrences: 545,
+  previousUniqueValues: 477,
+  previousSourceFingerprint: "218e71e2f078f3e01d8aa41e0c2cccc73b0247049f559cbbf298300b4af565ad",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 1,
+  source: "shared/game.ts#wood-family-capability-guard",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_HUMAN_MULTIPLAYER_AUTH_DELTA = Object.freeze({
   previousOccurrences: 544,
   previousUniqueValues: 479,
@@ -258,9 +267,27 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
   source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_397;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 140;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "9db9973b1b8b14eab140ec64a97177a8092fe0a6ed3d69e476d920289a2ec95c";
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_406;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 141;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "949fdbe5f92bacfeae4b8077993d8ca5e007c3114db6a6dc9a64e5e6be8461df";
+export const COMPACT_CLIENT_REPEATED_WOOD_FAMILY_REGISTRY_DELTA = Object.freeze({
+  previousOccurrences: 1_406,
+  previousUniqueValues: 141,
+  previousSourceFingerprint: "a7dbe47637d3be2f2e5308a7e98a42c1fa6b6adf74d5dc33b2b2a185aea071e2",
+  occurrenceDelta: 0,
+  uniqueValueDelta: 0,
+  source: "capability-aware wood-family recipe generation",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_RECIPE_TAG_DELTA = Object.freeze({
+  previousOccurrences: 1_397,
+  previousUniqueValues: 140,
+  previousSourceFingerprint: "9db9973b1b8b14eab140ec64a97177a8092fe0a6ed3d69e476d920289a2ec95c",
+  occurrenceDelta: 9,
+  uniqueValueDelta: 1,
+  source: "shared wooden-plank recipe tags and family-specific wood recipes",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_REPEATED_MULTIPLAYER_AUTH_DELTA = Object.freeze({
   previousOccurrences: 1_380,
   previousUniqueValues: 138,
@@ -707,9 +734,27 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 619;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 623;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 184;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "d08837f2dabedaf2b208c5c9b33be24d3696b24d8ae78b1b9ce69d06c963fee9";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "99bd30868dfbd622283f6dcc3273ae38b9533c772e59521d4880238ca6bdaaf6";
+export const COMPACT_CLIENT_LOW_FREQUENCY_WOOD_FAMILY_REGISTRY_DELTA = Object.freeze({
+  previousOccurrences: 617,
+  previousUniqueValues: 183,
+  previousSourceFingerprint: "f56d6b1e4cd2f5f1a6def9807234296d860f087cbb2b8f9f9aa7f133866c18d9",
+  occurrenceDelta: 6,
+  uniqueValueDelta: 1,
+  source: "capability-aware wood-family recipe generation",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_RECIPE_TAG_DELTA = Object.freeze({
+  previousOccurrences: 619,
+  previousUniqueValues: 184,
+  previousSourceFingerprint: "d08837f2dabedaf2b208c5c9b33be24d3696b24d8ae78b1b9ce69d06c963fee9",
+  occurrenceDelta: -2,
+  uniqueValueDelta: -1,
+  source: "shared wooden-plank recipe tags and family-specific wood recipes",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_LOW_FREQUENCY_WOOD_RECIPE_DELTA = Object.freeze({
   previousOccurrences: 616,
   previousUniqueValues: 183,

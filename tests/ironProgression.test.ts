@@ -18,6 +18,7 @@ import {
   type ItemId,
   type SmeltingRecipe,
 } from "../shared/game.ts";
+import { EXTRA_WOOD_FAMILIES } from "../shared/expandedBuildingCatalog.ts";
 
 function inventoryWith(...entries: Array<[ItemId, number]>): Inventory {
   let inventory = createEmptyInventory();
@@ -107,6 +108,9 @@ assert.deepEqual(
   SMELTING_RECIPES.map(({ id, input, output }) => ({ id, input, output })),
   [
     { id: "charcoal", input: "log", output: "charcoal" },
+    ...EXTRA_WOOD_FAMILIES.map((family) => ({
+      id: `charcoal_from_${family}_log`, input: `${family}_log`, output: "charcoal",
+    })),
     { id: "stone", input: "cobblestone", output: "stone" },
     { id: "iron_ingot", input: "raw_iron", output: "iron_ingot" },
     { id: "gold_ingot", input: "raw_gold", output: "gold_ingot" },

@@ -12,6 +12,7 @@ import {
   previewCraftingResult,
   rightClickCraftingSlot,
   takeCraftingResult,
+  type CraftingIngredient,
   type CraftingGrid,
   type CraftingGridRecipe,
   type CraftingGridSize,
@@ -25,8 +26,8 @@ function stack(itemId: ItemId, count = 1): ItemStack {
   return { itemId, count };
 }
 
-function itemCounts(entries: Iterable<readonly [ItemId, number]>): Record<string, number> {
-  const counts = new Map<ItemId, number>();
+function itemCounts(entries: Iterable<readonly [string, number]>): Record<string, number> {
+  const counts = new Map<string, number>();
   for (const [itemId, count] of entries) counts.set(itemId, (counts.get(itemId) ?? 0) + count);
   return Object.fromEntries([...counts].sort(([left], [right]) => left.localeCompare(right)));
 }
@@ -34,13 +35,19 @@ function itemCounts(entries: Iterable<readonly [ItemId, number]>): Record<string
 function gridFromPattern(recipe: CraftingGridRecipe, size: CraftingGridSize, rowOffset = 0, columnOffset = 0): CraftingGrid {
   const grid = createCraftingGrid(size).slice() as Array<ItemStack | null>;
   if (recipe.kind === "shapeless") {
-    recipe.ingredients.forEach((itemId, index) => { grid[index] = stack(itemId, index + 2); });
+    recipe.ingredients.forEach((ingredient, index) => { grid[index] = stack(defaultItemForIngredient(ingredient), index + 2); });
     return grid;
   }
   recipe.pattern.forEach((row, patternRow) => row.forEach((itemId, patternColumn) => {
-    if (itemId) grid[(rowOffset + patternRow) * size + columnOffset + patternColumn] = stack(itemId, 3);
+    if (itemId) grid[(rowOffset + patternRow) * size + columnOffset + patternColumn] = stack(defaultItemForIngredient(itemId), 3);
   }));
   return grid;
+}
+
+function defaultItemForIngredient(ingredient: CraftingIngredient): ItemId {
+  if (ingredient === "#wooden_planks") return "planks";
+  if (ingredient === "#wool") return "wool";
+  return ingredient;
 }
 
 assert.deepEqual(createCraftingGrid(2), [null, null, null, null]);
@@ -57,15 +64,15 @@ for (const recipe of RECIPES) {
     ? gridRecipe.pattern.flat().filter((itemId): itemId is ItemId => itemId !== null)
     : gridRecipe.ingredients;
   assert.deepEqual(
-    itemCounts(occupiedItems.map((itemId) => [itemId, 1] as const)),
-    itemCounts(recipe.ingredients.map(({ itemId, count }) => [itemId, count] as const)),
+    itemCounts(occupiedItems.map((ingredient) => [ingredient, 1] as const)),
+    itemCounts(recipe.ingredients.map(({ itemId, count, tag }) => [tag ? `#${tag}` : itemId, count] as const)),
     `${recipe.id} grid cells and aggregate ingredients must consume the same item multiset`,
   );
 }
 
 assert.equal(
   createHash("sha256").update(JSON.stringify(INITIAL_RECIPE_PATTERNS)).digest("hex"),
-  "8fc11c5a19ae1caacf1aa4c3356ae0092b581a40913e8f0a8767aaf1422a99d5",
+  "732a3e21c05026820794fa4f23678bce254ac60fcba19e0930b819e047be5a95",
   "generated recipe patterns preserve the exact serialized layout and insertion order",
 );
 assert.equal(adaptRecipesToGrid([{ ...RECIPES[0], id: "unmapped" }]).length, 0);

@@ -17,6 +17,10 @@ Never run `npx lakebed deploy .` from the worktree. The root `lakebed.json` is b
 
 The publisher stores the anonymous claim credential at `.lakebed/preview.json` with mode 0600. A later run updates the same worktree preview while it exists. If Lakebed reports it expired, the publisher creates one replacement. Never print the claim token or claim the preview.
 
+## Refresh during review
+
+Once the user starts a hosted-preview review cycle, run the publisher after every completed revision before handing the work back. Run it even when the public URL will remain the same because the deployed contents still need to be refreshed. Present the URL again after each successful refresh so the user can open the latest build directly. If publishing fails, say that the existing preview may be stale instead of presenting it as current.
+
 Verify the reported URL:
 
 ```sh

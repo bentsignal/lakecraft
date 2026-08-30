@@ -1,6 +1,17 @@
-import { ITEMS, RECIPES, createItemStack, maxItemDurability, type ItemId, type ItemQuantity, type ItemStack, type Recipe } from "./game.ts";
+import {
+  ITEMS,
+  RECIPES,
+  createItemStack,
+  isItemInRecipeTag,
+  maxItemDurability,
+  type ItemId,
+  type ItemQuantity,
+  type ItemStack,
+  type Recipe,
+  type RecipeIngredientTag,
+} from "./game.ts";
 import * as BS from "./bundleStrings.ts";
-import { EXTRA_WOOD_FAMILIES, STONE_SHAPE_FAMILIES } from "./expandedBuildingCatalog.ts";
+import { STONE_SHAPE_FAMILIES, WOOD_FAMILY_DEFINITIONS } from "./expandedBuildingCatalog.ts";
 
 export type CraftingGridSize = 2 | 3;
 export type CraftingGrid = ReadonlyArray<ItemStack | null>;
@@ -10,11 +21,13 @@ export type CraftingGridState = {
   cursor: ItemStack | null;
 };
 
+export type CraftingIngredient = ItemId | `#${RecipeIngredientTag}`;
+
 export type ShapedCraftingRecipe = {
   kind: "shaped";
   id: string;
   output: ItemQuantity;
-  pattern: ReadonlyArray<ReadonlyArray<ItemId | null>>;
+  pattern: ReadonlyArray<ReadonlyArray<CraftingIngredient | null>>;
   allowHorizontalMirror?: boolean;
 };
 
@@ -22,7 +35,7 @@ export type ShapelessCraftingRecipe = {
   kind: "shapeless";
   id: string;
   output: ItemQuantity;
-  ingredients: ReadonlyArray<ItemId>;
+  ingredients: ReadonlyArray<CraftingIngredient>;
 };
 
 export type CraftingGridRecipe = ShapedCraftingRecipe | ShapelessCraftingRecipe;
@@ -44,15 +57,16 @@ export type CraftingTakeResult =
 type RecipeShape = Omit<ShapedCraftingRecipe, "id" | "output"> | Omit<ShapelessCraftingRecipe, "id" | "output">;
 type RecipePatternEntry = readonly [id: string, shape: RecipeShape];
 
+const A = "#wooden_planks" as const;
 const P = "planks" as const;
 const S = "stick" as const;
 const C = BS.cobblestone as const;
 const K = "coal" as const;
 const H = "charcoal" as const;
-const W = "wool" as const;
+const W = "#wool" as const;
 
-function equipmentPatternEntries(prefix: string, material: ItemId, armor: boolean): RecipePatternEntry[] {
-  const shapes: ReadonlyArray<readonly [string, ReadonlyArray<ReadonlyArray<ItemId | null>>]> = armor
+function equipmentPatternEntries(prefix: string, material: CraftingIngredient, armor: boolean): RecipePatternEntry[] {
+  const shapes: ReadonlyArray<readonly [string, ReadonlyArray<ReadonlyArray<CraftingIngredient | null>>]> = armor
     ? [
       ["helmet", [[material, material, material], [material, null, material]]],
       ["chestplate", [[material, null, material], [material, material, material], [material, material, material]]],
@@ -74,7 +88,7 @@ function equipmentPatternEntries(prefix: string, material: ItemId, armor: boolea
 }
 
 const GENERATED_EQUIPMENT_PATTERNS = Object.fromEntries(([
-  ["wooden", P, false],
+  ["wooden", A, false],
   ["stone", C, false],
   ["iron", BS.ironIngot, false],
   ["golden", BS.goldIngot, false],
@@ -85,10 +99,23 @@ const GENERATED_EQUIPMENT_PATTERNS = Object.fromEntries(([
   ["diamond", "diamond", true],
 ] as const).flatMap(([prefix, material, armor]) => equipmentPatternEntries(prefix, material, armor)));
 
-const GENERATED_WOOD_PLANK_PATTERNS = Object.fromEntries(EXTRA_WOOD_FAMILIES.map((family) => [
-  `${family}_planks_from_log`,
-  { kind: "shapeless", ingredients: [`${family}_log` as ItemId] },
-] satisfies RecipePatternEntry));
+const GENERATED_WOOD_PLANK_PATTERNS = Object.fromEntries(WOOD_FAMILY_DEFINITIONS.flatMap((family) =>
+  family.log && family.plankRecipeId
+    ? [[family.plankRecipeId, { kind: "shapeless", ingredients: [family.log as ItemId] }] satisfies RecipePatternEntry]
+    : []));
+
+const GENERATED_WOOD_SHAPE_PATTERNS = Object.fromEntries(WOOD_FAMILY_DEFINITIONS.flatMap((family) => {
+  const planks = family.planks as ItemId;
+  const patterns: RecipePatternEntry[] = [
+    [family.slab, { kind: "shaped", pattern: [[planks, planks, planks]] }],
+    [family.stairs, { kind: "shaped", pattern: [[planks, null, null], [planks, planks, null], [planks, planks, planks]], allowHorizontalMirror: true }],
+  ];
+  if (family.door) patterns.push([
+    family.door,
+    { kind: "shaped", pattern: [[planks, planks], [planks, planks], [planks, planks]] },
+  ]);
+  return patterns;
+}));
 
 /**
  * Canonical, Minecraft-style layouts for every recipe currently exported by
@@ -96,10 +123,9 @@ const GENERATED_WOOD_PLANK_PATTERNS = Object.fromEntries(EXTRA_WOOD_FAMILIES.map
  * from the game's progression quantities.
  */
 export const INITIAL_RECIPE_PATTERNS: Readonly<Record<string, RecipeShape>> = {
-  planks_from_log: { kind: "shapeless", ingredients: ["log"] },
   ...GENERATED_WOOD_PLANK_PATTERNS,
-  sticks_from_planks: { kind: "shaped", pattern: [[P], [P]] },
-  crafting_table: { kind: "shaped", pattern: [[P, P], [P, P]] },
+  sticks_from_planks: { kind: "shaped", pattern: [[A], [A]] },
+  crafting_table: { kind: "shaped", pattern: [[A, A], [A, A]] },
   torch: { kind: "shaped", pattern: [[K], [S]] },
   torch_charcoal: { kind: "shaped", pattern: [[H], [S]] },
   bone_meal: { kind: "shapeless", ingredients: ["bone"] },
@@ -108,10 +134,8 @@ export const INITIAL_RECIPE_PATTERNS: Readonly<Record<string, RecipeShape>> = {
   oak_fence_gate: { kind: "shaped", pattern: [[S, P, S], [S, P, S]] },
   stone_brick_slab: { kind: "shaped", pattern: [[BS.stoneBricks, BS.stoneBricks, BS.stoneBricks]] },
   bricks: { kind: "shaped", pattern: [["brick", "brick"], ["brick", "brick"]] },
-  oak_slab: { kind: "shaped", pattern: [[P, P, P]] },
   cobblestone_slab: { kind: "shaped", pattern: [[C, C, C]] },
   brick_slab: { kind: "shaped", pattern: [["bricks", "bricks", "bricks"]] },
-  oak_stairs: { kind: "shaped", pattern: [[P, null, null], [P, P, null], [P, P, P]], allowHorizontalMirror: true },
   cobblestone_stairs: { kind: "shaped", pattern: [[C, null, null], [C, C, null], [C, C, C]], allowHorizontalMirror: true },
   stone_brick_stairs: { kind: "shaped", pattern: [[BS.stoneBricks, null, null], [BS.stoneBricks, BS.stoneBricks, null], [BS.stoneBricks, BS.stoneBricks, BS.stoneBricks]], allowHorizontalMirror: true },
   brick_stairs: { kind: "shaped", pattern: [["bricks", null, null], ["bricks", "bricks", null], ["bricks", "bricks", "bricks"]], allowHorizontalMirror: true },
@@ -124,9 +148,9 @@ export const INITIAL_RECIPE_PATTERNS: Readonly<Record<string, RecipeShape>> = {
   })),
   furnace: { kind: "shaped", pattern: [[C, C, C], [C, null, C], [C, C, C]] },
   ladder: { kind: "shaped", pattern: [[S, null, S], [S, S, S], [S, null, S]] },
-  chest: { kind: "shaped", pattern: [[P, P, P], [P, null, P], [P, P, P]] },
-  door: { kind: "shaped", pattern: [[P, P], [P, P], [P, P]] },
-  bed: { kind: "shaped", pattern: [[W, W, W], [P, P, P]] },
+  chest: { kind: "shaped", pattern: [[A, A, A], [A, null, A], [A, A, A]] },
+  bed: { kind: "shaped", pattern: [[W, W, W], [A, A, A]] },
+  ...GENERATED_WOOD_SHAPE_PATTERNS,
   tnt: { kind: "shaped", pattern: [[BS.gunpowder, "sand", BS.gunpowder], ["sand", BS.gunpowder, "sand"], [BS.gunpowder, "sand", BS.gunpowder]] },
   flint_and_steel: { kind: "shaped", pattern: [[BS.ironIngot, null], [null, "flint"]], allowHorizontalMirror: true },
   shears: { kind: "shaped", pattern: [[BS.ironIngot, null], [null, BS.ironIngot]], allowHorizontalMirror: true },
@@ -304,7 +328,8 @@ function matchShaped(grid: CraftingGrid, size: CraftingGridSize, recipe: ShapedC
             const expected = inPattern ? pattern[row - offsetRow][column - offsetColumn] : null;
             const slot = row * size + column;
             const actual = grid[slot];
-            if ((expected === null && actual !== null) || (expected !== null && actual?.itemId !== expected)) {
+            if ((expected === null && actual !== null)
+              || (expected !== null && (!actual || !craftingIngredientMatches(expected, actual.itemId)))) {
               matches = false;
               break;
             }
@@ -324,12 +349,18 @@ function matchShapeless(grid: CraftingGrid, recipe: ShapelessCraftingRecipe): nu
   const available = [...occupied];
   const consumed: number[] = [];
   for (const ingredient of recipe.ingredients) {
-    const index = available.findIndex(({ itemId }) => itemId === ingredient);
+    const index = available.findIndex(({ itemId }) => craftingIngredientMatches(ingredient, itemId));
     if (index < 0) return null;
     consumed.push(available[index].slot);
     available.splice(index, 1);
   }
   return consumed;
+}
+
+function craftingIngredientMatches(ingredient: CraftingIngredient, itemId: ItemId): boolean {
+  return ingredient.startsWith("#")
+    ? isItemInRecipeTag(itemId, ingredient.slice(1) as RecipeIngredientTag)
+    : itemId === ingredient;
 }
 
 function validateInteraction(state: CraftingGridState, slot: number, size: CraftingGridSize): CraftingClickResult | null {
@@ -377,6 +408,6 @@ function withCount(stack: ItemStack, count: number): ItemStack {
   return { ...stack, count };
 }
 
-function mirrorPattern(pattern: ReadonlyArray<ReadonlyArray<ItemId | null>>): ReadonlyArray<ReadonlyArray<ItemId | null>> {
+function mirrorPattern(pattern: ReadonlyArray<ReadonlyArray<CraftingIngredient | null>>): ReadonlyArray<ReadonlyArray<CraftingIngredient | null>> {
   return pattern.map((row) => [...row].reverse());
 }

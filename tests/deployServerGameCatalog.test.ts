@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -68,7 +68,7 @@ const source = readFileSync(new URL("../shared/game.ts", import.meta.url), "utf8
 const transformed = stripServerGamePresentation(source);
 assert.throws(
   () => stripServerGamePresentation(source.replace('"label":"Granite Slab",', "")),
-  /RECIPES expected 232 presentation properties, received 231/,
+  /RECIPES expected 210 presentation properties, received 209/,
   "quoted generated recipe presentation removal fails closed before staging",
 );
 assert.throws(
@@ -85,6 +85,7 @@ for (const [kind, sentinel] of Object.entries(SERVER_PRESENTATION_SENTINELS)) {
 const directory = mkdtempSync(join(tmpdir(), "lakecraft-server-game-"));
 const transformedPath = join(directory, "game.ts");
 writeFileSync(transformedPath, transformed);
+cpSync(new URL("../shared/expandedBuildingCatalog.ts", import.meta.url), join(directory, "expandedBuildingCatalog.ts"));
 try {
   const serverGame = await import(`${pathToFileURL(transformedPath).href}?v=${Date.now()}`) as GameModule;
   assert.deepEqual(blockMechanics(serverGame.BLOCKS), blockMechanics(clientBlocks));

@@ -86,8 +86,8 @@ const TUPLE_CATALOGS = [
 ];
 
 const OBJECT_CATALOGS = [
-  { name: "RECIPES", anchor: "export const RECIPES", properties: ["label", "note"], expectedMatches: 232 },
-  { name: "SMELTING_RECIPES", anchor: "export const SMELTING_RECIPES", properties: ["label"], expectedMatches: 10 },
+  { name: "RECIPES", anchor: "export const RECIPES", properties: ["label", "note"], expectedMatches: 210 },
+  { name: "SMELTING_RECIPES", anchor: "export const SMELTING_RECIPES", properties: ["label"], expectedMatches: 9 },
 ];
 
 function fail(message) {
@@ -289,19 +289,41 @@ const SERVER_ITEM_ENTRIES = `const ITEM_ENTRIES: Array<readonly [ItemId, ItemDef
 
 `;
 
-const SERVER_CRAFTING_TABLE_RECIPE = `function craftingTableRecipe(id: ItemId, ingredients: readonly RecipeIngredientSpec[]): Recipe {
+const SERVER_CRAFTING_TABLE_RECIPE = `function craftingTableRecipe(id: ItemId, ingredients: readonly RecipeIngredientSpec[], outputCount = 1): Recipe {
   return {
     id,
     craftingContext: "crafting_table",
-    ingredients: ingredients.map(([itemId, count]) => ({ itemId, count })),
-    output: { itemId: id, count: 1 },
+    ingredients: ingredients.map(([itemId, count, tag]) => ({ itemId, count, ...(tag ? { tag } : {}) })),
+    output: { itemId: id, count: outputCount },
   } as Recipe;
 }
+
+function woodPlankRecipe(family: WoodFamilyDefinition): Recipe {
+  if (!family.log || !family.plankRecipeId) throw new Error(\`Wood family \${family.id} cannot make planks from a log.\`);
+  return {
+    id: family.plankRecipeId,
+    craftingContext: "field",
+    ingredients: [{ itemId: family.log as ItemId, count: 1 }],
+    output: { itemId: family.planks as ItemId, count: 4 },
+  } as Recipe;
+}
+
+function woodSmeltingRecipe(family: WoodFamilyDefinition): SmeltingRecipe {
+  if (!family.log || !family.charcoalRecipeId) throw new Error(\`Wood family \${family.id} cannot make charcoal.\`);
+  return { id: family.charcoalRecipeId, input: family.log as ItemId, output: "charcoal" } as SmeltingRecipe;
+}
+
+const WOOD_LOG_FAMILIES = WOOD_FAMILY_DEFINITIONS.filter(
+  (family) => family.log !== null && family.plankRecipeId !== null && family.charcoalRecipeId !== null,
+);
+const GENERATED_WOOD_PLANK_RECIPES = WOOD_LOG_FAMILIES.map(woodPlankRecipe);
+const GENERATED_WOOD_SMELTING_RECIPES = WOOD_LOG_FAMILIES.map(woodSmeltingRecipe);
 
 `;
 
 const CLIENT_CATALOG_IDENTIFIER = "__lakecraftGameCatalog";
-const CLIENT_CATALOG_FINGERPRINT = "5df94cd8";
+const CLIENT_CATALOG_FINGERPRINT = "1ff1d36b";
+const RECIPE_BUILDER_FINGERPRINT = "b92c61be";
 
 function compressStaticBytes(bytes) {
   const packed = [];
@@ -363,6 +385,12 @@ export function compactClientGameCatalog(source) {
   if (source.includes(CLIENT_CATALOG_IDENTIFIER)) {
     fail("client catalog identifier collides with source text.");
   }
+  const recipeBuilderStart = uniqueAnchor(source, "function craftingTableRecipe(", "recipe mechanics builder start");
+  const recipeBuilderEnd = uniqueAnchor(source, "const GENERATED_TOOL_RECIPES =", "recipe mechanics builder end");
+  const recipeBuilderFingerprint = sourceFingerprint(source.slice(recipeBuilderStart, recipeBuilderEnd));
+  if (recipeBuilderFingerprint !== RECIPE_BUILDER_FINGERPRINT) {
+    fail(`client catalog values changed (expected recipe builder ${RECIPE_BUILDER_FINGERPRINT}, found ${recipeBuilderFingerprint}).`);
+  }
   const catalogs = [];
   const replacements = [];
   for (const catalog of TUPLE_CATALOGS) {
@@ -409,24 +437,41 @@ export function compactClientGameCatalog(source) {
   };
 
   const recipeRange = catalogArrayRange(source, OBJECT_CATALOGS[0]);
+  const woodRecipeSpreadText = "...GENERATED_WOOD_PLANK_RECIPES,";
+  const woodRecipeSpread = recipeRange.text.indexOf(woodRecipeSpreadText);
+  if (woodRecipeSpread < 0 || recipeRange.text.indexOf(woodRecipeSpreadText, woodRecipeSpread + 1) >= 0) {
+    fail("RECIPES wood-family spread anchor changed.");
+  }
   const recipeSpread = recipeRange.text.indexOf("...GENERATED_TOOL_RECIPES");
   if (recipeSpread < 0 || recipeRange.text.indexOf("...GENERATED_TOOL_RECIPES", recipeSpread + 1) >= 0) {
     fail("RECIPES generated spread anchor changed.");
   }
-  const literalRecipeText = recipeRange.text.slice(1, recipeSpread);
-  const literalRecipes = parseObjectRows(literalRecipeText, "RECIPES", 116);
+  const literalRecipeText = recipeRange.text.slice(woodRecipeSpread + woodRecipeSpreadText.length, recipeSpread);
+  const literalRecipes = parseObjectRows(literalRecipeText, "RECIPES", 105);
   const recipeIndex = catalogs.length;
   catalogs.push(literalRecipes);
   replacements.push({
     ...recipeRange,
-    text: `[...${CLIENT_CATALOG_IDENTIFIER}[${recipeIndex}],${recipeRange.text.slice(recipeSpread)}`,
+    text: `[${woodRecipeSpreadText}...${CLIENT_CATALOG_IDENTIFIER}[${recipeIndex}],${recipeRange.text.slice(recipeSpread)}`,
   });
 
   const smeltingRange = catalogArrayRange(source, OBJECT_CATALOGS[1]);
-  const smeltingRows = parseObjectRows(smeltingRange.text.slice(1, -1), "SMELTING_RECIPES", 10);
+  const woodSmeltingSpreadText = "...GENERATED_WOOD_SMELTING_RECIPES,";
+  const woodSmeltingSpread = smeltingRange.text.indexOf(woodSmeltingSpreadText);
+  if (woodSmeltingSpread < 0 || smeltingRange.text.indexOf(woodSmeltingSpreadText, woodSmeltingSpread + 1) >= 0) {
+    fail("SMELTING_RECIPES wood-family spread anchor changed.");
+  }
+  const smeltingRows = parseObjectRows(
+    smeltingRange.text.slice(woodSmeltingSpread + woodSmeltingSpreadText.length, -1),
+    "SMELTING_RECIPES",
+    9,
+  );
   const smeltingIndex = catalogs.length;
   catalogs.push(smeltingRows);
-  replacements.push({ ...smeltingRange, text: `[...${CLIENT_CATALOG_IDENTIFIER}[${smeltingIndex}]]` });
+  replacements.push({
+    ...smeltingRange,
+    text: `[${woodSmeltingSpreadText}...${CLIENT_CATALOG_IDENTIFIER}[${smeltingIndex}]]`,
+  });
 
   const serialized = JSON.stringify(catalogs);
   const fingerprint = sourceFingerprint(serialized);
@@ -460,7 +505,7 @@ export function stripServerGamePresentation(source) {
   contents = replaceAnchoredRange(contents, "function defineBlocks(", "export const BLOCKS = defineBlocks(", SERVER_DEFINE_BLOCKS, "block mechanics builder", "79dcea12");
   contents = replaceAnchoredRange(contents, "function blockItem(", "type BasicItemSpec =", SERVER_ITEM_BUILDERS, "item mechanics builders", "0eb24b09");
   contents = replaceAnchoredRange(contents, "const ITEM_ENTRIES:", "export const ITEMS =", SERVER_ITEM_ENTRIES, "item mechanics catalog", "cadb670e");
-  contents = replaceAnchoredRange(contents, "function craftingTableRecipe(", "const GENERATED_TOOL_RECIPES =", SERVER_CRAFTING_TABLE_RECIPE, "recipe mechanics builder", "6fb8bfa0");
+  contents = replaceAnchoredRange(contents, "function craftingTableRecipe(", "const GENERATED_TOOL_RECIPES =", SERVER_CRAFTING_TABLE_RECIPE, "recipe mechanics builder", RECIPE_BUILDER_FINGERPRINT);
   return contents;
 }
 
@@ -495,7 +540,7 @@ export const SERVER_PRESENTATION_SENTINELS = Object.freeze({
   itemGlyph: "▨",
   toolDescription: "A light pick for fieldstone.",
   armorDescription: "A durable diamond helmet.",
-  recipeLabel: "Saw planks",
-  recipeNote: "Split one log into four boards.",
+  recipeLabel: "Torches",
+  recipeNote: "A lump of coal and a stick make four warm lights.",
   smeltingLabel: "Smelt iron",
 });

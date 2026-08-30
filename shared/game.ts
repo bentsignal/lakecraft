@@ -9,7 +9,13 @@ export const STARVATION_DAMAGE_INTERVAL_SECONDS = 4;
 export const MAX_SURVIVAL_STEP_SECONDS = 5;
 export const STARVATION_MIN_HEALTH = 1;
 
-import type { ExpandedBlockItemId } from "./expandedBuildingCatalog.ts";
+import {
+  WOOD_FAMILY_DEFINITIONS,
+  WOOD_PLANK_ITEM_IDS,
+  WOOL_ITEM_IDS,
+  type ExpandedBlockItemId,
+  type WoodFamilyDefinition,
+} from "./expandedBuildingCatalog.ts";
 
 export type BlockId = "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "log" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door" | "bed" | "ladder" | "tnt" | "wool" | "sapling" | "stone_bricks" | "oak_fence" | "oak_fence_gate" | "stone_brick_slab" | "clay" | "bricks" | "oak_slab" | "cobblestone_slab" | "brick_slab" | "oak_stairs" | "cobblestone_stairs" | "stone_brick_stairs" | "brick_stairs" | ExpandedBlockItemId;
 export type ToolId =
@@ -131,6 +137,17 @@ export type ItemDefinition = {
 export type ItemStack = { itemId: ItemId; count: number; durability?: number };
 export type Inventory = Array<ItemStack | null>;
 export type ItemQuantity = { itemId: ItemId; count: number };
+export type RecipeIngredientTag = "wooden_planks" | "wool";
+export type RecipeIngredient = ItemQuantity & { tag?: RecipeIngredientTag };
+
+export const RECIPE_ITEM_TAGS: Readonly<Record<RecipeIngredientTag, readonly ItemId[]>> = {
+  wooden_planks: WOOD_PLANK_ITEM_IDS,
+  wool: WOOL_ITEM_IDS,
+};
+
+export function isItemInRecipeTag(itemId: ItemId, tag: RecipeIngredientTag): boolean {
+  return RECIPE_ITEM_TAGS[tag].includes(itemId);
+}
 
 export type FoodConsumptionResult =
   | { ok: true; inventory: Inventory; hunger: number; consumed: ItemId; restored: number }
@@ -160,7 +177,7 @@ export type Recipe = {
   label: string;
   note: string;
   craftingContext: CraftingContext;
-  ingredients: ItemQuantity[];
+  ingredients: RecipeIngredient[];
   output: ItemQuantity;
 };
 
@@ -857,34 +874,61 @@ const ITEM_ENTRIES: Array<readonly [ItemId, ItemDefinition]> = [
 
 export const ITEMS = Object.fromEntries(ITEM_ENTRIES) as Record<ItemId, ItemDefinition>;
 
-type RecipeIngredientSpec = readonly [itemId: ItemId, count: number];
+type RecipeIngredientSpec = readonly [itemId: ItemId, count: number, tag?: RecipeIngredientTag];
 
-function craftingTableRecipe(id: ItemId, ingredients: readonly RecipeIngredientSpec[]): Recipe {
+function craftingTableRecipe(id: ItemId, ingredients: readonly RecipeIngredientSpec[], outputCount = 1): Recipe {
   const item = ITEMS[id];
   return {
     id,
     label: item.label,
     note: item.description,
     craftingContext: "crafting_table",
-    ingredients: ingredients.map(([itemId, count]) => ({ itemId, count })),
-    output: { itemId: id, count: 1 },
+    ingredients: ingredients.map(([itemId, count, tag]) => ({ itemId, count, ...(tag ? { tag } : {}) })),
+    output: { itemId: id, count: outputCount },
   };
 }
 
+function woodPlankRecipe(family: WoodFamilyDefinition): Recipe {
+  if (!family.log || !family.plankRecipeId) throw new Error(`Wood family ${family.id} cannot make planks from a log.`);
+  const log = family.log as ItemId;
+  const planks = family.planks as ItemId;
+  const familyName = family.id.replaceAll("_", " ");
+  const woodName = family.id === "oak" ? "" : `${familyName} `;
+  return {
+    id: family.plankRecipeId,
+    label: `Saw ${woodName}planks`,
+    note: `Split one ${woodName}log into four ${family.id === "oak" ? "boards" : `${woodName}planks`}.`,
+    craftingContext: "field",
+    ingredients: [{ itemId: log, count: 1 }],
+    output: { itemId: planks, count: 4 },
+  };
+}
+
+function woodSmeltingRecipe(family: WoodFamilyDefinition): SmeltingRecipe {
+  if (!family.log || !family.charcoalRecipeId) throw new Error(`Wood family ${family.id} cannot make charcoal.`);
+  return { id: family.charcoalRecipeId, label: "Make charcoal", input: family.log as ItemId, output: "charcoal" };
+}
+
+const WOOD_LOG_FAMILIES = WOOD_FAMILY_DEFINITIONS.filter(
+  (family) => family.log !== null && family.plankRecipeId !== null && family.charcoalRecipeId !== null,
+);
+const GENERATED_WOOD_PLANK_RECIPES = WOOD_LOG_FAMILIES.map(woodPlankRecipe);
+const GENERATED_WOOD_SMELTING_RECIPES = WOOD_LOG_FAMILIES.map(woodSmeltingRecipe);
+
 const GENERATED_TOOL_RECIPES = ([
-  ["wooden", "planks"],
-  ["stone", "cobblestone"],
-  ["iron", "iron_ingot"],
-  ["golden", "gold_ingot"],
-  ["diamond", "diamond"],
-] as const).flatMap(([prefix, material]) => ([
+  ["wooden", "planks", "wooden_planks"],
+  ["stone", "cobblestone", undefined],
+  ["iron", "iron_ingot", undefined],
+  ["golden", "gold_ingot", undefined],
+  ["diamond", "diamond", undefined],
+] as const).flatMap(([prefix, material, materialTag]) => ([
   ["pickaxe", 3, 2],
   ["axe", 3, 2],
   ["shovel", 1, 2],
   ["sword", 2, 1],
 ] as const).map(([kind, materialCount, stickCount]) => craftingTableRecipe(
   `${prefix}_${kind}` as ToolId,
-  [[material, materialCount], ["stick", stickCount]],
+  [[material, materialCount, materialTag], ["stick", stickCount]],
 )));
 
 const GENERATED_ARMOR_RECIPES = ([
@@ -902,17 +946,20 @@ const GENERATED_ARMOR_RECIPES = ([
   [[material, count]],
 )));
 
+const GENERATED_WOOD_SHAPE_RECIPES = WOOD_FAMILY_DEFINITIONS.flatMap((family) => {
+  const planks = family.planks as ItemId;
+  const recipes = [
+    craftingTableRecipe(family.slab as ItemId, [[planks, 3]], 6),
+    craftingTableRecipe(family.stairs as ItemId, [[planks, 6]], 4),
+  ];
+  if (family.door) recipes.push(craftingTableRecipe(family.door as ItemId, [[planks, 6]]));
+  return recipes;
+});
+
 export const RECIPES: readonly Recipe[] = [
-  { id: "planks_from_log", label: "Saw planks", note: "Split one log into four boards.", craftingContext: "field", ingredients: [{ itemId: "log", count: 1 }], output: { itemId: "planks", count: 4 } },
-  { id: "spruce_planks_from_log", label: "Saw spruce planks", note: "Split one spruce log into four spruce planks.", craftingContext: "field", ingredients: [{ itemId: "spruce_log", count: 1 }], output: { itemId: "spruce_planks", count: 4 } },
-  { id: "birch_planks_from_log", label: "Saw birch planks", note: "Split one birch log into four birch planks.", craftingContext: "field", ingredients: [{ itemId: "birch_log", count: 1 }], output: { itemId: "birch_planks", count: 4 } },
-  { id: "jungle_planks_from_log", label: "Saw jungle planks", note: "Split one jungle log into four jungle planks.", craftingContext: "field", ingredients: [{ itemId: "jungle_log", count: 1 }], output: { itemId: "jungle_planks", count: 4 } },
-  { id: "acacia_planks_from_log", label: "Saw acacia planks", note: "Split one acacia log into four acacia planks.", craftingContext: "field", ingredients: [{ itemId: "acacia_log", count: 1 }], output: { itemId: "acacia_planks", count: 4 } },
-  { id: "dark_oak_planks_from_log", label: "Saw dark oak planks", note: "Split one dark oak log into four dark oak planks.", craftingContext: "field", ingredients: [{ itemId: "dark_oak_log", count: 1 }], output: { itemId: "dark_oak_planks", count: 4 } },
-  { id: "mangrove_planks_from_log", label: "Saw mangrove planks", note: "Split one mangrove log into four mangrove planks.", craftingContext: "field", ingredients: [{ itemId: "mangrove_log", count: 1 }], output: { itemId: "mangrove_planks", count: 4 } },
-  { id: "cherry_planks_from_log", label: "Saw cherry planks", note: "Split one cherry log into four cherry planks.", craftingContext: "field", ingredients: [{ itemId: "cherry_log", count: 1 }], output: { itemId: "cherry_planks", count: 4 } },
-  { id: "sticks_from_planks", label: "Whittle sticks", note: "Two boards make four handles.", craftingContext: "field", ingredients: [{ itemId: "planks", count: 2 }], output: { itemId: "stick", count: 4 } },
-  { id: "crafting_table", label: "Crafting table", note: "Four boards make a proper workbench.", craftingContext: "field", ingredients: [{ itemId: "planks", count: 4 }], output: { itemId: "crafting_table", count: 1 } },
+  ...GENERATED_WOOD_PLANK_RECIPES,
+  { id: "sticks_from_planks", label: "Whittle sticks", note: "Two boards make four handles.", craftingContext: "field", ingredients: [{ itemId: "planks", count: 2, tag: "wooden_planks" }], output: { itemId: "stick", count: 4 } },
+  { id: "crafting_table", label: "Crafting table", note: "Four boards make a proper workbench.", craftingContext: "field", ingredients: [{ itemId: "planks", count: 4, tag: "wooden_planks" }], output: { itemId: "crafting_table", count: 1 } },
   { id: "torch", label: "Torches", note: "A lump of coal and a stick make four warm lights.", craftingContext: "field", ingredients: [{ itemId: "coal", count: 1 }, { itemId: "stick", count: 1 }], output: { itemId: "torch", count: 4 } },
   { id: "torch_charcoal", label: "Charcoal torches", note: "A piece of charcoal and a stick make four warm lights.", craftingContext: "field", ingredients: [{ itemId: "charcoal", count: 1 }, { itemId: "stick", count: 1 }], output: { itemId: "torch", count: 4 } },
   { id: "bone_meal", label: "Bone meal", note: "One bone makes three handfuls of bone meal.", craftingContext: "field", ingredients: [{ itemId: "bone", count: 1 }], output: { itemId: "bone_meal", count: 3 } },
@@ -921,18 +968,15 @@ export const RECIPES: readonly Recipe[] = [
   { id: "oak_fence_gate", label: "Oak fence gate", note: "Two boards and four sticks make one hinged oak gate.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 2 }, { itemId: "stick", count: 4 }], output: { itemId: "oak_fence_gate", count: 1 } },
   { id: "stone_brick_slab", label: "Stone brick slabs", note: "Three stone bricks make six half-height building slabs.", craftingContext: "crafting_table", ingredients: [{ itemId: "stone_bricks", count: 3 }], output: { itemId: "stone_brick_slab", count: 6 } },
   { id: "bricks", label: "Bricks", note: "Four fired bricks make one masonry block.", craftingContext: "field", ingredients: [{ itemId: "brick", count: 4 }], output: { itemId: "bricks", count: 1 } },
-  { id: "oak_slab", label: "Oak slabs", note: "Three oak planks make six half-height building slabs.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 3 }], output: { itemId: "oak_slab", count: 6 } },
   { id: "cobblestone_slab", label: "Cobblestone slabs", note: "Three cobblestone make six half-height building slabs.", craftingContext: "crafting_table", ingredients: [{ itemId: "cobblestone", count: 3 }], output: { itemId: "cobblestone_slab", count: 6 } },
   { id: "brick_slab", label: "Brick slabs", note: "Three brick blocks make six half-height building slabs.", craftingContext: "crafting_table", ingredients: [{ itemId: "bricks", count: 3 }], output: { itemId: "brick_slab", count: 6 } },
-  { id: "oak_stairs", label: "Oak stairs", note: "Six oak planks make four stairs.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 6 }], output: { itemId: "oak_stairs", count: 4 } },
   { id: "cobblestone_stairs", label: "Cobblestone stairs", note: "Six cobblestone make four stairs.", craftingContext: "crafting_table", ingredients: [{ itemId: "cobblestone", count: 6 }], output: { itemId: "cobblestone_stairs", count: 4 } },
   { id: "stone_brick_stairs", label: "Stone brick stairs", note: "Six stone bricks make four stairs.", craftingContext: "crafting_table", ingredients: [{ itemId: "stone_bricks", count: 6 }], output: { itemId: "stone_brick_stairs", count: 4 } },
   { id: "brick_stairs", label: "Brick stairs", note: "Six brick blocks make four stairs.", craftingContext: "crafting_table", ingredients: [{ itemId: "bricks", count: 6 }], output: { itemId: "brick_stairs", count: 4 } },
   { id: "furnace", label: "Furnace", note: "Eight cobblestone make a furnace for ore and food.", craftingContext: "crafting_table", ingredients: [{ itemId: "cobblestone", count: 8 }], output: { itemId: "furnace", count: 1 } },
   { id: "ladder", label: "Ladders", note: "Seven sticks make three climbable rungs.", craftingContext: "crafting_table", ingredients: [{ itemId: "stick", count: 7 }], output: { itemId: "ladder", count: 3 } },
-  { id: "chest", label: "Chest", note: "Eight boards make shared storage.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 8 }], output: { itemId: "chest", count: 1 } },
-  { id: "door", label: "Oak door", note: "Six boards make a shelter door.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 6 }], output: { itemId: "door", count: 1 } },
-  { id: "bed", label: "Bed", note: "Three wool and three boards make a bed.", craftingContext: "crafting_table", ingredients: [{ itemId: "wool", count: 3 }, { itemId: "planks", count: 3 }], output: { itemId: "bed", count: 1 } },
+  { id: "chest", label: "Chest", note: "Eight boards make shared storage.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 8, tag: "wooden_planks" }], output: { itemId: "chest", count: 1 } },
+  { id: "bed", label: "Bed", note: "Three wool and three boards make a bed.", craftingContext: "crafting_table", ingredients: [{ itemId: "wool", count: 3, tag: "wool" }, { itemId: "planks", count: 3, tag: "wooden_planks" }], output: { itemId: "bed", count: 1 } },
   { id: "tnt", label: "TNT", note: "Five gunpowder and four sand make one volatile block.", craftingContext: "crafting_table", ingredients: [{ itemId: "gunpowder", count: 5 }, { itemId: "sand", count: 4 }], output: { itemId: "tnt", count: 1 } },
   { id: "stone_slab", label: "Stone Slab", note: "Three stone blocks make six slabs.", craftingContext: "crafting_table", ingredients: [{ itemId: "stone", count: 3 }], output: { itemId: "stone_slab", count: 6 } },
   { id: "stone_stairs", label: "Stone Stairs", note: "Six stone blocks make four stairs.", craftingContext: "crafting_table", ingredients: [{ itemId: "stone", count: 6 }], output: { itemId: "stone_stairs", count: 4 } },
@@ -1003,7 +1047,7 @@ export const RECIPES: readonly Recipe[] = [
   {"id":"waxed_exposed_cut_copper_slab","label":"Waxed Exposed Cut Copper Slab","note":"Three waxed exposed cut copper blocks make six slabs.","craftingContext":"crafting_table","ingredients":[{"itemId":"waxed_exposed_cut_copper","count":3}],"output":{"itemId":"waxed_exposed_cut_copper_slab","count":6}},
   {"id":"waxed_exposed_cut_copper_stairs","label":"Waxed Exposed Cut Copper Stairs","note":"Six waxed exposed cut copper blocks make four stairs.","craftingContext":"crafting_table","ingredients":[{"itemId":"waxed_exposed_cut_copper","count":6}],"output":{"itemId":"waxed_exposed_cut_copper_stairs","count":4}},
   {"id":"waxed_weathered_cut_copper_slab","label":"Waxed Weathered Cut Copper Slab","note":"Three waxed weathered cut copper blocks make six slabs.","craftingContext":"crafting_table","ingredients":[{"itemId":"waxed_weathered_cut_copper","count":3}],"output":{"itemId":"waxed_weathered_cut_copper_slab","count":6}},
-  {"id":"waxed_weathered_cut_copper_stairs","label":"Waxed Weathered Cut Copper Stairs","note":"Six waxed weathered cut copper blocks make four stairs.","craftingContext":"crafting_table","ingredients":[{"itemId":"waxed_weathered_cut_copper","count":6}],"output":{"itemId":"waxed_weathered_cut_copper_stairs","count":4}},
+  {"id":"waxed_weathered_cut_copper_stairs","label":"Waxed WeathOkay. Yeah, that makes sense. I think we should do that. Another thing too is yes to be honest the value on this product has been going fine so far.ered Cut Copper Stairs","note":"Six waxed weathered cut copper blocks make four stairs.","craftingContext":"crafting_table","ingredients":[{"itemId":"waxed_weathered_cut_copper","count":6}],"output":{"itemId":"waxed_weathered_cut_copper_stairs","count":4}},
   {"id":"waxed_oxidized_cut_copper_slab","label":"Waxed Oxidized Cut Copper Slab","note":"Three waxed oxidized cut copper blocks make six slabs.","craftingContext":"crafting_table","ingredients":[{"itemId":"waxed_oxidized_cut_copper","count":3}],"output":{"itemId":"waxed_oxidized_cut_copper_slab","count":6}},
   {"id":"waxed_oxidized_cut_copper_stairs","label":"Waxed Oxidized Cut Copper Stairs","note":"Six waxed oxidized cut copper blocks make four stairs.","craftingContext":"crafting_table","ingredients":[{"itemId":"waxed_oxidized_cut_copper","count":6}],"output":{"itemId":"waxed_oxidized_cut_copper_stairs","count":4}},
   {"id":"tuff_slab","label":"Tuff Slab","note":"Three tuff blocks make six slabs.","craftingContext":"crafting_table","ingredients":[{"itemId":"tuff","count":3}],"output":{"itemId":"tuff_slab","count":6}},
@@ -1021,10 +1065,11 @@ export const RECIPES: readonly Recipe[] = [
   { id: "arrows", label: "Arrows", note: "Flint, a stick, and a feather make four arrows.", craftingContext: "crafting_table", ingredients: [{ itemId: "flint", count: 1 }, { itemId: "stick", count: 1 }, { itemId: "feather", count: 1 }], output: { itemId: "arrow", count: 4 } },
   ...GENERATED_TOOL_RECIPES,
   ...GENERATED_ARMOR_RECIPES,
+  ...GENERATED_WOOD_SHAPE_RECIPES,
 ] as const;
 
 export const SMELTING_RECIPES: readonly SmeltingRecipe[] = [
-  { id: "charcoal", label: "Make charcoal", input: "log", output: "charcoal" },
+  ...GENERATED_WOOD_SMELTING_RECIPES,
   { id: "stone", label: "Smelt stone", input: "cobblestone", output: "stone" },
   { id: "iron_ingot", label: "Smelt iron", input: "raw_iron", output: "iron_ingot" },
   { id: "gold_ingot", label: "Smelt gold", input: "raw_gold", output: "gold_ingot" },
@@ -1365,13 +1410,8 @@ export function countItem(inventory: readonly (ItemStack | null)[], itemId: Item
   return inventory.reduce((total, stack) => total + (stack?.itemId === itemId ? stack.count : 0), 0);
 }
 
-export function hasItems(inventory: readonly (ItemStack | null)[], quantities: readonly ItemQuantity[]): boolean {
-  const needed: Partial<Record<ItemId, number>> = {};
-  for (const { itemId, count } of quantities) {
-    if (count <= 0 || !Number.isFinite(count)) return false;
-    needed[itemId] = (needed[itemId] ?? 0) + Math.floor(count);
-  }
-  return (Object.entries(needed) as Array<[ItemId, number]>).every(([itemId, count]) => countItem(inventory, itemId) >= count);
+export function hasItems(inventory: readonly (ItemStack | null)[], quantities: readonly RecipeIngredient[]): boolean {
+  return consumeRecipeIngredients(inventory, quantities) !== null;
 }
 
 export function addItem(inventory: readonly (ItemStack | null)[], itemId: ItemId, count = 1): { inventory: Inventory; remainder: number } {
@@ -1432,6 +1472,39 @@ export function removeItem(inventory: readonly (ItemStack | null)[], itemId: Ite
   return { inventory: next, remainder };
 }
 
+function removeRecipeIngredient(
+  inventory: readonly (ItemStack | null)[],
+  ingredient: RecipeIngredient,
+): { inventory: Inventory; remainder: number } {
+  if (!ingredient.tag) return removeItem(inventory, ingredient.itemId, ingredient.count);
+  const next = cloneInventory(inventory);
+  let remainder = Math.max(0, Math.floor(ingredient.count));
+  for (let index = next.length - 1; index >= 0 && remainder > 0; index -= 1) {
+    const stack = next[index];
+    if (!stack || !isItemInRecipeTag(stack.itemId, ingredient.tag)) continue;
+    const removed = Math.min(stack.count, remainder);
+    stack.count -= removed;
+    remainder -= removed;
+    if (stack.count <= 0) next[index] = null;
+  }
+  return { inventory: next, remainder };
+}
+
+function consumeRecipeIngredients(
+  inventory: readonly (ItemStack | null)[],
+  ingredients: readonly RecipeIngredient[],
+): Inventory | null {
+  let next = cloneInventory(inventory);
+  const ordered = [...ingredients].sort((left, right) => Number(Boolean(left.tag)) - Number(Boolean(right.tag)));
+  for (const ingredient of ordered) {
+    if (!Number.isFinite(ingredient.count) || ingredient.count <= 0) return null;
+    const removed = removeRecipeIngredient(next, ingredient);
+    if (removed.remainder > 0) return null;
+    next = removed.inventory;
+  }
+  return next;
+}
+
 export function recipeCraftingContext(recipeOrId: Recipe | string): CraftingContext | null {
   const recipe = typeof recipeOrId === "string" ? RECIPES.find(({ id }) => id === recipeOrId) : recipeOrId;
   return recipe?.craftingContext ?? null;
@@ -1453,10 +1526,8 @@ export function canCraft(
   context: CraftingContext = "crafting_table",
 ): boolean {
   if (!isRecipeAvailableInContext(recipe, context)) return false;
-  if (!hasItems(inventory, recipe.ingredients)) return false;
-  let next = cloneInventory(inventory);
-  for (const ingredient of recipe.ingredients) next = removeItem(next, ingredient.itemId, ingredient.count).inventory;
-  return addItem(next, recipe.output.itemId, recipe.output.count).remainder === 0;
+  const consumed = consumeRecipeIngredients(inventory, recipe.ingredients);
+  return consumed !== null && addItem(consumed, recipe.output.itemId, recipe.output.count).remainder === 0;
 }
 
 export function craftRecipe(
@@ -1468,10 +1539,9 @@ export function craftRecipe(
   const original = cloneInventory(inventory);
   if (!recipe) return { ok: false, inventory: original, reason: "unknown_recipe" };
   if (!isRecipeAvailableInContext(recipe, context)) return { ok: false, inventory: original, reason: "requires_crafting_table" };
-  if (!hasItems(original, recipe.ingredients)) return { ok: false, inventory: original, reason: "missing_ingredients" };
-  let next = original;
-  for (const ingredient of recipe.ingredients) next = removeItem(next, ingredient.itemId, ingredient.count).inventory;
-  const added = addItem(next, recipe.output.itemId, recipe.output.count);
+  const consumed = consumeRecipeIngredients(original, recipe.ingredients);
+  if (!consumed) return { ok: false, inventory: original, reason: "missing_ingredients" };
+  const added = addItem(consumed, recipe.output.itemId, recipe.output.count);
   if (added.remainder > 0) return { ok: false, inventory: cloneInventory(inventory), reason: "inventory_full" };
   return { ok: true, inventory: added.inventory, crafted: { ...recipe.output } };
 }
