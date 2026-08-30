@@ -20,7 +20,7 @@ export const SPECIAL_TORCH_TEXTURED_VERTEX_COUNT = 36;
 export const SPECIAL_TORCH_COLOR_VERTEX_COUNT = 0;
 export const SPECIAL_CHEST_TEXTURED_VERTEX_COUNT = 108;
 export const SPECIAL_CHEST_COLOR_VERTEX_COUNT = 0;
-export const SPECIAL_DOOR_TEXTURED_VERTEX_COUNT = 72;
+export const SPECIAL_DOOR_TEXTURED_VERTEX_COUNT = 60;
 export const SPECIAL_DOOR_COLOR_VERTEX_COUNT = 0;
 export const SPECIAL_BED_TEXTURED_VERTEX_COUNT = 72;
 export const SPECIAL_BED_COLOR_VERTEX_COUNT = 36;
@@ -245,15 +245,32 @@ export function appendSpecialDoorMesh(
       y + localY, z + 0.5 + centeredX * Math.sin(facingAngle) + centeredZ * Math.cos(facingAngle)];
   };
   const appendHalf = (minimumY: number, maximumY: number, texture: TextureAtlasName): void => {
-    const uv = textureAtlasUv(texture);
-    for (const face of CUBE_FACES) for (const point of face[5]) {
-      const horizontal = face[1] !== 0 ? point[2] : point[0];
-      const vertical = face[2] !== 0 ? point[2] : point[1];
-      output.textured.push(...transform(point[0], minimumY + point[1] * (maximumY - minimumY),
-        7 / 16 + point[2] * 3 / 16),
-      uv.left + (uv.right - uv.left) * horizontal,
-      uv.bottom + (uv.top - uv.bottom) * vertical,
-      retainedShade(face[4] * shade, exposureLevel));
+    const fullUv = textureAtlasUv(texture);
+    for (const face of CUBE_FACES) {
+      // The two texture halves form one continuous slab. Keeping both faces at
+      // y + 1 makes coplanar triangles show through the cutout pixels and
+      // shimmer as the camera moves.
+      if ((minimumY === 0 && face[0] === "top") || (minimumY === 1 && face[0] === "bottom")) continue;
+      for (const point of face[5]) {
+        const horizontal = face[1] !== 0 ? point[2] : point[0];
+        const vertical = face[2] !== 0 ? point[2] : point[1];
+        // Match Minecraft's 3/16-door model UVs. The broad north/south faces use
+        // the full texture while the thin edges use only their matching 3-pixel
+        // strips instead of compressing the transparent panel across the edge.
+        const sourceU = face[0] === "east" ? 0.5 + point[2] * 2
+          : face[0] === "west" ? 13.5 + (1 - point[2]) * 2
+            : 0.5 + horizontal * 15;
+        const sourceV = face[0] === "top" ? 13.5 + point[2] * 2
+          : face[0] === "bottom" ? 0.5 + point[2] * 2
+            : 15.5 - vertical * 15;
+        const edgeUv = textureAtlasPixelUv(texture, sourceU, sourceV);
+        const broadFace = face[0] === "north" || face[0] === "south";
+        output.textured.push(...transform(point[0], minimumY + point[1] * (maximumY - minimumY),
+          7 / 16 + point[2] * 3 / 16),
+        broadFace ? fullUv.left + (fullUv.right - fullUv.left) * horizontal : edgeUv[0],
+        broadFace ? fullUv.bottom + (fullUv.top - fullUv.bottom) * vertical : edgeUv[1],
+        retainedShade(face[4] * shade, exposureLevel));
+      }
     }
   };
   appendHalf(0, 1, `${material}_door_bottom` as TextureAtlasName);
