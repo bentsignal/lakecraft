@@ -352,7 +352,6 @@ function LocalGameplaySession({
   const [lastAutosavedAt, setLastAutosavedAt] = useState<number | null>(null);
   const pointerUiBlockedRef = useRef(false);
   const saveFailedRef = useRef(false);
-  const forceNextSaveFailureRef = useRef(false);
   pointerUiBlockedRef.current = inventoryOpen || uiModalOpen || deathScreenOpen
     || document.visibilityState !== "visible";
 
@@ -592,13 +591,7 @@ function LocalGameplaySession({
     }
     saveInProgressRef.current = true;
     const now = Date.now();
-    const forceFailure = forceNextSaveFailureRef.current;
-    forceNextSaveFailureRef.current = false;
-    const saveStorage = forceFailure ? {
-      getItem: (key: string) => storage.getItem(key),
-      setItem: () => { throw null; },
-    } : storage;
-    const result = saveSinglePlayerSnapshot(saveStorage, snapshot, now, { worldId: world.id });
+    const result = saveSinglePlayerSnapshot(storage, snapshot, now, { worldId: world.id });
     if (!result.ok) {
       saveInProgressRef.current = false;
       console.error("[Lakecraft save] Snapshot commit rejected.", {
@@ -673,7 +666,7 @@ function LocalGameplaySession({
     const sequence = ++commandMessageSequenceRef.current;
     setCommandMessages((current) => [...current.slice(-59), {
       id: `local-command-${sequence}`,
-      username: tone === "player" ? "Command" : "",
+      username: "",
       body,
       sentAt: Date.now(),
       own: tone === "player",
@@ -720,11 +713,6 @@ function LocalGameplaySession({
     commandHistoryIndexRef.current = commandHistoryRef.current.length;
     appendCommandMessage(normalized, "player");
     setCommandDraft("");
-    if (normalized === "/savetest fail" && window.location.search.includes("save-test=1")) {
-      forceNextSaveFailureRef.current = true;
-      persist("autosave");
-      return;
-    }
     const parsed = parseLocalCommand(normalized, SINGLE_PLAYER_COMMAND_PERMISSIONS);
     if (!parsed.ok) {
       appendCommandMessage(parsed.message, "error");
@@ -2172,7 +2160,7 @@ function LocalGameplaySession({
         onSubmit={submitLocalCommand}
         open={commandOpen}
         placeholder="/help"
-        playerSender="[Command]"
+        playerSender=""
         surfaceLabel="Local command console"
       /> : null}
       <FurnaceDrawer

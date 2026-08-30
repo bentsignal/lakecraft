@@ -46,8 +46,8 @@ assert.equal(styles.includes(".lc-game-menu__disconnect { margin-top"), false, "
 assert.ok(styles.includes('overflow-y: auto'), "the taller pause menu remains reachable on short viewports");
 
 assert.ok(singlePlayer.includes("loadSinglePlayerSave(storage"), "the journal is loaded before local engine state is created");
-assert.ok(singlePlayer.includes("saveSinglePlayerSnapshot(saveStorage"), "autosave and exit saves share the verified journal writer");
-const snapshotCommit = singlePlayer.indexOf("saveSinglePlayerSnapshot(saveStorage, snapshot, now, { worldId: world.id })");
+assert.ok(singlePlayer.includes("saveSinglePlayerSnapshot(storage"), "autosave and exit saves share the verified journal writer");
+const snapshotCommit = singlePlayer.indexOf("saveSinglePlayerSnapshot(storage, snapshot, now, { worldId: world.id })");
 const firstPlayCommit = singlePlayer.indexOf("recordFirstLocalWorldPlay(storage, world, now)");
 assert.ok(snapshotCommit >= 0 && firstPlayCommit > snapshotCommit,
   "first-play metadata is attempted only after the namespaced snapshot journal commit");
@@ -85,8 +85,8 @@ assert.ok(singlePlayer.includes("saveFailedRef.current = true"),
   "the session stops writing after a failure so the last verified journal remains untouched");
 assert.doesNotMatch(singlePlayer, /saveFailureActive|World Save Failed|Retry Save/,
   "save failure does not trap the player behind a blocking pause screen");
-assert.ok(singlePlayer.includes('normalized === "/savetest fail"') && singlePlayer.includes('includes("save-test=1")'),
-  "the opt-in preview route can trigger a non-mutating save failure for testing");
+assert.doesNotMatch(singlePlayer, /savetest|save-test|forceNextSaveFailure/,
+  "the temporary save-failure preview command is absent from production");
 assert.match(singlePlayer, /const returnToTitle = \(\) => \{\s+if \(!persist\("quit"\) && !confirm\([\s\S]*?\)\) return;\s+quitSavedRef\.current = true;[\s\S]*?onExit\(\);/,
   "Save and Quit offers an explicit last-verified-save exit when the latest commit fails");
 assert.ok(singlePlayer.includes("You can reopen this world from your last verified save. Quit to the title screen now?"),
