@@ -112,20 +112,29 @@ for (const open of [false, true]) {
   const door = mesh();
   appendSpecialDoorMesh(door, 10, 20, 30, open, "oak", "north", "left", 1, 2);
   assertCounts(door, SPECIAL_DOOR_TEXTURED_VERTEX_COUNT, SPECIAL_DOOR_COLOR_VERTEX_COUNT);
-  assertUvRange(door.textured, 0, 36, "oak_door_bottom");
-  assertUvRange(door.textured, 36, 36, "oak_door_top");
+  assertUvRange(door.textured, 0, 30, "oak_door_bottom");
+  assertUvRange(door.textured, 30, 30, "oak_door_top");
   const xs = door.textured.filter((_, index) => index % 6 === 0);
   const zs = door.textured.filter((_, index) => index % 6 === 2);
   assert.equal(open ? Math.max(...xs) - Math.min(...xs) < 0.2 : Math.max(...zs) - Math.min(...zs) < 0.2, true,
     "open and closed doors retain perpendicular thin-slab silhouettes");
   assert.equal(door.color.length, 0, "the installed door pixels carry every panel and handle detail");
+  const middlePlaneVertices = door.textured.filter((_, index) => index % 6 === 1 && door.textured[index] === 21);
+  assert.equal(middlePlaneVertices.length, 24,
+    "only the four vertical faces from each half meet at the middle plane; hidden top and bottom faces are omitted");
+
+  const uv = textureAtlasUv("oak_door_bottom");
+  const tilePixelU = (uv.right - uv.left) / 15;
+  const lowerEastFaceUs = door.textured.slice(0, 36).filter((_, index) => index % 6 === 3);
+  assert.ok(Math.abs(Math.max(...lowerEastFaceUs) - Math.min(...lowerEastFaceUs) - tilePixelU * 2) < 1e-12,
+    "the thin east edge maps the three source-pixel centers instead of compressing the full panel texture");
 }
 const birchDoor = mesh();
 appendSpecialDoorMesh(birchDoor, 0, 0, 0, false, "birch", "east", "right");
 assertCounts(birchDoor, SPECIAL_DOOR_TEXTURED_VERTEX_COUNT, SPECIAL_DOOR_COLOR_VERTEX_COUNT);
-for (const [start, texture] of [[0, "birch_door_bottom"], [36, "birch_door_top"]] as const) {
+for (const [start, texture] of [[0, "birch_door_bottom"], [30, "birch_door_top"]] as const) {
   const uv = textureAtlasUv(texture);
-  for (let offset = start * 6; offset < (start + 36) * 6; offset += 6) {
+  for (let offset = start * 6; offset < (start + 30) * 6; offset += 6) {
     assert.ok(birchDoor.textured[offset + 3] >= uv.left && birchDoor.textured[offset + 3] <= uv.right);
     assert.ok(birchDoor.textured[offset + 4] >= uv.bottom && birchDoor.textured[offset + 4] <= uv.top);
   }
