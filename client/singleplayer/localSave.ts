@@ -372,7 +372,7 @@ function validateEdits(value: unknown): WorldEdit[] | null {
       || !safeInteger(candidate.x, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
       || !safeInteger(candidate.y, SINGLEPLAYER_WORLD_MIN_Y + 1, SINGLEPLAYER_WORLD_MAX_Y)
       || !safeInteger(candidate.z, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
-      || !safeInteger(candidate.block, BLOCK.AIR, BLOCK.NETHER_WART_BLOCK)
+      || !safeInteger(candidate.block, BLOCK.AIR, BLOCK.LAVA_FLOW_3)
       || candidate.block === BLOCK.BEDROCK) return null;
     const key = `${candidate.x}:${candidate.y}:${candidate.z}`;
     if (coordinates.has(key)) return null;

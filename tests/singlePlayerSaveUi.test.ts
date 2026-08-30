@@ -13,6 +13,7 @@ for (const prop of [
   "disconnectDisabled?: boolean",
   "onResetWorld?: () => void",
   "disconnectLabel?: string",
+  "backLabel?: string",
 ]) {
   assert.ok(pauseMenu.includes(prop), `PauseMenu exposes the optional ${prop} seam`);
   assert.ok(gameHud.includes(prop), `GameHud forwards the optional ${prop} seam`);
@@ -33,7 +34,7 @@ assert.ok(pauseMenu.includes('aria-live="polite"'), "save feedback is announced 
 assert.ok(pauseMenu.includes('aria-atomic="true"'), "saving and last-saved feedback is announced together");
 assert.ok(pauseMenu.includes('aria-describedby={showAutosaveStatus ? "lc-game-menu-autosave-status" : undefined}'),
   "Save and Quit directly references its autosave timestamp and failure feedback");
-assert.ok(pauseMenu.indexOf("Back to Game") < pauseMenu.indexOf("Options…")
+assert.ok(pauseMenu.indexOf("{backLabel}") < pauseMenu.indexOf("Options…")
   && pauseMenu.indexOf("Options…") < pauseMenu.indexOf("{disconnectLabel}")
   && pauseMenu.indexOf("{disconnectLabel}") < pauseMenu.indexOf("lastAutosavedText ?"),
   "Back, Options, and Save and Quit stay together with the timestamp immediately after them");
@@ -76,10 +77,20 @@ assert.ok(singlePlayer.includes("useState<number | null>(null)"),
   "creation and loaded journal saves do not masquerade as periodic autosaves");
 assert.ok(singlePlayer.includes('if (reason === "autosave") setLastAutosavedAt(now)'),
   "only a successful periodic autosave advances the displayed autosave timestamp");
-assert.match(singlePlayer, /const returnToTitle = \(\) => \{\s+if \(!persist\("quit"\)\) return;\s+quitSavedRef\.current = true;[\s\S]*?onExit\(\);/,
-  "Save and Quit cannot navigate until the synchronous verified journal commit succeeds");
-assert.ok(singlePlayer.includes('disconnectDisabled={saveLockedRef.current}'),
-  "Save and Quit is disabled when the app cannot truthfully finalize a save");
+assert.ok(singlePlayer.includes('backLabel={saveFailureActive ? "Retry Save" : "Back to Game"}'),
+  "an autosave failure replaces resume with a verified save retry");
+assert.ok(singlePlayer.includes('pauseTitle={saveFailureActive ? "World Save Failed" : "Game Menu"}'),
+  "the pause screen immediately names a save failure");
+assert.match(singlePlayer, /if \(reason === "autosave"\) \{\s+releasePointerLockForUi\(\);\s+setGamePauseOpen\(true\);\s+\}/,
+  "autosave failure releases gameplay input and opens the blocking pause screen");
+assert.ok(singlePlayer.includes('if (saveFailureActive && !persist("autosave")) return;'),
+  "gameplay cannot resume until a retry commits and verifies successfully");
+assert.match(singlePlayer, /const returnToTitle = \(\) => \{\s+if \(!persist\("quit"\) && !confirm\([\s\S]*?\)\) return;\s+quitSavedRef\.current = true;[\s\S]*?onExit\(\);/,
+  "Save and Quit offers an explicit last-verified-save exit when the latest commit fails");
+assert.ok(singlePlayer.includes("Quit to the title screen anyway?"),
+  "failed saves explain the safe exit instead of trapping the player in-world");
+assert.ok(singlePlayer.includes('disconnectDisabled={false}'),
+  "the title-screen exit remains available even when saving is locked to protect existing data");
 assert.ok(singlePlayer.includes("Last autosaved "), "the pause timestamp uses autosave-only language");
 assert.doesNotMatch(singlePlayer, /persist\("manual"\)|"manual" \|/, "single-player exposes no manual-save code path");
 assert.ok(singlePlayer.includes("engineRef.current?.setPaused(paused)"), "menus and backgrounding pause the local engine");

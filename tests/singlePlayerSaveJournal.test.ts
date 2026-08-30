@@ -20,8 +20,9 @@ import {
   type SinglePlayerStorageAdapter,
 } from "../client/singleplayer/localSave.ts";
 import { createMobSimulation, exportMobSimulationSnapshot } from "../client/game/mobs.ts";
-import { VOXEL_RUNTIME_SNAPSHOT_VERSION } from "../client/game/types.ts";
+import { BLOCK, VOXEL_RUNTIME_SNAPSHOT_VERSION } from "../client/game/types.ts";
 import { singlePlayerStartsDead } from "../client/singleplayer/deathPresentation.ts";
+import { MAX_HUNGER } from "../shared/game.ts";
 
 class MemoryStorage implements SinglePlayerStorageAdapter {
   readonly values = new Map<string, string>();
@@ -138,6 +139,54 @@ function richSnapshot(): SinglePlayerSnapshot {
   assert.deepEqual(loaded.snapshot, snapshot);
 }
 
+// Every block ID that gameplay may journal must survive the complete save
+// codec. This catches palette growth that validation forgot to admit.
+{
+  const storage = new MemoryStorage();
+  const snapshot = richSnapshot();
+  const persistedBlockIds = [...new Set(Object.values(BLOCK))]
+    .filter((block) => block !== BLOCK.BEDROCK);
+  snapshot.world.edits = persistedBlockIds.map((block, index) => ({
+    x: index,
+    y: 8,
+    z: 0,
+    block,
+  }));
+  const saved = saveSinglePlayerSnapshot(storage, snapshot, 10_002);
+  assert.equal(saved.ok, true, "the complete current block palette saves");
+  const loaded = loadSinglePlayerSave(storage);
+  assert.equal(loaded.status, "loaded");
+  if (loaded.status !== "loaded") throw new Error(loaded.status);
+  assert.deepEqual(new Set(loaded.snapshot.world.edits.map((edit) => edit.block)), new Set(persistedBlockIds));
+}
+
+// A long alternating journal run always leaves one previous-good slot. If the
+// newest slot is damaged, loading returns the immediately preceding snapshot.
+{
+  const storage = new MemoryStorage();
+  let previousHunger = MAX_HUNGER;
+  for (let sequence = 1; sequence <= 100; sequence += 1) {
+    const snapshot = richSnapshot();
+    snapshot.player.hunger = sequence % (MAX_HUNGER + 1);
+    previousHunger = snapshot.player.hunger;
+    assert.equal(saveSinglePlayerSnapshot(storage, snapshot, 20_000 + sequence).ok, true);
+    const loaded = loadSinglePlayerSave(storage);
+    assert.equal(loaded.status, "loaded");
+    if (loaded.status !== "loaded") throw new Error(loaded.status);
+    assert.equal(loaded.sequence, sequence);
+    assert.equal(loaded.snapshot.player.hunger, previousHunger);
+  }
+  const newestKey = storage.values.get(SINGLEPLAYER_SAVE_HEAD_KEY)?.includes('"slot":"a"')
+    ? SINGLEPLAYER_SAVE_SLOT_A_KEY
+    : SINGLEPLAYER_SAVE_SLOT_B_KEY;
+  storage.values.set(newestKey, "damaged newest snapshot");
+  const recovered = loadSinglePlayerSave(storage);
+  assert.equal(recovered.status, "recovered");
+  if (recovered.status !== "recovered") throw new Error(recovered.status);
+  assert.equal(recovered.sequence, 99);
+  assert.equal(recovered.snapshot.player.hunger, 99 % (MAX_HUNGER + 1));
+}
+
 // A dead runtime survives the verified journal and must reopen the respawn UI after reload.
 {
   const storage = new MemoryStorage();
@@ -242,6 +291,11 @@ function richSnapshot(): SinglePlayerSnapshot {
   const badStack = richSnapshot();
   badStack.player.inventory[1] = { itemId: "diamond", count: 65 };
   assert.equal(validateSinglePlayerSnapshot(badStack).ok, false);
+
+  const appendedPaletteBlock = richSnapshot();
+  appendedPaletteBlock.world.edits[0]!.block = BLOCK.WAXED_COPPER_BLOCK;
+  assert.equal(validateSinglePlayerSnapshot(appendedPaletteBlock).ok, true,
+    "save validation accepts blocks appended after the original creative palette");
 
   const accumulatedYaw = richSnapshot();
   accumulatedYaw.runtime!.pose.yaw = Math.PI * 5;

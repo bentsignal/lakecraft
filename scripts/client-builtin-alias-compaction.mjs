@@ -103,7 +103,7 @@ export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_
 // paired prompt/background fluid queues plus their bounded mesh lifecycle.
 // One shared leaf-family predicate adds the reviewed `endsWith` call.
 export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_443;
-export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "57d6557606dd1991d0d8247f89d60eb55aba225445b010a09af129e2670e0834";
+export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "93f68ae9d1728395f273c6303e133037dfabe777c577dde655fd469e647ad274";
 const PROPERTY_ALIAS_INDEX = new Map(COMPACT_CLIENT_PROPERTY_KEY_ALIASES.map(([name], index) => [name, index]));
 const PROPERTY_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_PROPERTY_KEY_ALIASES)),

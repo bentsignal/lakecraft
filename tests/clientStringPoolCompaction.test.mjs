@@ -25,6 +25,8 @@ import {
   COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES,
   COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES,
+  COMPACT_CLIENT_HUMAN_SAVE_FAILSAFE_DELTA,
+  COMPACT_CLIENT_HUMAN_SAVE_BLOCK_DELTA,
   COMPACT_CLIENT_HUMAN_MULTIPLAYER_AUTH_DELTA,
   COMPACT_CLIENT_HUMAN_DESTROY_STAGE_DELTA,
   COMPACT_CLIENT_HUMAN_FLUID_SYSTEM_DELTA,
@@ -721,10 +723,33 @@ assert.deepEqual(COMPACT_CLIENT_HUMAN_MULTIPLAYER_AUTH_DELTA, {
   source: "auth-free title route and dedicated multiplayer sign-in gate",
   exclusionChanges: 0,
 });
-assert.equal(COMPACT_CLIENT_HUMAN_MULTIPLAYER_AUTH_DELTA.previousOccurrences
-  + COMPACT_CLIENT_HUMAN_MULTIPLAYER_AUTH_DELTA.occurrenceDelta, COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES);
-assert.equal(COMPACT_CLIENT_HUMAN_MULTIPLAYER_AUTH_DELTA.previousUniqueValues
-  + COMPACT_CLIENT_HUMAN_MULTIPLAYER_AUTH_DELTA.uniqueValueDelta, COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES);
+assert.deepEqual(COMPACT_CLIENT_HUMAN_SAVE_FAILSAFE_DELTA, {
+  previousOccurrences: 545,
+  previousUniqueValues: 477,
+  previousSourceFingerprint: "218e71e2f078f3e01d8aa41e0c2cccc73b0247049f559cbbf298300b4af565ad",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 1,
+  source: "client/singleplayer/SinglePlayerApp.tsx#failed-save-title-exit",
+  exclusionChanges: 0,
+});
+assert.equal(COMPACT_CLIENT_HUMAN_SAVE_FAILSAFE_DELTA.previousOccurrences
+  + COMPACT_CLIENT_HUMAN_SAVE_FAILSAFE_DELTA.occurrenceDelta, COMPACT_CLIENT_HUMAN_SAVE_BLOCK_DELTA.previousOccurrences);
+assert.equal(COMPACT_CLIENT_HUMAN_SAVE_FAILSAFE_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_HUMAN_SAVE_FAILSAFE_DELTA.uniqueValueDelta, COMPACT_CLIENT_HUMAN_SAVE_BLOCK_DELTA.previousUniqueValues);
+assert.deepEqual(COMPACT_CLIENT_HUMAN_SAVE_BLOCK_DELTA, {
+  previousOccurrences: 546,
+  previousUniqueValues: 478,
+  previousSourceFingerprint: "05549d3bacb11f485ce13271cb4bc87801eedf1faad49379864996ab8e662480",
+  occurrenceDelta: 3,
+  uniqueValueDelta: 2,
+  sources: ["client/components/PauseMenu.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
+  source: "blocking autosave failure and retry copy",
+  exclusionChanges: 0,
+});
+assert.equal(COMPACT_CLIENT_HUMAN_SAVE_BLOCK_DELTA.previousOccurrences
+  + COMPACT_CLIENT_HUMAN_SAVE_BLOCK_DELTA.occurrenceDelta, COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES);
+assert.equal(COMPACT_CLIENT_HUMAN_SAVE_BLOCK_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_HUMAN_SAVE_BLOCK_DELTA.uniqueValueDelta, COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES);
 
 assert.deepEqual(COMPACT_CLIENT_REPEATED_VISUAL_DESCRIPTOR_DELTA.removedThresholdValues,
   ["left", "right", "back", "top"], "only packed mob face names left the repeated-string boundary");

@@ -72,6 +72,7 @@ export type GameHudProps = {
   onDisconnect?: () => void;
   pauseTitle?: string;
   disconnectLabel?: string;
+  backLabel?: string;
   onRespawn?: () => void;
   onTitleScreen?: () => void;
   onDismissMessage?: (id: string) => void;
@@ -137,6 +138,7 @@ export function GameHud({
   onDisconnect,
   pauseTitle,
   disconnectLabel,
+  backLabel,
   onRespawn,
   onTitleScreen,
   onDismissMessage,
@@ -169,6 +171,7 @@ export function GameHud({
       </div> : null}
       <PauseMenu
         autosaveStatusText={autosaveStatusText}
+        backLabel={backLabel}
         disconnectDisabled={disconnectDisabled}
         onBack={onResume}
         onDisconnect={onDisconnect}

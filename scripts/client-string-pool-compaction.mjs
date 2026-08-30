@@ -8,9 +8,28 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 545;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 477;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "218e71e2f078f3e01d8aa41e0c2cccc73b0247049f559cbbf298300b4af565ad";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 549;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 480;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "fb550fec5287ae7ff05d3ec93e5ea08f171719d5a7bb1f20f1b9391d2e39d1d5";
+export const COMPACT_CLIENT_HUMAN_SAVE_BLOCK_DELTA = Object.freeze({
+  previousOccurrences: 546,
+  previousUniqueValues: 478,
+  previousSourceFingerprint: "05549d3bacb11f485ce13271cb4bc87801eedf1faad49379864996ab8e662480",
+  occurrenceDelta: 3,
+  uniqueValueDelta: 2,
+  sources: Object.freeze(["client/components/PauseMenu.tsx", "client/singleplayer/SinglePlayerApp.tsx"]),
+  source: "blocking autosave failure and retry copy",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_HUMAN_SAVE_FAILSAFE_DELTA = Object.freeze({
+  previousOccurrences: 545,
+  previousUniqueValues: 477,
+  previousSourceFingerprint: "218e71e2f078f3e01d8aa41e0c2cccc73b0247049f559cbbf298300b4af565ad",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 1,
+  source: "client/singleplayer/SinglePlayerApp.tsx#failed-save-title-exit",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_HUMAN_MULTIPLAYER_AUTH_DELTA = Object.freeze({
   previousOccurrences: 544,
   previousUniqueValues: 479,

@@ -348,6 +348,7 @@ function LocalGameplaySession({
           ? "This local world could not be read. Saving is disabled; reset it to start fresh."
           : "";
   const [autosaveStatusText, setAutosaveStatusText] = useState(initialSaveText);
+  const [saveFailureActive, setSaveFailureActive] = useState(initial.current.saveLocked);
   const [lastAutosavedAt, setLastAutosavedAt] = useState<number | null>(null);
   const pointerUiBlockedRef = useRef(false);
   pointerUiBlockedRef.current = inventoryOpen || uiModalOpen || deathScreenOpen
@@ -575,6 +576,11 @@ function LocalGameplaySession({
     const snapshot = buildSnapshot();
     if (!snapshot) {
       setAutosaveStatusText(`${action} failed: invalid local container state.`);
+      setSaveFailureActive(true);
+      if (reason === "autosave") {
+        releasePointerLockForUi();
+        setGamePauseOpen(true);
+      }
       return false;
     }
     saveInProgressRef.current = true;
@@ -592,6 +598,11 @@ function LocalGameplaySession({
           : result.path?.startsWith("$.runtime") ? `${action} failed: player state could not be validated. Your previous save is safe.`
             : `${action} failed. Your previous save is safe.`);
       if (result.reason === "unsafe_existing_data") saveLockedRef.current = true;
+      setSaveFailureActive(true);
+      if (reason === "autosave") {
+        releasePointerLockForUi();
+        setGamePauseOpen(true);
+      }
       return false;
     }
     let firstPlayMetadataPending = false;
@@ -613,6 +624,7 @@ function LocalGameplaySession({
     initialRuntimeRef.current = snapshot.runtime;
     saveCadenceRef.current = commitSaveCadence(saveCadenceRef.current, performance.now(), !engineRef.current?.isPaused());
     if (reason === "autosave") setLastAutosavedAt(now);
+    setSaveFailureActive(false);
     setAutosaveStatusText(firstPlayMetadataPending
       ? `${action} complete. World activity will update on the next save or entry.`
       : "");
@@ -2068,7 +2080,9 @@ function LocalGameplaySession({
   }, []);
   /* @lakecraft-development:callback:end */
   const returnToTitle = () => {
-    if (!persist("quit")) return;
+    if (!persist("quit") && !confirm(
+      "Lakecraft could not save your latest changes. Your last verified save is still safe. Quit to the title screen anyway?",
+    )) return;
     quitSavedRef.current = true;
     if (document.pointerLockElement) document.exitPointerLock();
     releaseGameplayKeyboardCapture();
@@ -2124,9 +2138,10 @@ function LocalGameplaySession({
         onCrafted={() => undefined}
         onDismissMessage={(id) => setMessages((current) => current.filter((message) => message.id !== id))}
         disconnectLabel="Save and Quit to Title"
+        backLabel={saveFailureActive ? "Retry Save" : "Back to Game"}
         lastAutosavedText={lastAutosavedText}
         autosaveStatusText={autosaveStatusText}
-        disconnectDisabled={saveLockedRef.current}
+        disconnectDisabled={false}
         onDisconnect={returnToTitle}
         onInventoryWorkspaceChange={(snapshot: StowedInventorySnapshot, _epoch: number, _recipes: readonly InventoryRecipeBatch[]) => {
           inventoryRef.current = snapshot.inventory;
@@ -2147,11 +2162,15 @@ function LocalGameplaySession({
         settings={clientSettings}
         onSettingsChange={updateClientSettings}
         onRespawn={respawnLocally}
-        onResume={() => { setOptionsOpen(false); requestGameplayPointerLock(); }}
+        onResume={() => {
+          setOptionsOpen(false);
+          if (saveFailureActive && !persist("autosave")) return;
+          requestGameplayPointerLock();
+        }}
         onResetWorld={saveLockedRef.current ? resetUnreadableWorld : undefined}
         onSelectHotbar={selectHotbar}
         onTitleScreen={returnToTitle}
-        pauseTitle="Game Menu"
+        pauseTitle={saveFailureActive ? "World Save Failed" : "Game Menu"}
         pauseOpen={pauseOpen}
         playerName="Player"
         selectedIndex={selected}
