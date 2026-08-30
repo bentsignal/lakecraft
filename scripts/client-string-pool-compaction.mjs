@@ -8,9 +8,18 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 547;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 479;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "f6f2381f6a2ba2661a1a22dbb4b9424b57fe91357a5c152ac30433a1725fc635";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 546;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 478;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "b88e2aef475704f2c6860cd0e96840fe6da624a053dad9f1df801a806c6801bb";
+export const COMPACT_CLIENT_HUMAN_COMMAND_SENDER_REMOVAL_DELTA = Object.freeze({
+  previousOccurrences: 547,
+  previousUniqueValues: 479,
+  previousSourceFingerprint: "f6f2381f6a2ba2661a1a22dbb4b9424b57fe91357a5c152ac30433a1725fc635",
+  occurrenceDelta: -1,
+  uniqueValueDelta: -1,
+  source: "single-player command history no longer prefixes entered commands with [Command]",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_HUMAN_QUIT_RECOVERY_COPY_DELTA = Object.freeze({
   previousOccurrences: 547,
   previousUniqueValues: 479,
