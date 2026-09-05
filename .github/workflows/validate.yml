@@ -3,6 +3,7 @@ name: Validate Lakecraft
 on:
   pull_request:
   push:
+    branches: ['**']
   workflow_call:
 
 permissions:
@@ -11,7 +12,7 @@ permissions:
 jobs:
   validate:
     name: Repository validation
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -23,5 +24,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.3
+      - name: Install video evidence tools
+        run: brew install ffmpeg
       - name: Test and verify release builds
         run: node scripts/validate-workflow.mjs

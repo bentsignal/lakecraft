@@ -12,7 +12,9 @@ not publish anything. The user can narrow the scope of any request.
 
 ## Shared checks
 
-Use Node 24 and Bun 1.3. CI pins Node 24.14.0 and Bun 1.3.3. Builds pin
+Use Node 24, Bun 1.3, and `ffmpeg`/`ffprobe` on PATH for the video evidence
+tests. CI pins Node 24.14.0 and Bun 1.3.3 on the Apple Silicon `macos-15` runner
+to match the CPU architecture used for the existing timing guards. Builds pin
 Lakebed 0.0.29 and TypeScript 5.9.3. The Lakebed
 compiler transforms depend on this pinned toolchain. Changes to it require
 validation of the compact output.

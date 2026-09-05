@@ -73,7 +73,8 @@ Treat the checked-in target files as authoritative. Run Lakebed commands with
    `LAKEBED_COMPACT_BUNDLE=1`, and run:
 
    ```sh
-   npx lakebed deploy /absolute/path/to/private-stage/payload --json
+   npx --yes --package lakebed@0.0.29 --package typescript@5.9.3 \
+     lakebed deploy /absolute/path/to/private-stage/payload --json
    ```
 
 5. If the CLI succeeds, continue to verification. If it reports `EACCES` while
