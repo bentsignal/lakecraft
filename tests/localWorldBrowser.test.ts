@@ -285,7 +285,7 @@ assert.ok(browser.includes("browserSinglePlayerStorage()") && browser.includes("
 
 assert.ok(app.includes("<LocalWorldBrowser"), "single-player enters the world browser before constructing gameplay");
 assert.ok(app.includes("<LocalGameplaySession"), "only an activated local session mounts the voxel engine");
-assert.ok(app.includes("saveSinglePlayerSnapshot(saveStorage, snapshot, now, { worldId: world.id })"),
+assert.ok(app.includes("saveSinglePlayerSnapshot(storage, snapshot, now, { worldId: world.id })"),
   "autosave/quit commits stay in the active world namespace");
 assert.ok(app.includes("resetSinglePlayerSave(storage, { worldId: world.id })"),
   "in-game recovery can reset only the active world");

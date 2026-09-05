@@ -135,7 +135,7 @@ assert.match(client,
   "multiplayer preserves the prior state and paired-door journal when forwarding a numeric Railway edit");
 assert.match(client, /await sink\(pending\.operationId, pending\.optimisticEdit, \{[\s\S]*?expectedInventoryRevision/,
   "Railway receives the canonical engine edit without a second Lakebed codec");
-assert.match(localSave, /candidate\.block, BLOCK\.AIR, BLOCK\.NETHER_WART_BLOCK/,
+assert.match(localSave, /candidate\.block, BLOCK\.AIR, BLOCK\.LAVA_FLOW_3/,
   "single-player saves retain both append-only gate states");
 assert.match(local,
   /previousBlock === BLOCK\.OAK_FENCE_GATE_CLOSED && edit\.block === BLOCK\.OAK_FENCE_GATE_OPEN[\s\S]{0,160}previousBlock === BLOCK\.OAK_FENCE_GATE_OPEN && edit\.block === BLOCK\.OAK_FENCE_GATE_CLOSED/,

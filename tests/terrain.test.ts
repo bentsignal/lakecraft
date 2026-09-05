@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { assertTimingBudget } from "../scripts/test-timing.mjs";
 import { performance } from "node:perf_hooks";
 import {
   blockKey,
@@ -162,7 +163,7 @@ const startedAt = performance.now();
 const benchmarkTerrain = createTerrain(SEED, 40);
 const generationMs = performance.now() - startedAt;
 assert.ok(benchmarkTerrain.size > 40_000, "benchmark world should contain a meaningful number of blocks");
-assert.ok(generationMs < 250, `radius-40 terrain generation took ${generationMs.toFixed(1)}ms (budget: 250ms)`);
+assertTimingBudget(generationMs, 250, "radius-40 terrain generation");
 
 console.log(JSON.stringify({
   benchmark: "deterministic radius-40 terrain generation",

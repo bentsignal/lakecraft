@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { assertTimingBudget } from "../scripts/test-timing.mjs";
 import { performance } from "node:perf_hooks";
 import {
   SAND_SPAWN_SANCTUARY_RADIUS,
@@ -83,7 +84,7 @@ const startedAt = performance.now();
 const benchmark = createTerrain(SEED, 40);
 const generationMs = performance.now() - startedAt;
 assert.equal(benchmark.size, first.size);
-assert.ok(generationMs < 250, `sand-aware radius-40 generation took ${generationMs.toFixed(1)}ms`);
+assertTimingBudget(generationMs, 250, "sand-aware radius-40 generation");
 
 console.log(JSON.stringify({
   benchmark: "globally anchored sand deposits",

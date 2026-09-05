@@ -1,4 +1,4 @@
-# Local development preview
+# Local agent testing
 
 Use this path only for the agent's own active development, browser automation, and fast reloads. It is not a user handoff.
 
@@ -9,7 +9,8 @@ Use this path only for the agent's own active development, browser automation, a
 3. Start the server from the worktree and keep its execution session alive:
 
    ```sh
-   npx lakebed dev --port <port>
+   npx --yes --package lakebed@0.0.29 --package typescript@5.9.3 \
+     lakebed dev --port <port>
    ```
 
 4. Verify all three surfaces before reporting success:

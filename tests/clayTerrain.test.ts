@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { assertTimingBudget } from "../scripts/test-timing.mjs";
 import { performance } from "node:perf_hooks";
 import { BLOCK } from "../client/game/types.ts";
 import {
@@ -131,7 +132,7 @@ const startedAt = performance.now();
 const benchmark = createTerrainRegion(SEED, -40, 40, -40, 40);
 const generationMs = performance.now() - startedAt;
 assert.ok(benchmark.size > 50_000);
-assert.ok(generationMs < 350, `clay-aware radius-40 generation took ${generationMs.toFixed(1)}ms`);
+assertTimingBudget(generationMs, 350, "clay-aware radius-40 generation");
 
 console.log(JSON.stringify({
   benchmark: "globally anchored shallow clay deposits",

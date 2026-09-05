@@ -60,8 +60,8 @@ export function parsePreviewMetadata(source) {
   return value;
 }
 
-async function readPreviewMetadata(sourceRoot) {
-  const path = join(sourceRoot, PREVIEW_METADATA);
+async function readPreviewMetadata(sourceRoot, metadataPath = PREVIEW_METADATA) {
+  const path = join(sourceRoot, metadataPath);
   try {
     const info = await lstat(path);
     if (info.isSymbolicLink() || !info.isFile()) throw new Error("Lakebed preview metadata must be a regular file.");
@@ -76,8 +76,8 @@ async function readPreviewMetadata(sourceRoot) {
   }
 }
 
-async function writePreviewMetadata(sourceRoot, metadata) {
-  const path = join(sourceRoot, PREVIEW_METADATA);
+async function writePreviewMetadata(sourceRoot, metadata, metadataPath = PREVIEW_METADATA) {
+  const path = join(sourceRoot, metadataPath);
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const temporary = `${path}.${randomBytes(8).toString("hex")}.tmp`;
   await writeFile(temporary, `${JSON.stringify(metadata, null, 2)}\n`, { flag: "wx", mode: 0o600 });
@@ -162,9 +162,25 @@ async function publishEnvelope(envelope, previous) {
   return { claimToken, deployed, mode };
 }
 
-export async function publishLakebedPreview({ sourceRoot = process.cwd() } = {}) {
+export function reviewMetadataPath(channel) {
+  if (channel === undefined) return PREVIEW_METADATA;
+  if (!["development", "preview"].includes(channel)) throw new Error("Unknown review channel.");
+  return `.lakebed/${channel === "development" ? "development" : "release-preview"}.json`;
+}
+
+export function requireMatchingArtifact(verified, expected) {
+  if (expected && (verified.artifactHash !== expected.artifactHash
+    || verified.clientBundleHash !== expected.clientBundleHash)) {
+    throw new Error("Publish build differs from the validated artifact. Revalidate before publishing.");
+  }
+}
+
+export async function publishLakebedPreview({
+  sourceRoot = process.cwd(), metadataRoot = sourceRoot, channel, expectedArtifact,
+} = {}) {
   const canonicalRoot = resolve(sourceRoot);
-  const previous = await readPreviewMetadata(canonicalRoot);
+  const metadataPath = reviewMetadataPath(channel);
+  const previous = await readPreviewMetadata(resolve(metadataRoot), metadataPath);
   const toolchainEnvironment = { ...process.env };
   delete toolchainEnvironment.LAKEBED_TOKEN;
   delete toolchainEnvironment.LAKEBED_TOKEN_API;
@@ -200,6 +216,7 @@ export async function publishLakebedPreview({ sourceRoot = process.cwd() } = {})
         "--json",
       ], { cwd: plan.stageRoot, env: environment });
       const verified = await verifyLakebedBuild(plan, reportBuffer);
+      requireMatchingArtifact(verified, expectedArtifact);
       const envelope = parseObject(verified.artifactBuffer.toString("utf8"), "Verified Lakebed artifact");
       const remote = await publishEnvelope(envelope, previous);
       return {
@@ -218,7 +235,7 @@ export async function publishLakebedPreview({ sourceRoot = process.cwd() } = {})
     updatedAt: published.deployed.updatedAt,
     url: published.deployed.url,
   };
-  await writePreviewMetadata(canonicalRoot, metadata);
+  await writePreviewMetadata(resolve(metadataRoot), metadata, metadataPath);
   return {
     artifactBytes: published.artifactBytes,
     artifactHash: published.artifactHash,

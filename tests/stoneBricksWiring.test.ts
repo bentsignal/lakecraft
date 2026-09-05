@@ -75,7 +75,7 @@ assert.equal(audioSurfaceForBlock(BLOCK.STONE_BRICKS), "stone");
 assert.equal(audioSurfaceForBlock(BLOCK.STONE_BRICK_SLAB), "stone");
 assert.equal(audioSurfaceForBlock(BLOCK.BRICKS), "stone");
 assert.equal(audioSurfaceForBlock(BLOCK.QUARTZ_STAIRS_UPSIDE_WEST), "stone");
-assert.match(singleSave, /candidate\.block, BLOCK\.AIR, BLOCK\.NETHER_WART_BLOCK/, "single-player saves retain stone bricks and every newer append-only block ID");
+assert.match(singleSave, /candidate\.block, BLOCK\.AIR, BLOCK\.LAVA_FLOW_3/, "single-player saves retain stone bricks and every newer append-only block ID");
 
 const mutation = server.slice(server.indexOf("editWorldBlock: mutation(async"), server.indexOf("startPresenceSession: mutation("));
 assert.ok(mutation.includes("parseWorldBlockOperation(rawRequest)"));

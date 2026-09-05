@@ -126,6 +126,7 @@ export function lakebedCompilerVersionSatisfiesRange(version, declaredRange) {
  */
 export async function resolveLakebedCompilerRuntime({
   cacheRoot = join(homedir(), ".npm", "_npx"),
+  lakebedVersion,
 } = {}) {
   const candidates = [];
   for (const entry of await readdir(cacheRoot, { withFileTypes: true })) {
@@ -157,6 +158,7 @@ export async function resolveLakebedCompilerRuntime({
         packageJson(canonicalEsbuildPackagePath, "esbuild"),
       ]);
       const declaredEsbuildRange = lakebedPackage.dependencies?.esbuild;
+      if (lakebedVersion && lakebedPackage.version !== lakebedVersion) continue;
       if (
         typeof declaredEsbuildRange !== "string"
         || !declaredEsbuildRange

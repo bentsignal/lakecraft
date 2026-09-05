@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { assertTimingBudget } from "../scripts/test-timing.mjs";
 import { performance } from "node:perf_hooks";
 import { chunkWindow } from "../client/game/chunks.ts";
 import { sampleDayNight, type DayNightState } from "../client/game/dayNight.ts";
@@ -311,7 +312,7 @@ for (const chunk of streamedChunks) {
 }
 const cacheMs = performance.now() - cacheStartedAt;
 assert.equal(streamingColumns.size, streamedChunks.length * 64);
-assert.ok(cacheMs < 120, `49-chunk exposure cache build took ${cacheMs.toFixed(1)}ms`);
+assertTimingBudget(cacheMs, 120, "49-chunk exposure cache build");
 console.log(JSON.stringify({
   benchmark: "bounded cached sky exposure",
   probes: 100_000,

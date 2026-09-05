@@ -1058,7 +1058,7 @@ test("runbook documents trusted validation, sanitized storage, current UI labels
   assert.match(runbook, /--repo-root "\$repo_root"/);
   assert.match(runbook, /command -v ffprobe[\s\S]{0,80}command -v ffmpeg/);
   assert.match(runbook, /ffprobe[\s\S]{0,120}real video stream[\s\S]{0,180}ffmpeg[\s\S]{0,100}decode at least one frame/i);
-  assert.match(runbook, /4–32 uniquely named[\s\S]{0,180}`navigation` or `reload` gap/i);
+  assert.match(runbook, /4 through 32 uniquely named[\s\S]{0,180}`navigation` or `reload` gap/i);
   assert.match(runbook, /No unclassified time may hide traffic/i);
   assert.match(runbook, /Console and Network reports[\s\S]{0,100}identical IDs, kinds, and timestamps/i);
   assert.match(runbook, /segments\[0\]\.startedAt === runStartedAt[\s\S]{0,80}no unmeasured prefix/i);

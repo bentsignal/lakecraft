@@ -87,7 +87,7 @@ for (const target of ["block", "tool", "bow", "arm", "otherItem", "rig"]) {
 }
 assert.match(guide, /POSE LAB/);
 assert.match(guide, /Reset this group/);
-assert.match(guide, /do not need to save a file, unpause, click the game, or refresh the browser/i);
+assert.match(guide, /updates the\s+retained WebGL model as soon as a value changes, with no save or refresh/i);
 assert.match(guide, /normal full cube[^\n]*dirt, stone, or planks[^\n]*`block`/i);
 assert.match(guide, /special held block item[^\n]*torch, chest, bed, door/i);
 assert.equal(guide.includes("hoe"), false, "the guide lists only implemented tool kinds");

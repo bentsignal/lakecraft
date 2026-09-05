@@ -331,7 +331,8 @@ assert.deepEqual(
 
 const prepareSource = readFileSync(join(repositoryRoot, "scripts/prepare-lakebed-deploy.mjs"), "utf8");
 assert.match(prepareSource, /server \? \{\} : \{\s*mangleCache:/, "property mangling is client-stage-only");
-assert.match(prepareSource, /loadLakebedCompilerRuntime\(\)/, "staging uses the shared Lakebed compiler resolver");
+assert.match(prepareSource, /loadLakebedCompilerRuntime\(\{ lakebedVersion: "0\.0\.29" \}\)/,
+  "staging resolves the pinned Lakebed compiler even when another version is cached");
 assert.equal(prepareSource.includes("findLakebedEsbuild"), false, "staging has no divergent compiler lookup");
 assert.match(prepareSource, /mangleQuoted: false/, "quoted keys are never rewritten");
 assert.match(prepareSource, /Compact client property live set changed/, "staging fails closed on cache drift");
@@ -358,9 +359,9 @@ function writeFixturePackage(cacheEntryRoot, name, version, files = {}, packageF
 
 function writeCoupledCompilerFixture(
   cacheEntryRoot,
-  { esbuildVersion = "0.27.7", declaredEsbuildRange = "^0.27.1" } = {},
+  { esbuildVersion = "0.27.7", declaredEsbuildRange = "^0.27.1", lakebedVersion = "1.2.3" } = {},
 ) {
-  writeFixturePackage(cacheEntryRoot, "lakebed", "1.2.3", {
+  writeFixturePackage(cacheEntryRoot, "lakebed", lakebedVersion, {
     "dist/cli/build.js": "export {};\n",
   }, { dependencies: { esbuild: declaredEsbuildRange } });
   writeFixturePackage(cacheEntryRoot, "esbuild", esbuildVersion, {
@@ -432,6 +433,15 @@ try {
   );
   assert.equal(resolvedFixture.declaredEsbuildRange, "^0.27.1", "resolver records Lakebed's compiler range");
   assert.equal(resolvedFixture.esbuildVersion, "0.27.7", "resolver selects Lakebed's compiler package");
+  const newerLakebedRoot = join(resolverFixtureRoot, "newer-lakebed");
+  writeCoupledCompilerFixture(newerLakebedRoot, { lakebedVersion: "2.0.0" });
+  utimesSync(join(newerLakebedRoot, "node_modules/esbuild/lib/main.js"), future, future);
+  assert.equal((await resolveLakebedCompilerRuntime({
+    cacheRoot: resolverFixtureRoot, lakebedVersion: "1.2.3",
+  })).cacheEntryRoot, realpathSync(coupledRoot), "a cached newer Lakebed cannot override the requested version");
+  await assert.rejects(resolveLakebedCompilerRuntime({
+    cacheRoot: resolverFixtureRoot, lakebedVersion: "9.9.9",
+  }), /compiler is available/, "a missing pinned version cannot silently fall back");
   for (const [field, relativePath] of [
     ["lakebedPackagePath", "node_modules/lakebed/package.json"],
     ["lakebedBuildPath", "node_modules/lakebed/dist/cli/build.js"],

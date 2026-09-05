@@ -57,7 +57,9 @@ assert.doesNotMatch(query, /insert\(|update\(|delete\(|setInterval|setTimeout/,
   "opening the server list adds no write or polling cadence");
 
 const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
-assert.ok(client.indexOf("? <SinglePlayerApp") < client.indexOf(": <LakebedMultiplayerApp"),
+const singlePlayerRoute = client.indexOf('if (route === "singleplayer") return <SinglePlayerApp');
+const multiplayerRoute = client.indexOf('if (route === "multiplayer") return <LakebedMultiplayerApp');
+assert.ok(singlePlayerRoute >= 0 && multiplayerRoute > singlePlayerRoute,
   "single-player branches before the Lakebed auth/query application mounts");
 
 const lobby = readFileSync(new URL("../client/lobby/LobbyScreen.tsx", import.meta.url), "utf8");

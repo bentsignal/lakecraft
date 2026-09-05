@@ -131,9 +131,12 @@ for (const path of runtimeFiles) {
 // keeps fall momentum on entry, preserves passive sinking, and
 // gives ascent and sneak descent separate reviewed caps without changing
 // gameplay authority.
-assert.equal(runtimeFiles.length, 200, "reviewed main runtime file set changed");
+// Baseline 1e6e84c also includes merged chat notifications, save recovery,
+// door-side geometry, and the extended local-save block range. ToastSurface
+// was removed. Server schema and authority checks above remain unchanged.
+assert.equal(runtimeFiles.length, 199, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "cf0f07b4e8e4beb578d6b1e308445c67c26572cdd055ab7a3f49b309fe594387",
+  "4c6f4f0117180cee92005148e6710c90993670e343871a3f9780499164ee69b6",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

@@ -50,30 +50,19 @@ node scripts/audit-lakebed-production.mjs --deploy-list /absolute/path/deploy-li
 
 1. Resolve and record the exact clean commit. Review `git status --short` and
    stop on unrelated changes.
-2. Run focused tests and the full repository suite. Record pre-existing
-   failures separately and prove they reproduce on the base commit.
-3. Build the ordinary anonymous capsule.
-4. Run the transactional compact audit twice in distinct evidence directories.
-   Both artifact files, staged client files, staged server files, artifact
-   hashes, and client bundle hashes must match.
-5. Run `scripts/check-lakebed-artifact-size.mjs` on the artifact and require at
-   least 32,768 bytes of headroom.
-6. Run the production audit immediately before deployment. Stop if any gate
+2. Run `node scripts/validate-workflow.mjs`, the same gate used in development
+   and preview. Failures block release, including failures on the base commit.
+   Compare its artifact and client hashes to the approved candidate receipt.
+3. Run the production audit immediately before deployment. Stop if any gate
    fails.
 
-```sh
-npx lakebed build . --target anonymous --json
-evidence_parent="$(mktemp -d)"
-node scripts/build-lakebed-audit.mjs "$evidence_parent/build-a"
-node scripts/build-lakebed-audit.mjs "$evidence_parent/build-b"
-cmp "$evidence_parent/build-a/artifact-metadata.json" "$evidence_parent/build-b/artifact-metadata.json"
-cmp "$evidence_parent/build-a/staged/client-index.tsx" "$evidence_parent/build-b/staged/client-index.tsx"
-cmp "$evidence_parent/build-a/staged/server-index.ts" "$evidence_parent/build-b/staged/server-index.ts"
-node scripts/check-lakebed-artifact-size.mjs "$evidence_parent/build-a/artifact-metadata.json"
-node scripts/audit-lakebed-production.mjs
-```
+The shared gate already runs the ordinary build, independent compact builds,
+byte comparisons, and the required 32,768 bytes of headroom. Do not maintain a
+separate release test recipe. See [shared checks](workflows.md#shared-checks).
 
-The audit command owns a fresh private transaction, keeps its sentinel outside
+## Audit isolation
+
+`scripts/build-lakebed-audit.mjs` owns a fresh private transaction, keeps its sentinel outside
 the capsule, writes a safe `lakebed.json` without `deployId`, omits
 `.env.lakebed.server`, seals payload files to `0400` and directories to `0500`,
 and leaves only a sibling `.lakebed` workspace writable. It invokes and verifies
@@ -96,14 +85,14 @@ expose the directory-descriptor isolation required for that claim.
 
 ## Deploy and verify
 
-Deployment is an explicit operator action after review approval. This runbook
-does not authorize an automated deploy. The audit helper has no release flag or
-deploy invocation and never exports a deployable capsule. Production deployment
-is blocked here until a separate reviewed operator transaction validates both
-audited manifests and safely handles Lakebed rewriting top-level `lakebed.json`
-after a successful network request. Do not reconstruct the removed manual
-stage-and-deploy handoff. A post-network local write failure could make the
-release result ambiguous.
+Deploy the exact candidate approved through the
+[delivery workflow](workflows.md). The audit helper has no release flag or
+deploy invocation and never exports a deployable capsule. Use the
+[isolated operator transaction](../../.agents/skills/deploy-lakebed/references/operator-release.md)
+to build and deploy from a clean archive, preserving the claimed target.
+That procedure handles Lakebed rewriting `lakebed.json` after the network
+request. A local write failure can make the result ambiguous; inspect the
+control plane once rather than repeating the deployment.
 
 Record the returned deploy ID, artifact hash, client bundle hash, URL, and UTC
 completion time. Then require the control plane to report the exact artifact:

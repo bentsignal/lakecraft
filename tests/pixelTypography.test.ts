@@ -68,7 +68,7 @@ assert.match(font, /--lc-pixel-font:[^}]+;--lc-input-vpad:4px}[^`]+padding-block
 assert.ok(lobby.includes(".lc-username-menu input{--lc-input-vpad:5px")
   && readFileSync(new URL("../client/components/InventoryDrawer.tsx", import.meta.url), "utf8").includes('style="--lc-input-vpad:9px"'),
 "auth/dialog and Creative inputs retain their original total padding through the shared baseline contract");
-assert.ok(notices.includes("interface font") && notices.includes("26.2 assets") && notices.includes("font-atlas pixel"),
+assert.ok(notices.includes("interface font") && notices.includes("Minecraft Java Edition 26.2") && notices.includes("font-atlas pixel"),
   "embedded font provenance remains explicit");
 
 console.log("embedded Lakecraft pixel typography tests passed");

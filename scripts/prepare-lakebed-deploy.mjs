@@ -73,7 +73,7 @@ async function enableCompactLakebedBuild(buildPath) {
 
 export async function prepareLakebedStage(stagingPlan) {
 const { sourceRoot } = stagingPlan;
-const lakebedRuntime = await loadLakebedCompilerRuntime();
+const lakebedRuntime = await loadLakebedCompilerRuntime({ lakebedVersion: "0.0.29" });
 await enableCompactLakebedBuild(lakebedRuntime.lakebedBuildPath);
 const { build } = lakebedRuntime;
 
@@ -348,6 +348,6 @@ return stagingPlan;
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   throw new Error(
-    "Direct staging is disabled. Use scripts/build-lakebed-audit.mjs; production release is intentionally unsupported.",
+    "Direct staging is disabled. Use scripts/build-lakebed-audit.mjs for audits and the documented operator transaction for production.",
   );
 }

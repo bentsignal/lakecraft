@@ -90,11 +90,24 @@ node --experimental-strip-types tests/performanceBenchmark.test.ts
 node --experimental-strip-types tests/fluidPerformance.test.ts
 ```
 
-For release work, also run the repository suite, the paired compact-build
-procedure, and the artifact headroom gate in
-[`../operations/lakebed-production.md`](../operations/lakebed-production.md). Keep at least
-32 KiB below the Lakebed capsule ceiling and require byte-identical independent
-compact builds.
+Focused checks do not replace the
+[shared delivery gate](../operations/workflows.md#shared-checks), which includes
+the repository suite, paired compact builds, and artifact headroom check.
+
+## Test runner timing
+
+The terrain, cave, clay, sand, sky-cache, and CSS-packing microbenchmarks use
+`scripts/test-timing.mjs`. Local tests default to the original `reference`
+limits. Shared CI sets `LAKECRAFT_TEST_TIMING_PROFILE=shared-runner`, which
+allows exactly twice those CPU wall-clock limits and logs both budgets with
+the measured time. Other correctness and performance assertions are unchanged.
+
+Initial hosted runs exceeded these reference limits on both Ubuntu x64 and
+Apple Silicon VMs, while the same commit passed locally. The separate profile
+keeps a bounded regression guard without treating virtual-machine throughput
+as browser frame performance. There is no unlimited profile or arbitrary
+multiplier. Browser acceptance still uses the reference hardware and frame
+budgets above.
 
 ## Updating this contract
 

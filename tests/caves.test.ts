@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { assertTimingBudget } from "../scripts/test-timing.mjs";
 import { performance } from "node:perf_hooks";
 import {
   CAVE_SPAWN_SANCTUARY_RADIUS,
@@ -80,7 +81,7 @@ for (let y = 5; y <= 64; y += 1) {
   }
 }
 assert.ok(seamTunnelPairs > 0, "the seam test should exercise a tunnel crossing both halves");
-assert.ok(generationMs < 250, `radius-32 cave terrain took ${generationMs.toFixed(1)}ms`);
+assertTimingBudget(generationMs, 250, "radius-32 cave terrain");
 
 // Deep streamed chunks expose caves above bedrock, and an arbitrary
 // negative-coordinate seam agrees.
