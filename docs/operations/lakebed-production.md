@@ -53,28 +53,16 @@ node scripts/audit-lakebed-production.mjs --deploy-list /absolute/path/deploy-li
 2. Run `node scripts/validate-workflow.mjs`, the same gate used in development
    and preview. Failures block release, including failures on the base commit.
    Compare its artifact and client hashes to the approved candidate receipt.
-3. Build the ordinary anonymous capsule.
-4. Run the transactional compact audit twice in distinct evidence directories.
-   Both artifact files, staged client files, staged server files, artifact
-   hashes, and client bundle hashes must match.
-5. Run `scripts/check-lakebed-artifact-size.mjs` on the artifact and require at
-   least 32,768 bytes of headroom.
-6. Run the production audit immediately before deployment. Stop if any gate
+3. Run the production audit immediately before deployment. Stop if any gate
    fails.
 
-```sh
-npx lakebed build . --target anonymous --json
-evidence_parent="$(mktemp -d)"
-node scripts/build-lakebed-audit.mjs "$evidence_parent/build-a"
-node scripts/build-lakebed-audit.mjs "$evidence_parent/build-b"
-cmp "$evidence_parent/build-a/artifact-metadata.json" "$evidence_parent/build-b/artifact-metadata.json"
-cmp "$evidence_parent/build-a/staged/client-index.tsx" "$evidence_parent/build-b/staged/client-index.tsx"
-cmp "$evidence_parent/build-a/staged/server-index.ts" "$evidence_parent/build-b/staged/server-index.ts"
-node scripts/check-lakebed-artifact-size.mjs "$evidence_parent/build-a/artifact-metadata.json"
-node scripts/audit-lakebed-production.mjs
-```
+The shared gate already runs the ordinary build, independent compact builds,
+byte comparisons, and the required 32,768 bytes of headroom. Do not maintain a
+separate release test recipe. See [shared checks](workflows.md#shared-checks).
 
-The audit command owns a fresh private transaction, keeps its sentinel outside
+## Audit isolation
+
+`scripts/build-lakebed-audit.mjs` owns a fresh private transaction, keeps its sentinel outside
 the capsule, writes a safe `lakebed.json` without `deployId`, omits
 `.env.lakebed.server`, seals payload files to `0400` and directories to `0500`,
 and leaves only a sibling `.lakebed` workspace writable. It invokes and verifies

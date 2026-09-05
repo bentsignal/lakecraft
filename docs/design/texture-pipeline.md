@@ -79,14 +79,10 @@ do not swap textures.
 
 ## Check deployment headroom
 
-After preparing and building a staged release, keep at least 32 KiB below Lakebed's observed 1 MiB anonymous artifact ceiling:
-
-```sh
-node scripts/check-lakebed-artifact-size.mjs \
-  /tmp/lakecraft-release/lakecraft/.lakebed/artifacts/lakecraft.anonymous.json
-```
-
-The check exits non-zero when either the hard ceiling or the safety margin is exceeded, so it can be reused in release automation.
+Asset changes must pass the
+[shared delivery gate](../operations/workflows.md#shared-checks). It builds the
+compact capsule twice and checks artifact headroom; a source PNG's size alone
+does not establish the deployed cost.
 
 ## Art constraints
 

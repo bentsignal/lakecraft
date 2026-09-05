@@ -90,11 +90,9 @@ node --experimental-strip-types tests/performanceBenchmark.test.ts
 node --experimental-strip-types tests/fluidPerformance.test.ts
 ```
 
-For release work, also run the repository suite, the paired compact-build
-procedure, and the artifact headroom gate in
-[`../operations/lakebed-production.md`](../operations/lakebed-production.md). Keep at least
-32 KiB below the Lakebed capsule ceiling and require byte-identical independent
-compact builds.
+Focused checks do not replace the
+[shared delivery gate](../operations/workflows.md#shared-checks), which includes
+the repository suite, paired compact builds, and artifact headroom check.
 
 ## Test runner timing
 

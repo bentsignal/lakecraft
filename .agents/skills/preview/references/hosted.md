@@ -1,26 +1,18 @@
 # Hosted review deployments
 
 Use this path for browser verification of development and release-preview
-deployments. Both use isolated, unclaimed Lakebed HTTPS URLs with hosted Google
-auth. Read [the delivery contract](../../../../docs/operations/workflows.md).
+deployments. Both use isolated, unclaimed Lakebed HTTPS URLs. Read
+[the delivery contract](../../../../docs/operations/workflows.md) for hosting
+boundaries and the owning stage skill for publishing and review steps.
 
 ## Publish safely
-
-Run the gated publisher from a committed, pushed worktree branch:
-
-```sh
-node scripts/publish-review.mjs development
-```
 
 The publisher pins Lakebed 0.0.29 and TypeScript 5.9.3, builds the compact capsule, verifies its hashes and 32 KiB artifact headroom, removes the production deploy binding in an isolated stage, and calls the anonymous deployment endpoint directly. It deletes `LAKEBED_TOKEN` from its toolchain environment, so a developer login cannot turn a preview into an owned deployment.
 
 Never run `npx lakebed deploy .` from the worktree. The root `lakebed.json` is bound to production.
 
-For integrated release testing, use `node scripts/publish-review.mjs preview`
-on synced `main`. Both commands run the complete shared validation gate and
-publish an archive of the exact pushed commit. The deployment build must match
-the validated artifact and client hashes. The low-level publisher is an
-implementation helper, not a substitute for the gate.
+`scripts/publish-review.mjs` owns gated publication for both stages. The
+low-level publisher is an implementation helper, not a substitute for the gate.
 
 Development credentials live in `.lakebed/development.json`; release preview
 credentials live in `.lakebed/release-preview.json`, both with mode 0600. Reruns
@@ -28,17 +20,11 @@ update the same URL while the deployment exists. An expired deployment gets
 one replacement. Never print the token or claim the deployment. Sanitized
 receipts under `.lakebed/reviews/` can be attached to PRs and prereleases.
 
-## Refresh during review
+## Browser verification
 
-Once the user starts a hosted-preview review cycle, run the publisher after every completed revision before handing the work back. Run it even when the public URL will remain the same because the deployed contents still need to be refreshed. Present the URL again after each successful refresh so the user can open the latest build directly. If publishing fails, say that the existing preview may be stale instead of presenting it as current.
-
-Verify the reported URL:
-
-```sh
-curl --fail --silent --show-error --location '<preview-url>/' >/dev/null
-curl --fail --silent --show-error --location '<preview-url>/?multiplayer=1' >/dev/null
-curl --fail --silent --show-error '<preview-url>/api/status'
-```
+The publisher probes `/`, `/?multiplayer=1`, and `/api/status`. Its receipt
+records HTTP verification, not successful gameplay or authentication. Do not
+repeat those probes as a separate delivery gate.
 
 Use the collaborative browser when available. Confirm that `/` mounts no auth UI, `/?multiplayer=1` displays the sign-in gate without a server list, and Google sign-in starts. Interactive completion may require the user's Google session.
 

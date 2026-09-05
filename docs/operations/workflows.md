@@ -12,6 +12,12 @@ not publish anything. The user can narrow the scope of any request.
 
 ## Shared checks
 
+This document owns the delivery contract. `AGENTS.md` routes requests to the
+stage skills, which own the ordered execution steps. The
+[production runbook](lakebed-production.md) owns production identity, audit,
+and recovery details. Scripts implement the checks; other docs should link
+here rather than maintain alternative delivery recipes.
+
 Use Node 24, Bun 1.3, and `ffmpeg`/`ffprobe` on PATH for the video evidence
 tests. CI pins Node 24.14.0 and Bun 1.3.3 on `ubuntu-24.04`. Builds pin
 Lakebed 0.0.29 and TypeScript 5.9.3. The Lakebed
@@ -60,28 +66,15 @@ configuring enforcement.
 
 ## Development review
 
-Follow [development](../../.agents/skills/development/SKILL.md). After committing
-and pushing the branch, run:
-
-```sh
-node scripts/publish-review.mjs development
-```
-
-This command runs the shared gate before any deployment. Return the URL,
-expiry, commit, and test steps. On feedback, commit, push, validate, and refresh
-the same deployment. When the user approves, open the PR, integrate current
-`main`, check the resulting source and CI, then merge. Changes that alter what
-the user reviewed require a refreshed development link before merging.
+Follow [development](../../.agents/skills/development/SKILL.md) for publishing,
+feedback, and PR steps. Each handoff identifies the pushed commit, URL, expiry,
+checks, and user test steps. Approval authorizes a passing PR and merge, not
+unreviewed behavior changes introduced during integration.
 
 ## Integrated release preview
 
-Follow [preview](../../.agents/skills/preview/SKILL.md). Fetch tags and sync a
-clean `main` checkout with `git pull --ff-only origin main`, then run:
-
-```sh
-node scripts/release-changes.mjs
-node scripts/publish-review.mjs preview
-```
+Follow [preview](../../.agents/skills/preview/SKILL.md) for preparing a candidate
+from clean, synced `main` and publishing its review record.
 
 Explain changes since the latest UTC-named `production/*` tag, including
 merged work and any direct commits. Translate the diff into a user test list
@@ -103,10 +96,8 @@ release, production tags replace that marker in comparisons.
 ## Production
 
 Follow [deploy-lakebed](../../.agents/skills/deploy-lakebed/SKILL.md) after the
-user approves a candidate for production. Resolve its GitHub prerelease and
-receipt, check out that exact commit in a clean detached worktree, run the
-shared gate, compare the compact hashes to the candidate, and use the isolated
-operator transaction. Preserve the production deploy ID and database.
+user approves a candidate for production. Only that candidate's exact commit
+and validated artifact may ship. Preserve the production deploy ID and database.
 
 After control-plane and public-alias verification, create an annotated
 `production/<UTC>-<short-sha>` tag on the deployed commit and a GitHub release.

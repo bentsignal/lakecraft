@@ -1,4 +1,4 @@
-# Local development preview
+# Local agent testing
 
 Use this path only for the agent's own active development, browser automation, and fast reloads. It is not a user handoff.
 

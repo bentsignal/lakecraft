@@ -25,7 +25,7 @@ Read these files before changing production:
 - `references/operator-release.md` in this skill
 
 Treat the checked-in target files as authoritative. Run Lakebed commands with
-`npx lakebed ...`.
+the pinned toolchain specified in `references/operator-release.md`.
 
 ## Safety rules
 
@@ -33,9 +33,8 @@ Treat the checked-in target files as authoritative. Run Lakebed commands with
 - Preserve the existing claimed deploy ID. Updating it preserves the Lakebed database and the attached `craft.lakebed.app` alias.
 - Do not run a raw `npx lakebed deploy .` release for Lakecraft. The ordinary source-map-heavy capsule exceeds Lakebed's request limit.
 - Use the repository's compact staging transforms and their fail-closed fingerprints.
-- Require the repository's artifact reserve gate. If the artifact clears
-  Lakebed's hard ceiling but misses the repository reserve, report both byte
-  counts. Get an explicit release exception before the network request.
+- Require the repository's artifact reserve gate. Missing the reserve blocks
+  deployment even if the artifact clears Lakebed's hard ceiling.
 - Never retry an ambiguous deploy blindly. The CLI may complete the network update and then fail while rewriting a sealed temporary `lakebed.json`.
 - Probe the public alias once after control-plane verification; avoid request or log polling.
 
@@ -50,8 +49,8 @@ Treat the checked-in target files as authoritative. Run Lakebed commands with
    ```sh
    git status -sb
    git rev-parse HEAD
-   npx lakebed auth status --json
-   npx lakebed deploy list --json
+   npx --yes lakebed@0.0.29 auth status --json
+   npx --yes lakebed@0.0.29 deploy list --json
    ```
 
 2. Run `node scripts/validate-workflow.mjs`. Require its artifact and client
@@ -59,12 +58,10 @@ Treat the checked-in target files as authoritative. Run Lakebed commands with
    to preview. Do not stage from a live checkout containing
    `.lakebed/deploy.json`; the safety wrapper rejects that credential path.
 
-3. Build the compact capsule twice in independent transactions. The artifact
-   metadata, staged client, staged server, artifact hash, and client bundle hash
-   must match. Run:
+3. The shared gate includes paired compact builds and the reserve check. Run
+   the production-specific preflight audit next:
 
    ```sh
-   node scripts/check-lakebed-artifact-size.mjs /path/to/artifact-metadata.json
    node scripts/audit-lakebed-production.mjs
    ```
 
@@ -79,7 +76,7 @@ Treat the checked-in target files as authoritative. Run Lakebed commands with
 
 5. If the CLI succeeds, continue to verification. If it reports `EACCES` while
    writing the staged `lakebed.json`, the result is ambiguous. Do not deploy
-   again. Fetch `npx lakebed deploy list --json` once and compare the deploy ID,
+   again. Fetch `npx --yes lakebed@0.0.29 deploy list --json` once and compare the deploy ID,
    active status, update time, and expected compact client-bundle hash.
 
 6. Verify the returned control-plane artifact exactly:
@@ -98,7 +95,7 @@ Treat the checked-in target files as authoritative. Run Lakebed commands with
      https://craft.lakebed.app/
    ```
 
-8. Report the commit, deploy ID, artifact hash, client-bundle hash, canonical URL, public URL, UTC completion time, checks, and any reserve exception.
+8. Report the commit, deploy ID, artifact hash, client-bundle hash, canonical URL, public URL, UTC completion time, and checks.
 
 9. After verification, create and push an annotated
    `production/<UTC>-<short-sha>` tag on the deployed commit and create a GitHub
@@ -113,7 +110,7 @@ For a new claimed replacement deployment, confirm the binding and ownership,
 then run:
 
 ```sh
-npx lakebed domains add craft.lakebed.app --json
+npx --yes lakebed@0.0.29 domains add craft.lakebed.app --json
 ```
 
 Do not terminate or replace the existing claimed deployment merely to update the application.
