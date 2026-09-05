@@ -1,20 +1,21 @@
 ---
 name: deploy-lakebed
-description: Use only when the user explicitly asks to release or verify Lakecraft on its main claimed Lakebed production deployment. Do not use for worktree previews, test links, or testing on another computer.
+description: Deploy and verify an approved Lakecraft release candidate on craft.lakebed.app, or inspect production. A new release request first uses preview; branch work uses development.
 ---
 
 # Deploy Lakecraft on Lakebed
 
 Release the compact Lakecraft capsule to its existing claimed deployment.
-For a temporary hosted build that the user will test, use the `preview` skill
-instead. A request for a test URL or access from another computer is not a
-production release request.
+For integrated release testing use `preview`; for branch work use `development`.
+A new release request starts with a candidate preview. After the user approves
+that exact candidate for production, continue here without asking again.
 
 ## Required context
 
 Read these files before changing production:
 
 - `docs/operations/lakebed-production.md`
+- `docs/operations/workflows.md`
 - `docs/operations/production-target.json`
 - `lakebed.json`
 - `references/operator-release.md` in this skill
@@ -36,7 +37,11 @@ Treat the checked-in target files as authoritative. Run Lakebed commands with
 
 ## Release workflow
 
-1. Confirm the exact source and credentials:
+1. Resolve the approved candidate tag and sanitized receipt from its GitHub
+   prerelease. Use a clean detached worktree at that exact commit, even if
+   `main` has advanced. Require the candidate commit to be merged into `main`.
+   Do not use the current contents of a mutable preview URL as source identity.
+   Confirm the exact source and credentials:
 
    ```sh
    git status -sb
@@ -45,9 +50,10 @@ Treat the checked-in target files as authoritative. Run Lakebed commands with
    npx lakebed deploy list --json
    ```
 
-2. Run the relevant tests and compact-release checks from a clean archive. Do
-   not stage from a live checkout that contains `.lakebed/deploy.json`. The
-   safety wrapper rejects that legacy credential path.
+2. Run `node scripts/validate-workflow.mjs`. Require its artifact and client
+   hashes to match the approved candidate receipt. A mismatch returns the work
+   to preview. Do not stage from a live checkout containing
+   `.lakebed/deploy.json`; the safety wrapper rejects that credential path.
 
 3. Build the compact capsule twice in independent transactions. The artifact
    metadata, staged client, staged server, artifact hash, and client bundle hash
@@ -88,6 +94,12 @@ Treat the checked-in target files as authoritative. Run Lakebed commands with
    ```
 
 8. Report the commit, deploy ID, artifact hash, client-bundle hash, canonical URL, public URL, UTC completion time, checks, and any reserve exception.
+
+9. After verification, create and push an annotated
+   `production/<UTC>-<short-sha>` tag on the deployed commit and create a GitHub
+   release. Record the candidate tag and sanitized deployment receipt in the
+   release, using a temporary `--notes-file`. This tag is the baseline for the
+   next release checklist. Never tag a failed or ambiguous deployment as shipped.
 
 ## Domain lifecycle
 

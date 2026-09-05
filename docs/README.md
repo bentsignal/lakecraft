@@ -36,6 +36,8 @@ recover from implementation history.
   [benchmark](performance/benchmark.md): budgets and deterministic measurement
 - [Artifact headroom](performance/artifact-headroom.md): compact-build evidence
 - [Lakebed production](operations/lakebed-production.md): release and recovery
+- [Delivery workflows](operations/workflows.md): development review, integrated
+  release previews, shared checks, and production records
 - [Incident containment](operations/incident-containment.md): retained schema
   safety boundary
 

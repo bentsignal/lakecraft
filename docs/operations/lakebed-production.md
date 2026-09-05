@@ -50,8 +50,9 @@ node scripts/audit-lakebed-production.mjs --deploy-list /absolute/path/deploy-li
 
 1. Resolve and record the exact clean commit. Review `git status --short` and
    stop on unrelated changes.
-2. Run focused tests and the full repository suite. Record pre-existing
-   failures separately and prove they reproduce on the base commit.
+2. Run `node scripts/validate-workflow.mjs`, the same gate used in development
+   and preview. Failures block release, including failures on the base commit.
+   Compare its artifact and client hashes to the approved candidate receipt.
 3. Build the ordinary anonymous capsule.
 4. Run the transactional compact audit twice in distinct evidence directories.
    Both artifact files, staged client files, staged server files, artifact
@@ -96,14 +97,14 @@ expose the directory-descriptor isolation required for that claim.
 
 ## Deploy and verify
 
-Deployment is an explicit operator action after review approval. This runbook
-does not authorize an automated deploy. The audit helper has no release flag or
-deploy invocation and never exports a deployable capsule. Production deployment
-is blocked here until a separate reviewed operator transaction validates both
-audited manifests and safely handles Lakebed rewriting top-level `lakebed.json`
-after a successful network request. Do not reconstruct the removed manual
-stage-and-deploy handoff. A post-network local write failure could make the
-release result ambiguous.
+Deploy the exact candidate approved through the
+[delivery workflow](workflows.md). The audit helper has no release flag or
+deploy invocation and never exports a deployable capsule. Use the
+[isolated operator transaction](../../.agents/skills/deploy-lakebed/references/operator-release.md)
+to build and deploy from a clean archive, preserving the claimed target.
+That procedure handles Lakebed rewriting `lakebed.json` after the network
+request. A local write failure can make the result ambiguous; inspect the
+control plane once rather than repeating the deployment.
 
 Record the returned deploy ID, artifact hash, client bundle hash, URL, and UTC
 completion time. Then require the control plane to report the exact artifact:

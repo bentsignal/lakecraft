@@ -17,3 +17,23 @@ changing that boundary.
 
 Implement shared gameplay and presentation once under `client/gameplay/`, with
 local and Railway adapters handling only authority and persistence differences.
+
+## Work delivery
+
+For implementation requests, follow
+[development](.agents/skills/development/SKILL.md). Complete the work in the
+assigned worktree branch, validate, commit and push, then provide a verified
+Lakebed HTTPS development URL. Repeat that handoff after feedback. User review
+approval advances the work through a passing PR into `main`.
+
+For a release request, first follow
+[preview](.agents/skills/preview/SKILL.md) to test synced `main` as a release
+candidate and list changes since production. After the user approves that
+candidate for production, follow
+[deploy-lakebed](.agents/skills/deploy-lakebed/SKILL.md).
+
+The shared contract is [delivery workflows](docs/operations/workflows.md).
+Use `node scripts/validate-workflow.mjs` at every handoff and before merging or
+releasing. Failed or unavailable checks block those steps. Localhost, LAN,
+Tailscale, and tunnels are never user review links. Planning and read-only
+questions do not start a delivery cycle. Explicit user scope overrides defaults.

@@ -217,6 +217,11 @@ export async function runAuditBuild({ outputRoot, sourceRoot, stageParent, runBu
         const reportBuffer = runBuild
           ? await runBuild(plan)
           : await runCommand("npx", [
+            "--yes",
+            "--package",
+            "lakebed@0.0.29",
+            "--package",
+            "typescript@5.9.3",
             "lakebed",
             "build",
             plan.capsuleRoot,

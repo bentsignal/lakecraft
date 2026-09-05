@@ -73,7 +73,7 @@ async function enableCompactLakebedBuild(buildPath) {
 
 export async function prepareLakebedStage(stagingPlan) {
 const { sourceRoot } = stagingPlan;
-const lakebedRuntime = await loadLakebedCompilerRuntime();
+const lakebedRuntime = await loadLakebedCompilerRuntime({ lakebedVersion: "0.0.29" });
 await enableCompactLakebedBuild(lakebedRuntime.lakebedBuildPath);
 const { build } = lakebedRuntime;
 

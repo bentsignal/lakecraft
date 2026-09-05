@@ -7,7 +7,8 @@ repeat that preparation inside a one-use operator transaction.
 
 ## Prepare the source
 
-1. Require a clean worktree and record `git rev-parse HEAD`.
+1. Require a clean worktree at the approved candidate commit. Run the shared
+   validation gate and match its compact hashes to the candidate receipt.
 2. Create an unpredictable temporary directory with `mktemp -d`.
 3. Export that exact commit with `git archive HEAD | tar -x -C "$release_source"`.
 4. If `.env.lakebed.server` exists, copy it into the private archive without printing it. Delete the temporary source after the transaction.
@@ -38,7 +39,8 @@ stage.
 Inside the transaction consumer, spawn only:
 
 ```sh
-npx lakebed deploy "$plan_capsule_root" --json
+npx --yes --package lakebed@0.0.29 --package typescript@5.9.3 \
+  lakebed deploy "$plan_capsule_root" --json
 ```
 
 Use the transaction root as the command working directory. Add
