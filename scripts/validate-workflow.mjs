@@ -73,7 +73,10 @@ async function validateSnapshot(cwd) {
   }));
   if (cleanCommit(cwd) !== commit) failures.push("HEAD changed during validation.");
   if (failures.length) throw new Error(`Validation failed:\n${failures.join("\n")}`);
-  return { commit, checkedAt: new Date().toISOString(), artifact };
+  return {
+    commit, checkedAt: new Date().toISOString(), artifact,
+    timingProfile: process.env.LAKECRAFT_TEST_TIMING_PROFILE ?? "reference",
+  };
 }
 
 export async function validateWorkflow(cwd = process.cwd()) {
