@@ -12,7 +12,8 @@ not publish anything. The user can narrow the scope of any request.
 
 ## Shared checks
 
-Use Node 24.14.0, Bun 1.3.3, Lakebed 0.0.29, and TypeScript 5.9.3. The Lakebed
+Use Node 24 and Bun 1.3. CI pins Node 24.14.0 and Bun 1.3.3. Builds pin
+Lakebed 0.0.29 and TypeScript 5.9.3. The Lakebed
 compiler transforms depend on this pinned toolchain. Changes to it require
 validation of the compact output.
 
@@ -28,7 +29,9 @@ anonymous build, and two independent compact builds with matching metadata,
 client, server, and favicon. Compact builds enforce the existing 32 KiB reserve.
 Tests run in a temporary clean worktree. Builds use an archive of the commit
 to exclude ignored worktree credentials.
-All check groups run so a failure report exposes more than the first problem.
+Tests that import Bun or Railway code run under Bun. Node tests run serially
+because several assert wall-clock performance budgets. All check groups run
+so a failure report exposes more than the first problem.
 
 Focused tests help during implementation but do not replace this gate. Run
 visual QA for player-visible changes and benchmarks for performance-sensitive

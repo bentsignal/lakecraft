@@ -45,7 +45,7 @@ async function validateSnapshot(cwd) {
     else nodeTests.push(path);
   }
   await check("repository tests", async () => run(process.execPath, [
-    "--experimental-transform-types", "--test", "--test-concurrency=4",
+    "--experimental-transform-types", "--test", "--test-concurrency=1",
     ...nodeTests,
   ], cwd));
   await check("Railway and Bun-dependent tests", () => run("bun", ["test", ...bunTests], cwd));

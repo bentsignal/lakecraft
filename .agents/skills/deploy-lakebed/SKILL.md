@@ -10,6 +10,10 @@ For integrated release testing use `preview`; for branch work use `development`.
 A new release request starts with a candidate preview. After the user approves
 that exact candidate for production, continue here without asking again.
 
+For a read-only production verification request, run the production audit and
+only the requested public checks. It does not require a candidate or authorize
+a deployment, tag, or release.
+
 ## Required context
 
 Read these files before changing production:
