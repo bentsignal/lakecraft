@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { assertTimingBudget } from "../scripts/test-timing.mjs";
 import { readFile, readdir } from "node:fs/promises";
 import {
   bundleCompressCss,
@@ -69,10 +70,7 @@ for (let sample = 0; sample < SAMPLE_COUNT; sample += 1) {
 }
 
 const medianMs = medianOfFive(samples);
-assert.ok(
-  medianMs < MAXIMUM_MEDIAN_PACK_MS,
-  `shared CSS packing median-of-${SAMPLE_COUNT} took ${medianMs.toFixed(1)}ms`,
-);
+assertTimingBudget(medianMs, MAXIMUM_MEDIAN_PACK_MS, `shared CSS packing median-of-${SAMPLE_COUNT}`);
 
 console.log(JSON.stringify({
   benchmark: "shared production CSS packing wall clock",

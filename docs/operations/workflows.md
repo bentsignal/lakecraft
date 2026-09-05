@@ -13,8 +13,7 @@ not publish anything. The user can narrow the scope of any request.
 ## Shared checks
 
 Use Node 24, Bun 1.3, and `ffmpeg`/`ffprobe` on PATH for the video evidence
-tests. CI pins Node 24.14.0 and Bun 1.3.3 on the Apple Silicon `macos-15` runner
-to match the CPU architecture used for the existing timing guards. Builds pin
+tests. CI pins Node 24.14.0 and Bun 1.3.3 on `ubuntu-24.04`. Builds pin
 Lakebed 0.0.29 and TypeScript 5.9.3. The Lakebed
 compiler transforms depend on this pinned toolchain. Changes to it require
 validation of the compact output.
@@ -34,6 +33,13 @@ to exclude ignored worktree credentials.
 Tests that import Bun or Railway code run under Bun. Node tests run serially
 because several assert wall-clock performance budgets. All check groups run
 so a failure report exposes more than the first problem.
+
+CI sets `LAKECRAFT_TEST_TIMING_PROFILE=shared-runner` for the six
+hardware-sensitive microbenchmark guards described in the
+[performance contract](../performance/README.md#test-runner-timing). Their fixed
+2x allowance accounts for shared virtual hardware; local validation keeps the
+original limits. Deterministic assertions, artifact limits, and browser frame
+budgets never vary by this profile.
 
 Focused tests help during implementation but do not replace this gate. Run
 visual QA for player-visible changes and benchmarks for performance-sensitive
