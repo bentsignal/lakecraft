@@ -331,7 +331,8 @@ assert.deepEqual(
 
 const prepareSource = readFileSync(join(repositoryRoot, "scripts/prepare-lakebed-deploy.mjs"), "utf8");
 assert.match(prepareSource, /server \? \{\} : \{\s*mangleCache:/, "property mangling is client-stage-only");
-assert.match(prepareSource, /loadLakebedCompilerRuntime\(\)/, "staging uses the shared Lakebed compiler resolver");
+assert.match(prepareSource, /loadLakebedCompilerRuntime\(\{ lakebedVersion: "0\.0\.29" \}\)/,
+  "staging resolves the pinned Lakebed compiler even when another version is cached");
 assert.equal(prepareSource.includes("findLakebedEsbuild"), false, "staging has no divergent compiler lookup");
 assert.match(prepareSource, /mangleQuoted: false/, "quoted keys are never rewritten");
 assert.match(prepareSource, /Compact client property live set changed/, "staging fails closed on cache drift");

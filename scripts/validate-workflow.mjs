@@ -37,11 +37,18 @@ async function validateSnapshot(cwd) {
     }
   }
   await run("npx", ["--yes", "--package", "lakebed@0.0.29", "--package", "typescript@5.9.3", "lakebed", "--version"], cwd);
+  const nodeTests = [];
+  const bunTests = await findTests(join(cwd, "apps/game-server/tests"));
+  for (const path of [...await findTests(join(cwd, "tests")), ...await findTests(join(cwd, "tools"))]) {
+    const source = await readFile(path, "utf8");
+    if (/from\s*["'](?:bun:|[^"']*apps\/game-server\/)/.test(source)) bunTests.push(path);
+    else nodeTests.push(path);
+  }
   await check("repository tests", async () => run(process.execPath, [
     "--experimental-transform-types", "--test", "--test-concurrency=4",
-    ...await findTests(join(cwd, "tests")), ...await findTests(join(cwd, "tools")),
+    ...nodeTests,
   ], cwd));
-  await check("Railway tests", () => run("bun", ["test", "apps/game-server/tests"], cwd));
+  await check("Railway and Bun-dependent tests", () => run("bun", ["test", ...bunTests], cwd));
   for (const script of ["check-markdown-lines.mjs", "check-markdown-links.mjs"]) {
     await check(script, () => run(process.execPath, [`scripts/${script}`], cwd));
   }
