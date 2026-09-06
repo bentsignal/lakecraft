@@ -14,6 +14,10 @@ separate request to commit, push, or publish the finished revision.
 2. Implement the request and run focused checks while editing. Apply visual QA
    and renderer benchmarking when their skills apply. Local browser testing
    follows [local setup](../preview/references/local.md).
+   For multiplayer-impacting work, follow
+   [multiplayer review](../../../docs/operations/multiplayer-review.md) using the
+   developer's own Railway CLI account. Provision only when needed; never use
+   maintainer credentials or production worlds for contributor testing.
 3. Commit the finished revision and push the branch with its upstream. Run
    `node scripts/publish-review.mjs development`. This runs the complete shared
    validation gate, builds the pushed commit, and refreshes the development URL.

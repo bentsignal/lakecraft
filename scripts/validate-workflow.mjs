@@ -55,7 +55,7 @@ async function validateSnapshot(cwd) {
   }
   let artifact;
   await check("ordinary and paired compact builds", () => withCommitArchive(commit, cwd, async (sourceRoot) => {
-    await run("npx", [...LAKEBED_NPX_ARGS, "build", ".", "--target", "anonymous", "--json"], sourceRoot);
+    await run(process.execPath, ["scripts/compile-lakebed-source.mjs"], sourceRoot);
     const evidence = await mkdtemp(join(tmpdir(), "lakecraft-checks-"));
     try {
       const first = join(evidence, "a");

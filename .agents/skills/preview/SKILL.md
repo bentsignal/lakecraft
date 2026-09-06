@@ -22,6 +22,10 @@ to [development](../development/SKILL.md).
    `.lakebed/reviews/preview.json`.
 4. Follow [hosted verification](references/hosted.md). Present the preview URL,
    expiry, candidate commit, changes, checks, and user testing checklist.
+   Test multiplayer in the maintainer's persistent isolated Railway preview
+   environment using [multiplayer review](../../../docs/operations/multiplayer-review.md).
+   Record the server revision, configuration, and browser evidence with the
+   candidate; a Lakebed HTTP check cannot substitute for joining a world.
 5. Create a GitHub prerelease at an immutable `candidate/<UTC>-<short-sha>` tag
    pointing to the candidate commit. Attach the sanitized receipt and put the
    checklist and URL in its notes. Use a temporary `--notes-file`. Never upload

@@ -134,9 +134,11 @@ for (const path of runtimeFiles) {
 // Baseline 1e6e84c also includes merged chat notifications, save recovery,
 // door-side geometry, and the extended local-save block range. ToastSurface
 // was removed. Server schema and authority checks above remain unchanged.
-assert.equal(runtimeFiles.length, 199, "reviewed main runtime file set changed");
+// Review setup adds an origin guard and an authenticated server-registration
+// screen. It does not change gameplay authority, persistence, or server schema.
+assert.equal(runtimeFiles.length, 201, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "4c6f4f0117180cee92005148e6710c90993670e343871a3f9780499164ee69b6",
+  "9836a039a43b2016a1433381ea05ab2bc49ac1cbf23dbe990ca971585162edac",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

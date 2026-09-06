@@ -32,11 +32,14 @@ node scripts/validate-workflow.mjs
 ```
 
 This checks every `.test.ts` and `.test.mjs` below `tests/` and `tools/`, Bun
-tests below `apps/game-server/tests`, Markdown lines and links, the ordinary
-anonymous build, and two independent compact builds with matching metadata,
+tests below `apps/game-server/tests`, Markdown lines and links, ordinary
+client/server compilation, and two independent compact builds with matching metadata,
 client, server, and favicon. Compact builds enforce the existing 32 KiB reserve.
 Tests run in a temporary clean worktree. Builds use an archive of the commit
 to exclude ignored worktree credentials.
+The ordinary source includes oversized inline assets and is compiled without
+creating a deploy envelope. Both compact builds must pass Lakebed's artifact
+validation and the repository's reserve gate; ordinary source is never uploaded.
 Tests that import Bun or Railway code run under Bun. Node tests run serially
 because several assert wall-clock performance budgets. All check groups run
 so a failure report exposes more than the first problem.
@@ -123,7 +126,9 @@ chat or commit it. Named permanent aliases or portable management credentials
 would require a separate claimed-deployment design.
 
 The Lakebed deployment covers the client, identity, and directory. Railway
-game servers are separate releases. Test multiplayer changes against an
+game servers are separate releases. Follow
+[multiplayer review](multiplayer-review.md) for personal CLI provisioning and
+the separate maintainer preview environment. Test multiplayer changes against an
 isolated server and volume with the matching commit, origin allowlist, and
 preview registration. Record its tested image/commit with the candidate. A
 Lakebed preview alone does not deploy or validate Railway changes.

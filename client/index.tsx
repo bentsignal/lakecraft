@@ -1,4 +1,6 @@
 import { ErrorBoundary, signInWithGoogle, signOut, useAuth, useMutation, useQuery } from "lakebed/client";
+import { permitsMultiplayerEndpoint } from "./multiplayerEnvironment";
+import { ReviewServerRegistration } from "./lobby/ReviewServerRegistration";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { ChatOverlay, type LakecraftChatMessage } from "./chat";
 import { GameHud } from "./components";
@@ -477,9 +479,11 @@ function RailwayMultiplayerSession({
   const multiplayerAuthorityPaused = multiplayerPaused || !transportReady;
   const registeredServers = externalMultiplayerServers.flatMap((server) => {
     const endpoint = normalizeMultiplayerEndpoint(server.canonicalWssUrl);
-    return endpoint ? [{ ...server, canonicalWssUrl: endpoint }] : [];
+    return endpoint && permitsMultiplayerEndpoint(window.location.origin, endpoint)
+      ? [{ ...server, canonicalWssUrl: endpoint }] : [];
   });
-  const combinedServers:SavedMultiplayerServer[] = PINNED_MULTIPLAYER_SERVERS.map((pinned)=>{
+  const combinedServers:SavedMultiplayerServer[] = PINNED_MULTIPLAYER_SERVERS
+    .filter(server => permitsMultiplayerEndpoint(window.location.origin, server.endpoint)).map((pinned)=>{
     const registered=registeredServers.find((server)=>server.canonicalWssUrl===pinned.endpoint);
     return registered?{id:registered.id,name:registered.name,endpoint:registered.canonicalWssUrl}:{...pinned};
   });
@@ -488,6 +492,7 @@ function RailwayMultiplayerSession({
     combinedServers.push({id:server.id,name:server.name,endpoint:server.canonicalWssUrl});
   }
   for (const saved of savedMultiplayerServers) {
+    if (!permitsMultiplayerEndpoint(window.location.origin, saved.endpoint)) continue;
     if (combinedServers.some((server) => server.endpoint === saved.endpoint)) continue;
     combinedServers.push(saved);
   }
@@ -1581,6 +1586,11 @@ function RailwayMultiplayerSession({
       setJoinError("Enter a valid wss:// or https:// Railway server address.");
       return;
     }
+    if (!permitsMultiplayerEndpoint(window.location.origin, endpoint)) {
+      setJoinPhase("error");
+      setJoinError("Production worlds are unavailable from development and preview deployments.");
+      return;
+    }
     const registered = registeredServers.find((server) => server.canonicalWssUrl === endpoint);
     const id = registered?.id ?? `direct:${endpoint}`;
     const enteredToken = directConnectToken.trim();
@@ -1728,6 +1738,10 @@ function RailwayMultiplayerSession({
     delivery: message.delivery,
   })), ...notificationMessages].sort((left, right) => new Date(left.sentAt).getTime() - new Date(right.sentAt).getTime());
   const unreadChat = chatOpen ? 0 : countUnreadRealtimeChat(realtimeChatMessages, lastSeenChatSequence);
+  if (!inWorld && profile && window.location.origin !== "https://craft.lakebed.app"
+    && new URL(window.location.href).searchParams.get("register-server") === "1") {
+    return <ReviewServerRegistration />;
+  }
   if (!inWorld) {
     return (
       <>

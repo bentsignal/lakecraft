@@ -35,6 +35,7 @@ recover from implementation history.
 - [Performance contract](performance/README.md) and
   [benchmark](performance/benchmark.md): budgets and deterministic measurement
 - [Artifact headroom](performance/artifact-headroom.md): compact-build evidence
+- [Multiplayer review](operations/multiplayer-review.md): developer-owned Railway environments and isolated release testing
 - [Lakebed production](operations/lakebed-production.md): release and recovery
 - [Delivery workflows](operations/workflows.md): development review, integrated
   release previews, shared checks, and production records
