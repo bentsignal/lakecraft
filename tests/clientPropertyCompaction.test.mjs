@@ -38,10 +38,10 @@ const manifestNames = Object.keys(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 const compactNames = Object.values(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 
 assert.deepEqual(manifestNames, [...manifestNames].sort(), "reviewed property manifest stays sorted");
-assert.equal(manifestNames.length, 642, "reviewed compatibility boundary changes only intentionally");
+assert.equal(manifestNames.length, 641, "reviewed compatibility boundary changes only intentionally");
 assert.equal(
   createHash("sha256").update(JSON.stringify(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE)).digest("hex"),
-  "5aa8e56270dfc32454ad916ad82df1eab2522f58b87377e1d837bb713bb32d6e",
+  "3e2d932c3a0ada3cb37c4b657dd63bb3c1c046244b6f90c56d1c36ac169ec3d5",
   "the reviewed source-to-alias manifest changes only with an explicit fingerprint update",
 );
 assert.equal(new Set(manifestNames).size, manifestNames.length, "source property names stay unique");
@@ -51,6 +51,7 @@ assert.ok(compactNames.every((name) => /^[A-Za-z_$][\w$]*$/.test(name)), "compac
 assert.ok(manifestNames.every((name) => COMPACT_CLIENT_PROPERTY_PATTERN.test(name)), "pattern covers every manifest name");
 assert.equal(COMPACT_CLIENT_PROPERTY_PATTERN.test("soundMuted"), false, "settings key stays reserved");
 assert.equal(COMPACT_CLIENT_PROPERTY_PATTERN.test("terrain"), false, "realtime terrain wire key stays reserved");
+assert.equal(COMPACT_CLIENT_PROPERTY_PATTERN.test("messages"), false, "Railway chat-history wire key stays reserved");
 assert.equal(COMPACT_CLIENT_PROPERTY_PATTERN.test("worldId"), false, "save identity stays reserved");
 assert.equal(COMPACT_CLIENT_PROPERTY_PATTERN.test("onClick"), false, "Preact event prop stays reserved");
 assert.equal(COMPACT_CLIENT_PROPERTY_PATTERN.test("requestPointerLock"), false, "browser API stays reserved");
@@ -130,7 +131,7 @@ const reviewedPrivatePropertyPaths = {
 const privateNames = Object.keys(COMPACT_CLIENT_PRIVATE_PROPERTY_MANGLE_CACHE);
 assert.deepEqual(privateNames, [...privateNames].sort(), "private property namespace stays sorted");
 assert.deepEqual(privateNames, Object.keys(reviewedPrivatePropertyPaths), "each private property has one path fingerprint");
-assert.equal(manifestNames.length, 596 + privateNames.length, "private names cannot shadow the reviewed public candidate manifest");
+assert.equal(manifestNames.length, 595 + privateNames.length, "private names cannot shadow the reviewed public candidate manifest");
 for (const [name, paths] of Object.entries(reviewedPrivatePropertyPaths)) {
   assert.deepEqual(
     (analysis.declarationPaths[name] ?? []).filter((path) => path.startsWith("client/")),

@@ -284,7 +284,6 @@ const COMPACT_CLIENT_BASE_PROPERTY_MANGLE_CACHE = Object.freeze({
   "maximumPrimedTnt": "Qa",
   "meshMs": "aq",
   "meshUpdates": "pt",
-  "messages": "C",
   "minCellX": "yn",
   "minCellY": "gn",
   "minCellZ": "xn",

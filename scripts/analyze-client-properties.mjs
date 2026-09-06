@@ -22,6 +22,8 @@ const boundaryRoots = [
   "shared",
 ];
 const manuallyReservedNames = new Set([
+  // Railway chat_history JSON shares this key with internal chat UI props.
+  "messages",
   "mouseSensitivity",
   "settings",
   "soundMuted",
