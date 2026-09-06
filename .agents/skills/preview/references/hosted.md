@@ -7,7 +7,7 @@ boundaries and the owning stage skill for publishing and review steps.
 
 ## Publish safely
 
-The publisher pins Lakebed 0.0.29 and TypeScript 5.9.3, builds the compact capsule, verifies its hashes and 32 KiB artifact headroom, removes the production deploy binding in an isolated stage, and calls the anonymous deployment endpoint directly. It deletes `LAKEBED_TOKEN` from its toolchain environment, so a developer login cannot turn a preview into an owned deployment.
+The publisher uses `scripts/lakebed-toolchain.mjs`, builds the compact capsule, verifies its hashes and 32 KiB artifact headroom, removes the production deploy binding in an isolated stage, and calls the anonymous deployment endpoint directly. It deletes `LAKEBED_TOKEN` from its toolchain environment, so a developer login cannot turn a preview into an owned deployment.
 
 Never run `npx lakebed deploy .` from the worktree. The root `lakebed.json` is bound to production.
 

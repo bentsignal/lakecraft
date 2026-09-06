@@ -23,6 +23,7 @@ import {
   compactClientPropertyCache,
 } from "./client-property-compaction.mjs";
 import { loadLakebedCompilerRuntime } from "./lakebed-compiler-runtime.mjs";
+import { LAKEBED_VERSION } from "./lakebed-toolchain.mjs";
 import { stripClientDevelopmentSurfaces, stripVoxelDevelopmentSurfaces } from "./client-development-surface-transform.mjs";
 import { compactClientBuiltinAliases, compactClientPropertyKeyAliases } from "./client-builtin-alias-compaction.mjs";
 import { compactClientJsxPropShapes } from "./client-jsx-prop-shape-compaction.mjs";
@@ -63,7 +64,11 @@ async function enableCompactLakebedBuild(buildPath) {
   if (source.includes("LAKEBED_COMPACT_BUNDLE")) return;
   const needle = '        sourcemap: "inline",';
   const matches = source.split(needle).length - 1;
-  if (matches !== 2) throw new Error("Lakebed's build layout changed; compact production patch needs review.");
+  // Lakebed 0.0.33 already minifies the production client without source maps.
+  if (matches !== 1 || !source.includes('minify: mode === "production",')
+    || !source.includes('sourcemap: mode === "development" ? "inline" : false,')) {
+    throw new Error("Lakebed's build layout changed; compact production patch needs review.");
+  }
   await writeFile(buildPath, source.replaceAll(
     needle,
     '        sourcemap: process.env.LAKEBED_COMPACT_BUNDLE === "1" ? false : "inline",\n'
@@ -73,7 +78,7 @@ async function enableCompactLakebedBuild(buildPath) {
 
 export async function prepareLakebedStage(stagingPlan) {
 const { sourceRoot } = stagingPlan;
-const lakebedRuntime = await loadLakebedCompilerRuntime({ lakebedVersion: "0.0.29" });
+const lakebedRuntime = await loadLakebedCompilerRuntime({ lakebedVersion: LAKEBED_VERSION });
 await enableCompactLakebedBuild(lakebedRuntime.lakebedBuildPath);
 const { build } = lakebedRuntime;
 

@@ -4,6 +4,7 @@ import { chmod, lstat, mkdir, readFile, rename, writeFile } from "node:fs/promis
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runStagedTransaction, verifyLakebedBuild } from "./lakebed-build-transaction.mjs";
+import { LAKEBED_VERSION } from "./lakebed-toolchain.mjs";
 
 const PREVIEW_API = "https://api.lakebed.dev";
 const PREVIEW_METADATA = ".lakebed/preview.json";
@@ -187,11 +188,11 @@ export async function publishLakebedPreview({
   await runCommand("npx", [
     "--yes",
     "--package",
-    "lakebed@0.0.29",
+    `lakebed@${LAKEBED_VERSION}`,
     "--package",
     "typescript@5.9.3",
     "lakebed",
-    "--version",
+    "help",
   ], { cwd: canonicalRoot, env: toolchainEnvironment });
   const published = await runStagedTransaction({
     sourceRoot: canonicalRoot,
@@ -203,7 +204,7 @@ export async function publishLakebedPreview({
       const reportBuffer = await runCommand("npx", [
         "--yes",
         "--package",
-        "lakebed@0.0.29",
+        `lakebed@${LAKEBED_VERSION}`,
         "--package",
         "typescript@5.9.3",
         "lakebed",

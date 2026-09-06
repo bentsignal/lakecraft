@@ -673,7 +673,8 @@ function validateArtifact(value, context) {
   for (const key of [
     "reportSha256", "pairedReportSha256", "artifactFileSha256", "stagedClientSha256", "stagedServerSha256",
   ]) sha256(artifact[key], `artifact.${key}`);
-  if (artifact.format !== "lakebed.capsule.artifact.v1" || artifact.deployTarget !== "anonymous-source") {
+  if (!["lakebed.capsule.artifact.v1", "lakebed.capsule.artifact.v2"].includes(artifact.format)
+    || artifact.deployTarget !== "anonymous-source") {
     throw new Error("artifact must be the anonymous Lakebed capsule format.");
   }
   const artifactBytes = integer(artifact.artifactBytes, "artifact.artifactBytes", 1);
@@ -859,7 +860,7 @@ export function createTask41EvidenceTemplate() {
       ...binding(),
     },
     artifact: {
-      format: "lakebed.capsule.artifact.v1",
+      format: "lakebed.capsule.artifact.v2",
       deployTarget: "anonymous-source",
       reportPath: "PENDING/build-a.json",
       reportSha256: "PENDING_SHA256",
@@ -2016,7 +2017,7 @@ async function rebuildExpectedCommitStage(repoRoot, expectedCommit) {
         artifactHash: metadataValue.artifactHash,
         clientBundleHash: metadataValue.clientBundleHash,
         deployTarget: "anonymous-source",
-        format: "lakebed.capsule.artifact.v1",
+        format: metadataValue.lakebedFormat,
       }, "rebuilt expected commit");
       return { repoRoot: canonicalRepo, expectedCommit, files, metadata };
     } finally {

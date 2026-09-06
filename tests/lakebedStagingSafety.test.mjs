@@ -379,7 +379,7 @@ test("artifact verification rejects alternate targets even when every hash is re
             bytes: clientBundle.length,
           },
           deployTarget: target,
-          format: "lakebed.capsule.artifact.v1",
+          format: "lakebed.capsule.artifact.v2",
           server: {
             source: {
               bundle: serverBundle.toString("base64"),
@@ -406,7 +406,7 @@ test("artifact verification rejects alternate targets even when every hash is re
           artifactHash,
           artifactPath,
           clientBundleHash: lakebedHash(clientBundle),
-          format: "lakebed.capsule.artifact.v1",
+          format: "lakebed.capsule.artifact.v2",
         })));
       },
     });

@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runAuditBuild } from "./lakebed-build-transaction.mjs";
 import { cleanCommit, withCommitArchive, withCommitWorktree } from "./workflow-git.mjs";
+import { LAKEBED_NPX_ARGS } from "./lakebed-toolchain.mjs";
 
 export async function run(command, args, cwd) {
   await new Promise((accept, reject) => {
@@ -36,7 +37,7 @@ async function validateSnapshot(cwd) {
       console.error(failures.at(-1));
     }
   }
-  await run("npx", ["--yes", "--package", "lakebed@0.0.29", "--package", "typescript@5.9.3", "lakebed", "--version"], cwd);
+  await run("npx", [...LAKEBED_NPX_ARGS, "help"], cwd);
   const nodeTests = [];
   const bunTests = await findTests(join(cwd, "apps/game-server/tests"));
   for (const path of [...await findTests(join(cwd, "tests")), ...await findTests(join(cwd, "tools"))]) {
@@ -54,7 +55,7 @@ async function validateSnapshot(cwd) {
   }
   let artifact;
   await check("ordinary and paired compact builds", () => withCommitArchive(commit, cwd, async (sourceRoot) => {
-    await run("npx", ["--yes", "--package", "lakebed@0.0.29", "--package", "typescript@5.9.3", "lakebed", "build", ".", "--target", "anonymous", "--json"], sourceRoot);
+    await run("npx", [...LAKEBED_NPX_ARGS, "build", ".", "--target", "anonymous", "--json"], sourceRoot);
     const evidence = await mkdtemp(join(tmpdir(), "lakecraft-checks-"));
     try {
       const first = join(evidence, "a");

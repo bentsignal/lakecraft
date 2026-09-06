@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { prepareLakebedStage } from "./prepare-lakebed-deploy.mjs";
+import { canonicalJson, LAKEBED_ARTIFACT_FORMAT, LAKEBED_VERSION } from "./lakebed-toolchain.mjs";
 import {
   assertSealedStagingPlan,
   cleanupStagingSafetyPlan,
@@ -88,7 +89,7 @@ export async function verifyLakebedBuild(plan, reportBuffer) {
   for (const key of ["artifactHash", "artifactPath", "clientBundleHash", "format"]) {
     if (typeof report[key] !== "string" || !report[key]) throw new Error(`Lakebed build report is missing ${key}.`);
   }
-  if (report.format !== "lakebed.capsule.artifact.v1") throw new Error("Lakebed build returned an unexpected format.");
+  if (report.format !== LAKEBED_ARTIFACT_FORMAT) throw new Error("Lakebed build returned an unexpected format.");
   const artifactsRoot = await realpath(join(plan.stageRoot, ".lakebed", "artifacts"));
   const artifactPath = await realpath(resolve(report.artifactPath));
   if (!inside(artifactsRoot, artifactPath)) throw new Error("Lakebed artifact escaped the isolated workspace.");
@@ -111,7 +112,7 @@ export async function verifyLakebedBuild(plan, reportBuffer) {
   if (outer.artifact.format !== report.format || outer.artifact.deployTarget !== "anonymous-source") {
     throw new Error("Lakebed artifact is not an anonymous-source audit artifact.");
   }
-  const artifactHash = lakebedHash(Buffer.from(JSON.stringify(outer.artifact)));
+  const artifactHash = lakebedHash(Buffer.from(canonicalJson(outer.artifact)));
   const clientBundle = Buffer.from(outer.clientBundle, "base64");
   if (clientBundle.toString("base64") !== outer.clientBundle) throw new Error("Lakebed client bundle is not canonical base64.");
   const clientBundleHash = lakebedHash(clientBundle);
@@ -144,7 +145,7 @@ export async function verifyLakebedBuild(plan, reportBuffer) {
   const actualFiles = sourceFiles.map(({ bytes, hash, path }) => ({ bytes, hash, path }))
     .sort((a, b) => String(a.path).localeCompare(String(b.path)));
   if (JSON.stringify(actualFiles) !== JSON.stringify(expectedFiles)
-    || outer.artifact.source.snapshotHash !== lakebedHash(Buffer.from(JSON.stringify(sourceFiles)))) {
+    || outer.artifact.source.snapshotHash !== lakebedHash(Buffer.from(canonicalJson(sourceFiles)))) {
     throw new Error("Lakebed source manifest does not match the sealed staged payload.");
   }
   return Object.freeze({ artifactBuffer, artifactHash, artifactPath, clientBundleHash, report, reportBuffer });
@@ -219,7 +220,7 @@ export async function runAuditBuild({ outputRoot, sourceRoot, stageParent, runBu
           : await runCommand("npx", [
             "--yes",
             "--package",
-            "lakebed@0.0.29",
+            `lakebed@${LAKEBED_VERSION}`,
             "--package",
             "typescript@5.9.3",
             "lakebed",

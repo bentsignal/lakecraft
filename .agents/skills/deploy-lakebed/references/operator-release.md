@@ -39,7 +39,7 @@ stage.
 Inside the transaction consumer, spawn only:
 
 ```sh
-npx --yes --package lakebed@0.0.29 --package typescript@5.9.3 \
+npx --yes --package lakebed@0.0.33 --package typescript@5.9.3 \
   lakebed deploy "$plan_capsule_root" --json
 ```
 
@@ -59,7 +59,7 @@ Lakebed currently performs the network update before rewriting the local capsule
 EACCES: permission denied, open '.../payload/lakebed.json'
 ```
 
-This does not prove the remote update failed. Do not issue a second deployment. Run `npx --yes lakebed@0.0.29 deploy list --json` once and require all of the following:
+This does not prove the remote update failed. Do not issue a second deployment. Run `npx --yes lakebed@0.0.33 deploy list --json` once and require all of the following:
 
 - the configured deploy ID is still the only non-archived deployment;
 - its status is `active` and ownership is unchanged;

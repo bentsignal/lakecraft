@@ -49,8 +49,8 @@ the pinned toolchain specified in `references/operator-release.md`.
    ```sh
    git status -sb
    git rev-parse HEAD
-   npx --yes lakebed@0.0.29 auth status --json
-   npx --yes lakebed@0.0.29 deploy list --json
+   npx --yes lakebed@0.0.33 auth status --json
+   npx --yes lakebed@0.0.33 deploy list --json
    ```
 
 2. Run `node scripts/validate-workflow.mjs`. Require its artifact and client
@@ -70,13 +70,13 @@ the pinned toolchain specified in `references/operator-release.md`.
    `LAKEBED_COMPACT_BUNDLE=1`, and run:
 
    ```sh
-   npx --yes --package lakebed@0.0.29 --package typescript@5.9.3 \
+   npx --yes --package lakebed@0.0.33 --package typescript@5.9.3 \
      lakebed deploy /absolute/path/to/private-stage/payload --json
    ```
 
 5. If the CLI succeeds, continue to verification. If it reports `EACCES` while
    writing the staged `lakebed.json`, the result is ambiguous. Do not deploy
-   again. Fetch `npx --yes lakebed@0.0.29 deploy list --json` once and compare the deploy ID,
+   again. Fetch `npx --yes lakebed@0.0.33 deploy list --json` once and compare the deploy ID,
    active status, update time, and expected compact client-bundle hash.
 
 6. Verify the returned control-plane artifact exactly:
@@ -110,7 +110,7 @@ For a new claimed replacement deployment, confirm the binding and ownership,
 then run:
 
 ```sh
-npx --yes lakebed@0.0.29 domains add craft.lakebed.app --json
+npx --yes lakebed@0.0.33 domains add craft.lakebed.app --json
 ```
 
 Do not terminate or replace the existing claimed deployment merely to update the application.

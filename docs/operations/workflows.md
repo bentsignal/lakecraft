@@ -20,7 +20,8 @@ here rather than maintain alternative delivery recipes.
 
 Use Node 24, Bun 1.3, and `ffmpeg`/`ffprobe` on PATH for the video evidence
 tests. CI pins Node 24.14.0 and Bun 1.3.3 on `ubuntu-24.04`. Builds pin
-Lakebed 0.0.29 and TypeScript 5.9.3. The Lakebed
+Lakebed 0.0.33 and TypeScript 5.9.3, defined in
+`scripts/lakebed-toolchain.mjs`. The Lakebed
 compiler transforms depend on this pinned toolchain. Changes to it require
 validation of the compact output.
 
