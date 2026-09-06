@@ -1644,6 +1644,12 @@ test("Lakebed reports are parsed and hashes, format, target, and independent A/B
     (fixture) => { fixture.evidence.artifact.format = "foreign.artifact.v9"; },
     (fixture) => { fixture.evidence.artifact.deployTarget = "claimed-production"; },
     (fixture) => {
+      const artifact = fixture.evidence.artifact;
+      const report = JSON.parse(readFileSync(join(fixture.root, artifact.reportPath), "utf8"));
+      report.deployTarget = "claimed-production";
+      artifact.reportSha256 = write(fixture.root, artifact.reportPath, `${JSON.stringify(report)}\n`);
+    },
+    (fixture) => {
       fixture.evidence.artifact.pairedArtifactPath = fixture.evidence.artifact.artifactPath;
     },
     (fixture) => {

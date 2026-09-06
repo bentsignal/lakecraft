@@ -1906,7 +1906,9 @@ function validateArtifactMetadata(metadataBuffer, reportBuffer, summary, label) 
   const report = record(parseStrictJson(reportBuffer, `${label} report`));
   const metadata = record(parseStrictJson(metadataBuffer, `${label} artifact metadata`));
   if (!report || !metadata) throw new Error(`${label} Lakebed audit output must be JSON objects.`);
-  exactKeys(report, ["artifactHash", "artifactPath", "clientBundleHash", "format"], `${label} report`);
+  exactKeys(report, ["artifactHash", "artifactPath", "clientBundleHash", "format",
+    ...(summary.format === "lakebed.capsule.artifact.v2" ? ["deployTarget"] : []),
+  ], `${label} report`);
   exactKeys(metadata, [
     "artifactBytes", "artifactFileSha256", "artifactHash", "clientBundleHash",
     "deployTarget", "format", "lakebedFormat", "serverBundleHash", "sourceSnapshotHash",
@@ -1914,6 +1916,7 @@ function validateArtifactMetadata(metadataBuffer, reportBuffer, summary, label) 
   if (metadata.format !== "lakecraft.audit-artifact-metadata.v1"
     || metadata.lakebedFormat !== summary.format
     || metadata.deployTarget !== summary.deployTarget
+    || (summary.format === "lakebed.capsule.artifact.v2" && report.deployTarget !== summary.deployTarget)
     || report.format !== summary.format
     || !String(report.artifactPath).endsWith(".anonymous.json")) {
     throw new Error(`${label} is not redacted anonymous Lakebed audit metadata.`);
