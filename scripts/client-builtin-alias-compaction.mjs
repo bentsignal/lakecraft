@@ -45,11 +45,12 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["Number", "POSITIVE_INFINITY", 14]),
   Object.freeze(["Number", "parseInt", 7]),
   Object.freeze(["Date", "now", 70]),
-  Object.freeze(["JSON", "stringify", 20]),
+  Object.freeze(["JSON", "stringify", 21]),
   Object.freeze(["JSON", "parse", 12]),
 ]);
-export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 2_180;
-export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "c62d24365d4739350adf8f716e73d9054534ccdbef8a4e78dc2be0915c102fcc";
+// The authenticated review-registration download adds one JSON serialization.
+export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 2_181;
+export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "078841c3b07a7d86e506995e8d2cbc09d361723bc88ec85e9d06a2023847e2a8";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [
     `${receiver}.${method}`, count,
@@ -73,14 +74,14 @@ const PROPERTY_ALIAS_COUNT_OVERRIDES = Object.freeze({
   active: 23, activeTexture: 9, addEventListener: 39, ARRAY_BUFFER: 88, behavior: 30, behaviorSeed: 10, bindBuffer: 49, bindTexture: 26,
   block: 188, bottom: 30, bufferData: 25, bufferSubData: 14, byteLength: 17, BYTES_PER_ELEMENT: 17,
   center: 34, charCodeAt: 25, chunkRevisions: 11, CLAMP_TO_EDGE: 16, clear: 49, clearTimeout: 26, count: 185,
-  command: 16, createBuffer: 25, current: 866, currentTarget: 19, cycleLengthMs: 20, dayNight: 9, delete: 85, deleteBuffer: 43,
+  command: 16, createBuffer: 25, current: 866, currentTarget: 20, cycleLengthMs: 20, dayNight: 9, delete: 85, deleteBuffer: 43,
   deleteProgram: 18, deleteTexture: 14, documentElement: 9, drawArrays: 24, dropId: 29, endsWith: 28,
   drops: 25, DYNAMIC_DRAW: 17, enableVertexAttribArray: 27, equipment: 41,
-  elapsedSeconds: 39, every: 51, filter: 51, flatMap: 28, fromEntries: 12, getAttribLocation: 24,
+  elapsedSeconds: 39, every: 51, filter: 52, flatMap: 28, fromEntries: 12, getAttribLocation: 24,
   // Embedding the block atlas replaces the remote response dimensions/status
   // with the generated decoder's byte-array length checks.
   getItem: 21, getUniformLocation: 69, health: 55, height: 35, includes: 53, inventory: 105, itemId: 182, length: 490,
-  indexOf: 27, localStorage: 13, maxHealth: 13, maxStack: 23, operationId: 43, options: 69, pixelStorei: 15, preventDefault: 54,
+  indexOf: 27, localStorage: 13, maxHealth: 13, maxStack: 23, operationId: 43, options: 69, pixelStorei: 15, preventDefault: 55,
   ONE_MINUS_SRC_ALPHA: 7, pendingBlocks: 11, pendingSelfDamage: 10, pitch: 43, pointerLockElement: 24, position: 16,
   previousBlock: 19, previousX: 19, previousY: 16, previousYaw: 10, previousZ: 19, projectiles: 22,
   prototype: 17, randomUUID: 10, readyState: 10, reject: 24, removeEventListener: 41,
@@ -89,7 +90,8 @@ const PROPERTY_ALIAS_COUNT_OVERRIDES = Object.freeze({
   state: 73, STATIC_DRAW: 8, status: 20, stopImmediatePropagation: 8, subarray: 19, terrain: 23, texImage2D: 15,
   texParameteri: 32, TEXTURE_2D: 74, TEXTURE_MAG_FILTER: 8, TEXTURE_MIN_FILTER: 8,
   TRIANGLES: 22, uniform1f: 41, uniform3fv: 11, uniformMatrix4fv: 12,
-  soundMuted: 12, toUpperCase: 10, UNPACK_FLIP_Y_WEBGL: 12, UNSIGNED_BYTE: 16, useProgram: 21, userId: 36, value: 37, values: 35,
+  soundMuted: 12, toUpperCase: 10, UNPACK_FLIP_Y_WEBGL: 12, UNSIGNED_BYTE: 16, useProgram: 21, userId: 36, value: 38, values: 35,
+  endpoint: 31, reason: 52, username: 16,
   vertexAttribPointer: 30, world: 71, worldTimeMs: 7,
 });
 export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_SPEC.split(",").map((entry) => {
@@ -103,8 +105,8 @@ export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_
 // paired prompt/background fluid queues plus their bounded mesh lifecycle.
 // Shared leaf culling adds the reviewed `endsWith` call, and generated wood
 // recipes add one reviewed `Object.fromEntries` call.
-export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_446;
-export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "138b6504b57523849aaedd2759a7a7071bccf5771b57727443337230187a1e1d";
+export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_455;
+export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "ab8155689b7998f85751cf2c00dd9ce2146f5a4b4df755affcaf8c639d266ad6";
 const PROPERTY_ALIAS_INDEX = new Map(COMPACT_CLIENT_PROPERTY_KEY_ALIASES.map(([name], index) => [name, index]));
 const PROPERTY_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_PROPERTY_KEY_ALIASES)),
@@ -116,13 +118,13 @@ const PROPERTY_BOUNDARY = Object.freeze({
 // and the prompt/background fluid scheduler retain their reviewed Sets. The
 // instant Creative hold cadence adds two reviewed performance-clock reads. The
 // OAuth launcher reads the current URL once to pin its Multiplayer return route.
-const GLOBAL_ALIAS_SPEC = "Float32Array:87,Map:75,Set:70,Uint8Array:21,document:99,performance:79,window:139";
+const GLOBAL_ALIAS_SPEC = "Float32Array:87,Map:75,Set:71,Uint8Array:21,document:100,performance:79,window:149";
 export const COMPACT_CLIENT_GLOBAL_ALIASES = Object.freeze(GLOBAL_ALIAS_SPEC.split(",").map((entry) => {
   const separator = entry.lastIndexOf(":");
   return Object.freeze([entry.slice(0, separator), Number(entry.slice(separator + 1))]);
 }));
-export const COMPACT_CLIENT_GLOBAL_OCCURRENCES = 570;
-export const COMPACT_CLIENT_GLOBAL_FINGERPRINT = "4b3b8e004dad9510c9ce239c4fccd992d0eb790cb8c818ab87beac36d0cf08d1";
+export const COMPACT_CLIENT_GLOBAL_OCCURRENCES = 582;
+export const COMPACT_CLIENT_GLOBAL_FINGERPRINT = "7afe626c903211cb03704bf33ab78db99496abd5db176406613aa79cf62d1593";
 const GLOBAL_ALIAS_INDEX = new Map(COMPACT_CLIENT_GLOBAL_ALIASES.map(([name], index) => [name, index]));
 const GLOBAL_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_GLOBAL_ALIASES)),

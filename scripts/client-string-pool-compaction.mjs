@@ -8,9 +8,10 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 546;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 478;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "b88e2aef475704f2c6860cd0e96840fe6da624a053dad9f1df801a806c6801bb";
+// Review registration and the production-world guard add user-facing copy.
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 561;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 493;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "4d4ac516c04739e8425262bee5f2e97018d6bdc08b786c8d4165a7f16fa74e66";
 export const COMPACT_CLIENT_HUMAN_COMMAND_SENDER_REMOVAL_DELTA = Object.freeze({
   previousOccurrences: 547,
   previousUniqueValues: 479,
@@ -303,9 +304,9 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
   source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_406;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 141;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "0d7649cc20fd22300ddc6d44bcc2a87e86bd8a59ec31e2b8bc2b851ef517f2db";
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_422;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 142;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "de82bb02f343db9b1098be0d6ebb8f1366b03cfd97cff9c5d7a9e9f027ff2e0e";
 export const COMPACT_CLIENT_REPEATED_SAVE_WARNING_DELTA = Object.freeze({
   previousOccurrences: 1_404,
   previousUniqueValues: 141,
@@ -788,9 +789,9 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 623;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 184;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "5f19c1e4511524d71379d42ccffcca53c2e15e189d07f16bfc4c171218e1ece5";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 621;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 183;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "482d243292a242752303475c02a5ccc2f58bd3625d1dec6b44f8585a705b0df0";
 export const COMPACT_CLIENT_LOW_FREQUENCY_CHAT_NOTIFICATION_DELTA = Object.freeze({
   previousOccurrences: 623,
   previousUniqueValues: 184,
@@ -1713,6 +1714,7 @@ export async function compactClientStringPool(source, expected = {
 }) {
   if (source.includes("__lakecraftClientStrings")) fail("runtime identifier collides with source text");
   const analysis = await analyzeClientStringPool(source);
+  const drift = [];
   for (const category of ["human", "repeated", "lowFrequency", "fixedFrequencyTwo", "webglUniform", "fixedIdentity"]) {
     const actual = analysis[category];
     const boundary = expected[category];
@@ -1721,7 +1723,7 @@ export async function compactClientStringPool(source, expected = {
       || (category === "fixedIdentity"
         && analysis.fixedIdentityIncrementalUniqueValues !== boundary.incrementalUniqueValues)
       || actual.fingerprint !== boundary.fingerprint) {
-      fail(`${category} live set changed; expected ${boundary.occurrences}/${boundary.uniqueValues}/${boundary.fingerprint}, received `
+      drift.push(`${category} live set changed; expected ${boundary.occurrences}/${boundary.uniqueValues}/${boundary.fingerprint}, received `
         + `${actual.occurrences.length}/${actual.values.length}/${actual.fingerprint}`
         + (category === "fixedIdentity"
           ? `; incremental unique values ${analysis.fixedIdentityIncrementalUniqueValues}; retained counts ${JSON.stringify(Object.fromEntries(actual.values.map((value, index) => [value, actual.counts[index]])))}` : "")
@@ -1729,6 +1731,7 @@ export async function compactClientStringPool(source, expected = {
           ? `; retained values ${JSON.stringify(actual.values)}` : ""));
     }
   }
+  if (drift.length) fail(drift.join("\n"));
   const serialized = JSON.stringify(analysis.values);
   const bytes = new TextEncoder().encode(serialized);
   const packed = compressStaticBytes(bytes);

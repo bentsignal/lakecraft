@@ -79,7 +79,8 @@ export function railwayWorldVariables(binding, registration) {
 export async function railway(args, { cwd, input } = {}) {
   requirePersonalRailwaySession();
   return new Promise((accept, reject) => {
-    const child = spawn("railway", args, { cwd, stdio: ["pipe", "pipe", "pipe"] });
+    const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("RAILWAY_")));
+    const child = spawn("railway", args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
     const output = [];
     let diagnostic = "";
     child.stdout.on("data", part => output.push(part));
@@ -114,6 +115,14 @@ async function save(path, value) {
   const temporary = `${path}.${randomBytes(6).toString("hex")}`;
   await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600, flag: "wx" });
   await rename(temporary, path);
+}
+
+async function inspectProject(binding, cwd) {
+  await railway(["link", "--project", binding.projectId, "--environment", binding.environmentId,
+    "--service", binding.serviceId, "--json"], { cwd });
+  // Explicit status --environment hides other environments. Inspect the whole
+  // linked project so a second live environment cannot escape the safety check.
+  return railway(["status", "--json"], { cwd });
 }
 
 async function main() {
@@ -170,7 +179,7 @@ async function main() {
     await save(path, binding);
   }
   if (!binding?.projectId || !binding.environmentId) throw new Error("No complete binding. Inspect any partial provisioning record before retrying.");
-  const project = await railway(["status", "--project", binding.projectId, "--environment", binding.environmentId, "--json"], { cwd: directory });
+  const project = await inspectProject(binding, directory);
   validateRailwayBinding(binding, identity, project);
   if (binding.branch !== branch || binding.channel !== channel) throw new Error("Binding belongs to a different review branch.");
   if (command === "destroy") {
@@ -190,7 +199,7 @@ async function main() {
     await validateWorkflow(cwd);
     if (requirePushedCommit(channel, cwd).commit !== source.commit) throw new Error("Source advanced during validation.");
     validateRailwayBinding(binding, await railway(["whoami", "--json"], { cwd: directory }),
-      await railway(["status", "--project", binding.projectId, "--environment", binding.environmentId, "--json"], { cwd: directory }));
+      await inspectProject(binding, directory));
     const selectors = ["--project", binding.projectId, "--environment", binding.environmentId, "--service", binding.serviceId];
     for (const [name, value] of Object.entries(variables)) {
       await railway(["variable", "set", name, "--stdin", "--skip-deploys", ...selectors, "--json"], { cwd: directory, input: value });
