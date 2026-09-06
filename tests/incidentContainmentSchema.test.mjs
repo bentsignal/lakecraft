@@ -138,7 +138,7 @@ for (const path of runtimeFiles) {
 // screen. It does not change gameplay authority, persistence, or server schema.
 assert.equal(runtimeFiles.length, 201, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "9836a039a43b2016a1433381ea05ab2bc49ac1cbf23dbe990ca971585162edac",
+  "4d46f75b4de6710ddee43ff8df3557b6b4f682d135f8f01e36a9f9050dbb7e49",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

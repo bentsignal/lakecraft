@@ -62,13 +62,13 @@ xlocal-world-dialog|9 xoptions|11 ysleep|1 xslot|14 xunsupported|8 xg__signal|8 
 xm-slot|11 xp-logo|5 xq-icon|8 xr-slot|8 xclose|10 yquery-recovery|7 xq-population|7
 xworld-line|7 xc__header|7 xk-screen|7 xp-cloud|2 xe-grid|12 xlocal-world-header|6
 xlocal-world-search|6 xlocal-world-select|6 xoptions__slider|10 xgameplay-capture|0
-xe-titlebar|10 xcrosshair|3 xq-browser|6 xp-footer|9 xs-layer|8 xlocal-world-browser|5
-xlocal-world-delete|5 xq-browser__content|5 xselected-item-name|6 xi-dialog|5 xv-result|7
+xe-titlebar|10 xcrosshair|3 xq-browser|7 xp-footer|9 xs-layer|8 xlocal-world-browser|5
+xlocal-world-delete|5 xq-browser__content|6 xselected-item-name|6 xi-dialog|5 xv-result|7
 xe-upper|7 xo-layer|3 xz__slot|7 xo-help|5 xp-tree|2 xq-copy|7 xq-row|5 xlocal-world-titlebar|5
 xingredient__icon|4 xlocal-world-row|4 xcursor-stack|5 xs__heading|4 xf__output|4
 xj-tooltip|4 xq-actions|4 xc__arrow|4 xh__reset|4 xp-screen|6 xk-layer|4 xw-layer|4
 xm-rack|4 xp-menu|6 xq-hint|6 yerror|4 xhud|4 xgameplay-loading|0 xlocal-world-back|3 xc-inventory-grid|3
-xk-screen__status|3 xdirt-background|4 xequipment-panel|4 xk-screen__score|3
+xk-screen__status|3 xdirt-background|5 xequipment-panel|4 xk-screen__score|3
 xoptions-dialog|3 xoptions__done|3 xoptions__grid|3 xc__inventory|3 xr-status-row|3
 xsection-rule|3 xsingleplayer|3 xv-workspace|4 ysleep-layer|1 xc__station|3 xdurability|3
 xingredient|3 xlocal-perf|0 xp-panorama|3 xc__status|3 xp-content|5 xc__flame|3
@@ -92,7 +92,7 @@ xf__number|1 xp-loading|1 xf__arrow|1 xe-error|4 xf-list|1 xj-icon|1 xw-row|1
 xy-grid|8 xy-tabs|4 xy-search|3 xy-empty|2 xy-window|46 xy-workspace|3 xy-pane|7
 xy-pane--player|3 xy-pane--catalog|1 xy-switch|6 xy-grid-wrap|3 xy-armor|3
 xy-catalog|2 xy-help|2 xy-player|2 xsilent-recapture|0
-xlocal-fps|0 xq-empty|4 xdirect-connect|11 xdirect-server|2
+xlocal-fps|0 xq-empty|4 xdirect-connect|12 xdirect-server|2
 xoptions__control|7 xoptions__controls|2 xoptions__tabs|3 xlocal-world-create|2
 `);
 

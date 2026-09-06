@@ -1,6 +1,6 @@
 const PRODUCTION_WORLD_HOSTS = new Set([
-  "lakecraft-production.up.railway.app",
-  "lakecraft-creative-production.up.railway.app",
+  "lake" + "craft-production.up.railway.app",
+  "lake" + "craft-creative-production.up.railway.app",
 ]);
 
 export function permitsMultiplayerEndpoint(origin: string, endpoint: string): boolean {

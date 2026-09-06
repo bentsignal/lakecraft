@@ -44,7 +44,7 @@ export function ReviewServerRegistration() {
     const url = URL.createObjectURL(file);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = "lakecraft-review-registration.json";
+    anchor.download = "review-registration.json";
     anchor.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { lstat, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, rename, rmdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { git, requirePushedCommit, withCommitArchive } from "./workflow-git.mjs";
@@ -81,12 +81,20 @@ export async function railway(args, { cwd, input } = {}) {
   return new Promise((accept, reject) => {
     const child = spawn("railway", args, { cwd, stdio: ["pipe", "pipe", "pipe"] });
     const output = [];
+    let diagnostic = "";
     child.stdout.on("data", part => output.push(part));
     // Never forward command diagnostics: variable commands can include secrets.
-    child.stderr.resume();
+    child.stderr.on("data", part => { if (diagnostic.length < 65536) diagnostic += part.toString(); });
     child.on("error", reject);
     child.on("close", code => {
-      if (code !== 0) return reject(new Error(`Railway ${args[0]} failed (${code}); inspect the exact target with the CLI.`));
+      if (code !== 0) {
+        const reason = diagnostic.includes("resource provision limit exceeded")
+          ? "Account resource limit reached; do not upgrade or retry automatically."
+          : diagnostic.includes("creating projects too quickly")
+            ? "Project creation is rate limited; inspect existing resources before retrying."
+            : "Inspect the exact target with the CLI.";
+        return reject(new Error(`Railway ${args[0]} failed (${code}). ${reason}`));
+      }
       try { accept(JSON.parse(Buffer.concat(output).toString("utf8"))); }
       catch { reject(new Error(`Railway ${args[0]} returned invalid JSON.`)); }
     });
@@ -128,6 +136,9 @@ async function main() {
   const key = createHash("sha256").update(`${channel}:${branch}`).digest("hex").slice(0, 12);
   const directory = join(cwd, ".lakebed", "railway", key);
   await mkdir(directory, { recursive: true, mode: 0o700 });
+  const lock = join(directory, "operation.lock");
+  await mkdir(lock);
+  try {
   const path = join(directory, "binding.json");
   const identity = await railway(["whoami", "--json"], { cwd: directory });
   let binding;
@@ -178,6 +189,8 @@ async function main() {
     const variables = railwayWorldVariables(binding, registration);
     await validateWorkflow(cwd);
     if (requirePushedCommit(channel, cwd).commit !== source.commit) throw new Error("Source advanced during validation.");
+    validateRailwayBinding(binding, await railway(["whoami", "--json"], { cwd: directory }),
+      await railway(["status", "--project", binding.projectId, "--environment", binding.environmentId, "--json"], { cwd: directory }));
     const selectors = ["--project", binding.projectId, "--environment", binding.environmentId, "--service", binding.serviceId];
     for (const [name, value] of Object.entries(variables)) {
       await railway(["variable", "set", name, "--stdin", "--skip-deploys", ...selectors, "--json"], { cwd: directory, input: value });
@@ -206,6 +219,7 @@ async function main() {
     } catch (error) { if (error.code !== "ENOENT") throw error; }
   }
   console.log(JSON.stringify({ ...binding, bindingPath: path, setupUrl }, null, 2));
+  } finally { await rmdir(lock); }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
